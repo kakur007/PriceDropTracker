@@ -78,7 +78,7 @@ export class WooCommerceAdapter extends BaseAdapter {
     }
 
     return null;
-  },
+  }
 
   /**
    * Extract product price
@@ -212,7 +212,7 @@ export class WooCommerceAdapter extends BaseAdapter {
 
     console.log('[WooCommerce Adapter] ✗ No valid price found');
     return null;
-  },
+  }
 
   /**
    * Extract product image
