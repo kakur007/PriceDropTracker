@@ -474,3 +474,79 @@ async function enhanceProductData(data) {
 
   return data;
 }
+
+// Auto-detect product when page loads
+(async function initialize() {
+  // Wait for page to be fully loaded
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', detectAndSave);
+  } else {
+    detectAndSave();
+  }
+})();
+
+async function detectAndSave() {
+  try {
+    console.log('[Price Drop Tracker] Page loaded, checking for product...');
+
+    // Wait a bit for dynamic content to load
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    const productData = await detectProduct();
+
+    if (productData) {
+      // Check if already tracking
+      const response = await chrome.runtime.sendMessage({
+        type: 'PRODUCT_DETECTED',
+        data: productData
+      });
+
+      if (response.success) {
+        console.log('[Price Drop Tracker] Product saved:', response.productId);
+        showTrackingBadge(productData);
+      }
+    }
+  } catch (error) {
+    console.error('[Price Drop Tracker] Detection error:', error);
+  }
+}
+
+function showTrackingBadge(product) {
+  // Create subtle notification badge
+  const badge = document.createElement('div');
+  badge.id = 'price-tracker-badge';
+  badge.innerHTML = `
+    <div style="
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #2563eb;
+      color: white;
+      padding: 12px 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      font-family: -apple-system, sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      z-index: 999999;
+      animation: slideIn 0.3s ease;
+    ">
+      ✓ Now tracking price: ${product.price.formatted}
+    </div>
+    <style>
+      @keyframes slideIn {
+        from { transform: translateY(100px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+      }
+    </style>
+  `;
+
+  document.body.appendChild(badge);
+
+  // Auto-remove after 5 seconds
+  setTimeout(() => {
+    badge.style.transition = 'opacity 0.3s ease';
+    badge.style.opacity = '0';
+    setTimeout(() => badge.remove(), 300);
+  }, 5000);
+}
