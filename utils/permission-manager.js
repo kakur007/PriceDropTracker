@@ -13,10 +13,17 @@
 export async function hasPermissionForUrl(url) {
   try {
     const urlObj = new URL(url);
-    const origin = `${urlObj.protocol}//${urlObj.hostname}/*`;
+    const domain = urlObj.hostname;
+
+    // Check for the same wildcard patterns that requestPermissionForUrl grants
+    // This must match exactly what was granted to work correctly
+    const patterns = [
+      `*://${domain}/*`,
+      `*://*.${domain}/*` // Include subdomains
+    ];
 
     const hasPermission = await chrome.permissions.contains({
-      origins: [origin]
+      origins: patterns
     });
 
     return hasPermission;
