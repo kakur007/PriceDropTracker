@@ -11,9 +11,7 @@
 
 import { StorageManager } from './storage-manager.js';
 import { checkAllProducts, checkSingleProduct, PriceCheckResult } from './price-checker.js';
-import { showBatchPriceDropNotifications, showInfoNotification, showErrorNotification } from '../utils/notification-manager.js';
-import { validateUrl, getSupportedStoresList, isUrlSupported } from '../utils/domain-validator.js';
-import { checkPermissionStatus, extractDomain } from '../utils/permission-manager.js';
+import { showBatchPriceDropNotifications, showInfoNotification } from '../utils/notification-manager.js';
 
 // Alarm names
 const ALARMS = {
@@ -401,42 +399,6 @@ async function handleProductDetected(productData, sender) {
   console.log('[ServiceWorker] Product URL:', productData.url);
 
   try {
-    // Check if URL is in default supported list
-    const isDefaultSupported = isUrlSupported(productData.url);
-    console.log('[ServiceWorker] Is default supported:', isDefaultSupported);
-
-    // Check if we have permission for this URL
-    const permissionStatus = await checkPermissionStatus(productData.url, isDefaultSupported);
-    console.log('[ServiceWorker] Permission status:', permissionStatus);
-
-    // If we need to request permission, return status to trigger UI prompt
-    if (permissionStatus.needsRequest && !permissionStatus.hasPermission) {
-      console.log('[ServiceWorker] ⚠️ Permission needed for:', extractDomain(productData.url));
-
-      return {
-        needsPermission: true,
-        domain: extractDomain(productData.url),
-        url: productData.url,
-        productData: productData // Send back so we can retry after permission granted
-      };
-    }
-
-    // Check if permission exists (from the comprehensive check above)
-    console.log('[ServiceWorker] Has permission (from status check):', permissionStatus.hasPermission);
-
-    if (!permissionStatus.hasPermission) {
-      console.warn('[ServiceWorker] ✗ No permission for domain:', productData.url);
-
-      await showErrorNotification(
-        `Cannot track this product: No permission to access ${extractDomain(productData.url)}. You can grant permission when prompted.`
-      );
-
-      return {
-        error: 'No permission for this domain',
-        domain: extractDomain(productData.url)
-      };
-    }
-
     // Check if product already exists
     const existingProduct = await StorageManager.getProduct(productData.productId);
 
@@ -449,6 +411,7 @@ async function handleProductDetected(productData, sender) {
     }
 
     // Save new product
+    // NOTE: Permissions are now checked in popup.js BEFORE calling this function
     console.log('[ServiceWorker] Saving new product:', productData.productId);
     await StorageManager.saveProduct(productData);
 

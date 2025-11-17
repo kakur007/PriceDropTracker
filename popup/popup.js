@@ -421,6 +421,93 @@ function escapeHtml(text) {
 }
 
 /**
+ * Execute product detection on the current tab
+ * @param {number} tabId - Tab ID to run detection on
+ * @returns {Promise<Object>} - Detection result
+ */
+async function executeProductDetection(tabId) {
+  const results = await chrome.scripting.executeScript({
+    target: { tabId: tabId },
+    func: async () => {
+      try {
+        // Dynamically import the detector module
+        const detectorUrl = chrome.runtime.getURL('content-scripts/product-detector.js');
+        const { detectProduct } = await import(detectorUrl);
+
+        console.log('[Price Drop Tracker] Manual detection started...');
+
+        // Wait for page to be fully loaded
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // Detect product
+        const productData = await detectProduct();
+
+        if (productData) {
+          // Send to background for storage
+          const response = await chrome.runtime.sendMessage({
+            type: 'PRODUCT_DETECTED',
+            data: productData
+          });
+
+          if (response && response.success && !response.data.alreadyTracked) {
+            console.log('[Price Drop Tracker] ✓ Product tracked:', productData.title);
+
+            // Show on-page confirmation
+            const badge = document.createElement('div');
+            badge.style.cssText = `
+              position: fixed;
+              bottom: 20px;
+              right: 20px;
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              color: white;
+              padding: 12px 20px;
+              border-radius: 8px;
+              box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+              font-family: -apple-system, sans-serif;
+              font-size: 14px;
+              font-weight: 500;
+              z-index: 999999;
+              animation: slideIn 0.3s ease;
+            `;
+            badge.innerHTML = `✓ Now tracking: ${productData.price.formatted}`;
+
+            const style = document.createElement('style');
+            style.textContent = `
+              @keyframes slideIn {
+                from { transform: translateY(100px); opacity: 0; }
+                to { transform: translateY(0); opacity: 1; }
+              }
+            `;
+            document.head.appendChild(style);
+            document.body.appendChild(badge);
+
+            setTimeout(() => {
+              badge.style.transition = 'opacity 0.3s ease';
+              badge.style.opacity = '0';
+              setTimeout(() => badge.remove(), 300);
+            }, 5000);
+
+            return { success: true, product: productData };
+          } else if (response && response.success && response.data.alreadyTracked) {
+            return { success: false, error: 'Already tracking this product' };
+          } else {
+            return { success: false, error: response.error || 'Unable to track product' };
+          }
+        } else {
+          console.log('[Price Drop Tracker] No product detected');
+          return { success: false, error: 'No product found on this page' };
+        }
+      } catch (error) {
+        console.error('[Price Drop Tracker] Detection error:', error);
+        return { success: false, error: error.message };
+      }
+    }
+  });
+
+  return results && results[0] && results[0].result;
+}
+
+/**
  * Set up event listeners
  */
 function setupEventListeners() {
@@ -431,7 +518,7 @@ function setupEventListeners() {
       // Get current tab
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-      if (!tab || !tab.id) {
+      if (!tab || !tab.id || !tab.url) {
         showTemporaryMessage('Unable to access current tab', 'error');
         return;
       }
@@ -440,107 +527,43 @@ function setupEventListeners() {
       trackThisPageBtn.disabled = true;
       trackThisPageBtn.innerHTML = '<span>⏳</span>';
 
-      // Inject an inline script that dynamically imports and runs detection
-      const results = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: async () => {
-          try {
-            // Dynamically import the detector module
-            const detectorUrl = chrome.runtime.getURL('content-scripts/product-detector.js');
-            const { detectProduct } = await import(detectorUrl);
+      // CRITICAL: Check and request permissions FIRST, before any async work
+      // This must happen immediately in the user gesture handler
+      const { isUrlSupported } = await import('../utils/domain-validator.js');
+      const { hasPermissionForUrl, requestPermissionForUrl } = await import('../utils/permission-manager.js');
 
-            console.log('[Price Drop Tracker] Manual detection started...');
+      const isDefaultSupported = isUrlSupported(tab.url);
+      console.log('[Popup] Is default supported:', isDefaultSupported);
 
-            // Wait for page to be fully loaded
-            await new Promise(resolve => setTimeout(resolve, 1000));
+      // If not in default list, check if we have permission
+      if (!isDefaultSupported) {
+        const hasPermission = await hasPermissionForUrl(tab.url);
+        console.log('[Popup] Has permission:', hasPermission);
 
-            // Detect product
-            const productData = await detectProduct();
+        if (!hasPermission) {
+          // Request permission RIGHT NOW while still in user gesture
+          console.log('[Popup] Requesting permission for:', tab.url);
+          const granted = await requestPermissionForUrl(tab.url);
 
-            if (productData) {
-              // Send to background for storage
-              const response = await chrome.runtime.sendMessage({
-                type: 'PRODUCT_DETECTED',
-                data: productData
-              });
-
-              // Check for permission request FIRST (before checking success)
-              if (response && response.success && response.data && response.data.needsPermission) {
-                // Need to request permission - return to popup for handling
-                return { needsPermission: true, domain: response.data.domain, productData: response.data.productData };
-              } else if (response && response.success && !response.data.alreadyTracked) {
-                console.log('[Price Drop Tracker] ✓ Product tracked:', productData.title);
-
-                // Show on-page confirmation
-                const badge = document.createElement('div');
-                badge.style.cssText = `
-                  position: fixed;
-                  bottom: 20px;
-                  right: 20px;
-                  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                  color: white;
-                  padding: 12px 20px;
-                  border-radius: 8px;
-                  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-                  font-family: -apple-system, sans-serif;
-                  font-size: 14px;
-                  font-weight: 500;
-                  z-index: 999999;
-                  animation: slideIn 0.3s ease;
-                `;
-                badge.innerHTML = `✓ Now tracking: ${productData.price.formatted}`;
-
-                const style = document.createElement('style');
-                style.textContent = `
-                  @keyframes slideIn {
-                    from { transform: translateY(100px); opacity: 0; }
-                    to { transform: translateY(0); opacity: 1; }
-                  }
-                `;
-                document.head.appendChild(style);
-                document.body.appendChild(badge);
-
-                setTimeout(() => {
-                  badge.style.transition = 'opacity 0.3s ease';
-                  badge.style.opacity = '0';
-                  setTimeout(() => badge.remove(), 300);
-                }, 5000);
-
-                return { success: true, product: productData };
-              } else if (response && response.success && response.data.alreadyTracked) {
-                return { success: false, error: 'Already tracking this product' };
-              } else {
-                return { success: false, error: response.error || 'Unable to track product' };
-              }
-            } else {
-              console.log('[Price Drop Tracker] No product detected');
-              return { success: false, error: 'No product found on this page' };
-            }
-          } catch (error) {
-            console.error('[Price Drop Tracker] Detection error:', error);
-            return { success: false, error: error.message };
+          if (!granted) {
+            console.log('[Popup] Permission denied by user');
+            showTemporaryMessage('Permission denied. Cannot track products on this site.', 'error');
+            trackThisPageBtn.innerHTML = '<span>➕</span>';
+            trackThisPageBtn.disabled = false;
+            return;
           }
-        }
-      });
 
-      // Check results
-      const result = results && results[0] && results[0].result;
+          console.log('[Popup] Permission granted!');
+        }
+      }
+
+      // Now that we have permission, execute product detection
+      const result = await executeProductDetection(tab.id);
 
       if (result && result.success) {
         // Reload products to show the newly tracked item
         await loadProducts();
         showTemporaryMessage('Product tracked successfully!', 'success');
-      } else if (result && result.needsPermission) {
-        // Need to request permission
-        const permissionGranted = await handlePermissionRequest(result.domain, result.productData);
-
-        if (permissionGranted) {
-          // Permission granted, retry tracking
-          await loadProducts();
-          showTemporaryMessage('Permission granted! Product is now being tracked.', 'success');
-        } else {
-          showTemporaryMessage(`Permission denied for ${result.domain}. Cannot track this product.`, 'error');
-        }
       } else {
         const errorMsg = result && result.error ? result.error : 'Unable to detect product';
         showTemporaryMessage(errorMsg, 'error');
@@ -730,59 +753,6 @@ function showError(message) {
       <p>${escapeHtml(message)}</p>
     </div>
   `;
-}
-
-/**
- * Handle permission request for a new domain
- * @param {string} domain - Domain name to request permission for
- * @param {Object} productData - Product data to save after permission is granted
- * @returns {Promise<boolean>} - True if permission granted and product saved
- */
-async function handlePermissionRequest(domain, productData) {
-  try {
-    console.log('[Popup] Requesting permission for:', domain);
-    console.log('[Popup] Product data to save:', productData);
-
-    // Import permission manager
-    const { requestPermissionForUrl } = await import('../utils/permission-manager.js');
-
-    // Request permission directly - Chrome will show its own permission dialog
-    // IMPORTANT: This MUST be called directly from user gesture (button click)
-    // NO confirm() or alert() before this, as they break the user gesture chain
-    const granted = await requestPermissionForUrl(productData.url);
-
-    if (!granted) {
-      console.log('[Popup] Permission denied by user for:', domain);
-      return false;
-    }
-
-    console.log('[Popup] Permission granted for:', domain, '- Now retrying product save...');
-
-    // Now retry saving the product
-    const response = await chrome.runtime.sendMessage({
-      type: 'PRODUCT_DETECTED',
-      data: productData
-    });
-
-    console.log('[Popup] Response from retry:', JSON.stringify(response, null, 2));
-
-    if (response && response.success && response.data) {
-      if (!response.data.alreadyTracked) {
-        console.log('[Popup] ✓ Product saved successfully after permission grant:', response.data.product?.productId);
-        return true;
-      } else if (response.data.alreadyTracked) {
-        console.log('[Popup] ✓ Product already tracked:', response.data.product?.productId);
-        return true; // Still success
-      }
-    }
-
-    console.error('[Popup] ✗ Failed to save product after permission grant. Response:', response);
-    return false;
-
-  } catch (error) {
-    console.error('[Popup] Error handling permission request:', error);
-    return false;
-  }
 }
 
 /**
