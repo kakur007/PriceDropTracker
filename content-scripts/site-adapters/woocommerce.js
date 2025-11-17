@@ -81,52 +81,83 @@ export class WooCommerceAdapter extends BaseAdapter {
   }
 
   /**
-   * Extract product price (Version 3)
-   * This version correctly prioritizes sale prices and explicitly ignores
-   * prices that are inside a <del> (deleted/strikethrough) tag.
+   * Extract product price (Version 4)
+   * This version correctly prioritizes sale prices, explicitly ignores
+   * prices that are inside a <del> (deleted/strikethrough) tag, and
+   * excludes prices from cart, header, and navigation areas.
    *
    * @returns {Object|null} Parsed price data or null
    */
   extractPrice() {
-    console.log('[WooCommerce Adapter] Starting refined price extraction (v3)...');
+    console.log('[WooCommerce Adapter] Starting refined price extraction (v4)...');
 
-    const summaryArea = this.querySelector('.summary.entry-summary') || this.document;
+    // CRITICAL: Only search within the product summary area, not the entire page
+    // Try multiple selectors to find the product info section
+    const summaryArea = this.querySelector('.summary.entry-summary') ||
+                       this.querySelector('.product-summary') ||
+                       this.querySelector('div.product') ||
+                       this.querySelector('.product-details');
 
-    // Selectors are now re-ordered for maximum accuracy.
-    // Sale prices (<ins>) are checked FIRST.
+    if (!summaryArea) {
+      console.log('[WooCommerce Adapter] ✗ No product summary area found - cannot extract price safely');
+      return null;
+    }
+
+    console.log('[WooCommerce Adapter] Found summary area, searching for prices...');
+
+    // Selectors are ordered by priority, with sale prices first
     const priceSelectors = [
-      // 1. HIGHEST PRIORITY: The sale price, which is inside an <ins> tag.
+      // 1. HIGHEST PRIORITY: The sale price inside an <ins> tag within p.price
       'p.price ins .woocommerce-Price-amount',
-      'ins .amount',
+      'p.price ins .amount',
 
-      // 2. Variable Product Price: The price for the selected variation.
+      // 2. Variable Product Price: The price for the selected variation
       '.woocommerce-variation-price .price .woocommerce-Price-amount',
 
-      // 3. Single Price: The regular price when not on sale.
+      // 3. Single Price: The regular price when not on sale
       'p.price > .woocommerce-Price-amount',
+      'p.price .woocommerce-Price-amount',
 
-      // 4. Generic Fallback: Any price amount.
+      // 4. Generic Fallback: Any price amount in the summary
       '.woocommerce-Price-amount',
     ];
 
     for (const selector of priceSelectors) {
-      // Find all elements that match, not just the first one.
+      // Find all elements that match, not just the first one
       const elements = summaryArea.querySelectorAll(selector);
 
       for (const element of elements) {
-        // *** CRITICAL CHECK ***
-        // If this element is inside a <del> tag, it's the old price. Skip it.
+        // *** CRITICAL CHECKS ***
+
+        // 1. Skip if inside a <del> tag (old/crossed-out price)
         if (element.closest('del')) {
-          console.log(`[WooCommerce Adapter] Skipping selector "${selector}" - found price inside a <del> tag.`);
-          continue; // Move to the next element
+          console.log(`[WooCommerce Adapter] Skipping "${selector}" - inside <del> tag`);
+          continue;
+        }
+
+        // 2. Skip if in cart, header, navigation, or related products areas
+        const excludedContainers = element.closest(
+          'header, nav, .cart, .mini-cart, .cart-contents, .widget_shopping_cart, ' +
+          '.related, .upsells, .cross-sells, .shipping, footer'
+        );
+        if (excludedContainers) {
+          console.log(`[WooCommerce Adapter] Skipping "${selector}" - in excluded area (cart/header/nav)`);
+          continue;
         }
 
         const priceText = element.textContent?.trim();
-        if (priceText && !priceText.includes('–') && !priceText.includes('-')) {
+
+        // 3. Skip price ranges
+        if (priceText && (priceText.includes('–') || priceText.includes('-'))) {
+          console.log(`[WooCommerce Adapter] Skipping "${selector}" - contains price range: "${priceText}"`);
+          continue;
+        }
+
+        if (priceText) {
           const parsed = this.parsePriceWithContext(priceText);
           if (parsed && parsed.confidence >= 0.70) {
             console.log(`[WooCommerce Adapter] ✓ Price found with selector "${selector}": ${parsed.numeric} ${parsed.currency}`);
-            return parsed; // Return the first valid, non-deleted price we find.
+            return parsed; // Return the first valid, non-deleted price we find
           }
         }
       }
