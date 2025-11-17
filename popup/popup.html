@@ -4,48 +4,61 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Price Drop Tracker</title>
-  <style>
-    body {
-      width: 350px;
-      min-height: 200px;
-      margin: 0;
-      padding: 20px;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-    }
-    h1 {
-      font-size: 18px;
-      margin: 0 0 15px 0;
-      color: #333;
-    }
-    .placeholder {
-      color: #666;
-      text-align: center;
-      padding: 40px 20px;
-    }
-    .placeholder p {
-      margin: 10px 0;
-      line-height: 1.5;
-    }
-    .status {
-      background: #e8f5e9;
-      padding: 10px;
-      border-radius: 4px;
-      margin-top: 15px;
-      font-size: 12px;
-      color: #2e7d32;
-    }
-  </style>
+  <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <h1>Price Drop Tracker</h1>
-  <div class="placeholder">
-    <p><strong>Extension loaded successfully!</strong></p>
-    <p>This is a placeholder popup created during Session 1.</p>
-    <p>The full UI will be implemented in Session 8.</p>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <h1 class="title">Price Drop Tracker</h1>
+      <div class="header-actions">
+        <button id="refreshBtn" class="icon-btn" title="Refresh prices">
+          <span>🔄</span>
+        </button>
+        <button id="settingsBtn" class="icon-btn" title="Settings">
+          <span>⚙️</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Stats Bar -->
+    <div class="stats-bar">
+      <div class="stat">
+        <span class="stat-value" id="totalProducts">0</span>
+        <span class="stat-label">Tracking</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value" id="priceDrops">0</span>
+        <span class="stat-label">Drops</span>
+      </div>
+    </div>
+
+    <!-- Filter Tabs -->
+    <div class="tabs">
+      <button class="tab active" data-filter="all">All</button>
+      <button class="tab" data-filter="drops">Price Drops</button>
+      <button class="tab" data-filter="expiring">Expiring Soon</button>
+    </div>
+
+    <!-- Products List -->
+    <div id="productsList" class="products-list">
+      <!-- Products will be inserted here -->
+    </div>
+
+    <!-- Empty State -->
+    <div id="emptyState" class="empty-state" style="display: none;">
+      <div class="empty-icon">📦</div>
+      <h2>No products tracked yet</h2>
+      <p>Visit any product page on Amazon, eBay, Walmart, Target, or Best Buy to start tracking prices automatically.</p>
+    </div>
+
+    <!-- Loading State -->
+    <div id="loadingState" class="loading-state">
+      <div class="spinner"></div>
+      <p>Loading products...</p>
+    </div>
   </div>
-  <div class="status">
-    ✓ Extension is active and ready
-  </div>
-  <script src="popup.js"></script>
+
+  <script type="module" src="popup.js"></script>
 </body>
 </html>
