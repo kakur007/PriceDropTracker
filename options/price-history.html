@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Price History - Price Genius</title>
+  <link rel="stylesheet" href="settings.css">
+  <style>
+    .nav-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+      border-bottom: 2px solid #e5e7eb;
+    }
+
+    .nav-tab {
+      padding: 12px 24px;
+      background: none;
+      border: none;
+      border-bottom: 3px solid transparent;
+      color: #6b7280;
+      font-size: 15px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-decoration: none;
+    }
+
+    .nav-tab:hover {
+      color: #2563eb;
+      border-bottom-color: #93c5fd;
+    }
+
+    .nav-tab.active {
+      color: #2563eb;
+      border-bottom-color: #2563eb;
+    }
+
+    .product-selector {
+      margin-bottom: 24px;
+    }
+
+    .product-list {
+      display: grid;
+      gap: 12px;
+      max-height: 300px;
+      overflow-y: auto;
+      padding: 16px;
+      background: #f9fafb;
+      border-radius: 8px;
+      border: 1px solid #e5e7eb;
+    }
+
+    .product-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      background: white;
+      border-radius: 8px;
+      border: 2px solid #e5e7eb;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .product-item:hover {
+      border-color: #2563eb;
+      box-shadow: 0 2px 8px rgba(37, 99, 235, 0.1);
+    }
+
+    .product-item.selected {
+      border-color: #2563eb;
+      background: #eff6ff;
+    }
+
+    .product-item img {
+      width: 48px;
+      height: 48px;
+      object-fit: cover;
+      border-radius: 6px;
+      background: #f3f4f6;
+    }
+
+    .product-item-content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .product-item-title {
+      font-size: 14px;
+      font-weight: 500;
+      color: #111827;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .product-item-price {
+      font-size: 13px;
+      color: #6b7280;
+      margin-top: 2px;
+    }
+
+    .chart-container {
+      background: white;
+      padding: 24px;
+      border-radius: 12px;
+      border: 1px solid #e5e7eb;
+      margin-bottom: 24px;
+    }
+
+    .chart-wrapper {
+      position: relative;
+      height: 400px;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 64px 24px;
+      color: #6b7280;
+    }
+
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+
+    .price-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-top: 24px;
+    }
+
+    .stat-card {
+      background: #f9fafb;
+      padding: 16px;
+      border-radius: 8px;
+      border: 1px solid #e5e7eb;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+
+    .stat-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: #111827;
+    }
+
+    .stat-value.positive {
+      color: #059669;
+    }
+
+    .stat-value.negative {
+      color: #dc2626;
+    }
+
+    /* Dark mode */
+    body[data-theme="dark"] {
+      background: #111827;
+      color: #f9fafb;
+    }
+
+    body[data-theme="dark"] .nav-tabs {
+      border-bottom-color: #374151;
+    }
+
+    body[data-theme="dark"] .nav-tab {
+      color: #9ca3af;
+    }
+
+    body[data-theme="dark"] .nav-tab:hover {
+      color: #60a5fa;
+      border-bottom-color: #3b82f6;
+    }
+
+    body[data-theme="dark"] .nav-tab.active {
+      color: #60a5fa;
+      border-bottom-color: #3b82f6;
+    }
+
+    body[data-theme="dark"] .product-list {
+      background: #1f2937;
+      border-color: #374151;
+    }
+
+    body[data-theme="dark"] .product-item {
+      background: #111827;
+      border-color: #374151;
+    }
+
+    body[data-theme="dark"] .product-item:hover {
+      border-color: #3b82f6;
+    }
+
+    body[data-theme="dark"] .product-item.selected {
+      border-color: #3b82f6;
+      background: #1e3a5f;
+    }
+
+    body[data-theme="dark"] .product-item-title {
+      color: #f9fafb;
+    }
+
+    body[data-theme="dark"] .product-item-price {
+      color: #9ca3af;
+    }
+
+    body[data-theme="dark"] .chart-container,
+    body[data-theme="dark"] .settings-section {
+      background: #1f2937;
+      border-color: #374151;
+    }
+
+    body[data-theme="dark"] .stat-card {
+      background: #111827;
+      border-color: #374151;
+    }
+
+    body[data-theme="dark"] .stat-value {
+      color: #f9fafb;
+    }
+
+    body[data-theme="dark"] .empty-state {
+      color: #9ca3af;
+    }
+
+    body[data-theme="dark"] .header h1 {
+      color: #f9fafb;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>Price History</h1>
+      <p class="subtitle">View price trends for your tracked products</p>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <div class="nav-tabs">
+      <a href="settings.html" class="nav-tab">Settings</a>
+      <a href="price-history.html" class="nav-tab active">Price History</a>
+    </div>
+
+    <!-- Product Selector -->
+    <section class="settings-section product-selector">
+      <h2>Select a Product</h2>
+      <div id="productList" class="product-list">
+        <!-- Products will be loaded here -->
+      </div>
+    </section>
+
+    <!-- Price Chart -->
+    <div id="chartSection" style="display: none;">
+      <div class="chart-container">
+        <h2 id="chartTitle">Price History</h2>
+        <div class="chart-wrapper">
+          <canvas id="priceChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Price Statistics -->
+      <div class="price-stats">
+        <div class="stat-card">
+          <div class="stat-label">Current Price</div>
+          <div class="stat-value" id="currentPrice">--</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Lowest Price</div>
+          <div class="stat-value positive" id="lowestPrice">--</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Highest Price</div>
+          <div class="stat-value" id="highestPrice">--</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Average Price</div>
+          <div class="stat-value" id="averagePrice">--</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Price Change</div>
+          <div class="stat-value" id="priceChange">--</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Empty State -->
+    <div id="emptyState" class="empty-state">
+      <div class="empty-state-icon">📊</div>
+      <h3>No Products Tracked</h3>
+      <p>Start tracking products to see their price history here.</p>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script type="module" src="price-history.js"></script>
+</body>
+</html>
