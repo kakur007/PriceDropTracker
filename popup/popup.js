@@ -3,6 +3,8 @@
  * Displays tracked products with price information and controls
  */
 
+import { debug, debugError, debugWarn } from '../utils/debug.js';
+
 let allProducts = {};
 let currentFilter = 'all';
 
@@ -22,7 +24,7 @@ async function initializeTheme() {
     const theme = result.theme || 'light';
     applyTheme(theme);
   } catch (error) {
-    console.error('[Popup] Error loading theme:', error);
+    debugError('[Popup] Error loading theme:', error);
     applyTheme('light');
   }
 }
@@ -63,8 +65,9 @@ async function toggleTheme() {
   // Save preference
   try {
     await chrome.storage.local.set({ theme: newTheme });
+    debug('[Popup]', `Theme switched to ${newTheme}`);
   } catch (error) {
-    console.error('[Popup] Error saving theme:', error);
+    debugError('[Popup] Error saving theme:', error);
   }
 }
 
@@ -98,8 +101,8 @@ async function loadProducts() {
     displayProducts(allProducts, currentFilter);
 
   } catch (error) {
-    console.error('[Popup] Error loading products:', error);
-    showError('Failed to load products');
+    debugError('[Popup] Error loading products:', error);
+    showError('Failed to load products. Please try refreshing.');
     updateStats({});
   }
 }
@@ -369,18 +372,18 @@ function createProductCard(product) {
       </div>
 
       <div class="product-actions">
-        <button class="product-icon-btn btn-refresh" title="Refresh price">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <button class="product-icon-btn btn-refresh" title="Refresh price" aria-label="Refresh price for ${escapeHtml(product.title)}">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <path d="M13.65 2.35C12.2 0.9 10.21 0 8 0C3.58 0 0.01 3.58 0.01 8C0.01 12.42 3.58 16 8 16C11.73 16 14.84 13.45 15.73 10H13.65C12.83 12.33 10.61 14 8 14C4.69 14 2 11.31 2 8C2 4.69 4.69 2 8 2C9.66 2 11.14 2.69 12.22 3.78L9 7H16V0L13.65 2.35Z" fill="currentColor"/>
           </svg>
         </button>
-        <button class="product-icon-btn btn-visit" title="Visit page">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <button class="product-icon-btn btn-visit" title="Visit page" aria-label="Visit product page for ${escapeHtml(product.title)}">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <path d="M14 9V14C14 14.5304 13.7893 15.0391 13.4142 15.4142C13.0391 15.7893 12.5304 16 12 16H2C1.46957 16 0.960859 15.7893 0.585786 15.4142C0.210714 15.0391 0 14.5304 0 14V4C0 3.46957 0.210714 2.96086 0.585786 2.58579C0.960859 2.21071 1.46957 2 2 2H7M11 0H16M16 0V5M16 0L7 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
-        <button class="product-icon-btn btn-delete" title="Remove product">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <button class="product-icon-btn btn-delete" title="Remove product" aria-label="Remove ${escapeHtml(product.title)} from tracking">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <path d="M2 4H3.33333H14M5.33333 4V2.66667C5.33333 2.31304 5.47381 1.97391 5.72386 1.72386C5.97391 1.47381 6.31304 1.33333 6.66667 1.33333H9.33333C9.68696 1.33333 10.0261 1.47381 10.2761 1.72386C10.5262 1.97391 10.6667 2.31304 10.6667 2.66667V4M12.6667 4V13.3333C12.6667 13.687 12.5262 14.0261 12.2761 14.2761C12.0261 14.5262 11.687 14.6667 11.3333 14.6667H4.66667C4.31304 14.6667 3.97391 14.5262 3.72386 14.2761C3.47381 14.0261 3.33333 13.687 3.33333 13.3333V4H12.6667Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
@@ -401,7 +404,7 @@ function formatPrice(amount, currency = 'USD', locale = 'en-US') {
       maximumFractionDigits: currency === 'JPY' || currency === 'KRW' ? 0 : 2
     }).format(amount);
   } catch (error) {
-    console.warn('[Popup] Error formatting price:', error);
+    debugWarn('[Popup] Error formatting price:', error);
     // Fallback to simple formatting
     return `${currency} ${amount.toFixed(2)}`;
   }
@@ -439,7 +442,7 @@ function escapeHtml(text) {
  */
 async function executeProductDetection(tabId) {
   try {
-    console.log('[Popup] Executing script on tab:', tabId);
+    debug('[Popup]', 'Executing script on tab:', tabId);
 
     const results = await chrome.scripting.executeScript({
       target: { tabId: tabId },
@@ -539,17 +542,17 @@ async function executeProductDetection(tabId) {
       }
     });
 
-    console.log('[Popup] Script execution results:', results);
+    debug('[Popup]', 'Script execution results:', results);
 
     if (!results || results.length === 0) {
-      console.error('[Popup] No results from script execution');
+      debugError('[Popup] No results from script execution');
       return { success: false, error: 'Script execution failed' };
     }
 
     return results[0].result;
 
   } catch (error) {
-    console.error('[Popup] Error executing script:', error);
+    debugError('[Popup] Error executing script:', error);
     return { success: false, error: `Script injection failed: ${error.message}` };
   }
 }
@@ -580,31 +583,31 @@ function setupEventListeners() {
       const { hasPermissionForUrl, requestPermissionForUrl } = await import('../utils/permission-manager.js');
 
       const isDefaultSupported = isUrlSupported(tab.url);
-      console.log('[Popup] Is default supported:', isDefaultSupported);
+      debug('[Popup]', 'Is default supported:', isDefaultSupported);
 
       // If not in default list, check if we have permission
       let justGrantedPermission = false;
       if (!isDefaultSupported) {
         const hasPermission = await hasPermissionForUrl(tab.url);
-        console.log('[Popup] Has permission:', hasPermission);
+        debug('[Popup]', 'Has permission:', hasPermission);
 
         if (!hasPermission) {
           // Request permission RIGHT NOW while still in user gesture
-          console.log('[Popup] Requesting permission for:', tab.url);
+          debug('[Popup]', 'Requesting permission for:', tab.url);
 
           // IMPORTANT: Requesting permission will close the popup!
           // The service worker will automatically detect and track the product after permission is granted
           const granted = await requestPermissionForUrl(tab.url);
 
           if (!granted) {
-            console.log('[Popup] Permission denied by user');
+            debug('[Popup]', 'Permission denied by user');
             showTemporaryMessage('Permission denied. Cannot track products on this site.', 'error');
             trackThisPageBtn.innerHTML = '<span>➕</span>';
             trackThisPageBtn.disabled = false;
             return;
           }
 
-          console.log('[Popup] Permission granted! Service worker will auto-detect product...');
+          debug('[Popup]', 'Permission granted! Service worker will auto-detect product...');
 
           // The popup will close when permission dialog appears
           // The service worker's chrome.permissions.onAdded listener will:
@@ -620,7 +623,7 @@ function setupEventListeners() {
 
       // Now that we have permission, execute product detection
       let result = await executeProductDetection(tab.id);
-      console.log('[Popup] First execution result:', result);
+      debug('[Popup]', 'First execution result:', result);
 
       if (result && result.success) {
         // Reload products to show the newly tracked item
@@ -636,7 +639,7 @@ function setupEventListeners() {
       trackThisPageBtn.disabled = false;
 
     } catch (error) {
-      console.error('[Popup] Error tracking page:', error);
+      debugError('[Popup] Error tracking page:', error);
       showTemporaryMessage('Failed to scan page. Make sure you\'re on a product page.', 'error');
       trackThisPageBtn.innerHTML = '<span>➕</span>';
       trackThisPageBtn.disabled = false;
@@ -659,6 +662,7 @@ function setupEventListeners() {
     // Add spinning animation
     refreshBtn.classList.add('refreshing');
     refreshBtn.disabled = true;
+    refreshBtn.setAttribute('aria-busy', 'true');
 
     try {
       // Send message to background to force check all products
@@ -668,7 +672,7 @@ function setupEventListeners() {
       });
 
       if (response && response.success) {
-        console.log('[Popup] Force check complete:', response.data);
+        debug('[Popup]', 'Force check complete:', response.data);
       }
 
       // Reload products after a short delay
@@ -676,12 +680,15 @@ function setupEventListeners() {
         await loadProducts();
         refreshBtn.classList.remove('refreshing');
         refreshBtn.disabled = false;
+        refreshBtn.setAttribute('aria-busy', 'false');
       }, 1000);
 
     } catch (error) {
-      console.error('[Popup] Error refreshing:', error);
+      debugError('[Popup] Error refreshing:', error);
       refreshBtn.classList.remove('refreshing');
       refreshBtn.disabled = false;
+      refreshBtn.setAttribute('aria-busy', 'false');
+      showTemporaryMessage('Failed to refresh prices. Please try again.', 'error');
     }
   });
 
@@ -733,8 +740,8 @@ async function handleRefreshSingleProduct(productId, buttonElement) {
       showTemporaryMessage('Failed to update price', 'error');
     }
   } catch (error) {
-    console.error('[Popup] Error refreshing product:', error);
-    showTemporaryMessage('Failed to update price', 'error');
+    debugError('[Popup] Error refreshing product:', error);
+    showTemporaryMessage('Failed to update price. Please try again.', 'error');
   } finally {
     // Remove loading state
     buttonElement.classList.remove('refreshing');
@@ -744,6 +751,7 @@ async function handleRefreshSingleProduct(productId, buttonElement) {
 
 /**
  * Handle deleting a product
+ * @param {string} productId - ID of product to delete
  */
 async function handleDeleteProduct(productId) {
   if (!confirm('Remove this product from tracking?')) {
@@ -760,12 +768,13 @@ async function handleDeleteProduct(productId) {
       delete allProducts[productId];
       displayProducts(allProducts, currentFilter);
       updateStats(allProducts);
+      showTemporaryMessage('Product removed successfully', 'success');
     } else {
-      showError('Failed to delete product');
+      showError('Failed to remove product');
     }
   } catch (error) {
-    console.error('[Popup] Error deleting product:', error);
-    showError('Failed to delete product');
+    debugError('[Popup] Error deleting product:', error);
+    showError('Failed to remove product. Please try again.');
   }
 }
 
@@ -804,12 +813,13 @@ function hideEmptyState() {
 
 /**
  * Show error message
+ * @param {string} message - Error message to display
  */
 function showError(message) {
-  console.error('[Popup]', message);
+  debugError('[Popup]', message);
   hideLoading();
   document.getElementById('productsList').innerHTML = `
-    <div class="empty-state">
+    <div class="empty-state" role="alert">
       <div class="empty-icon">⚠️</div>
       <h2>Error</h2>
       <p>${escapeHtml(message)}</p>
