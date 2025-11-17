@@ -223,11 +223,11 @@ function createProductCard(product) {
         </div>
         ${hasDropped ? `
           <div class="price-drop">
-            ↓ ${Math.abs(priceChangePercent).toFixed(0)}%
+            ${Math.abs(priceChangePercent).toFixed(0)}%
           </div>
         ` : hasIncreased ? `
           <div class="price-increase">
-            ↑ ${Math.abs(priceChangePercent).toFixed(0)}%
+            ${Math.abs(priceChangePercent).toFixed(0)}%
           </div>
         ` : ''}
       </div>
