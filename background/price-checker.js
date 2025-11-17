@@ -13,7 +13,7 @@
 import { fetchHTML } from '../utils/fetch-helper.js';
 import { StorageManager } from './storage-manager.js';
 import { getAdapter } from '../content-scripts/site-adapters/base-adapter.js';
-import { parseCurrency } from '../utils/currency-parser.js';
+import { parsePrice } from '../utils/currency-parser.js';
 
 /**
  * Price check result types
@@ -202,91 +202,89 @@ async function checkSingleProduct(productId) {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
 
-    // Try to detect product info using site adapter
-    let detectedProduct = null;
+    // Try to extract price using site adapter
+    let newPriceData = null;
     const hostname = new URL(product.url).hostname;
 
     try {
       const adapter = getAdapter(doc, product.url);
       if (adapter) {
         console.log(`[PriceChecker] Using ${adapter.constructor.name} for ${hostname}`);
-        detectedProduct = adapter.detectProduct(doc, product.url);
+
+        // Check if this is still a product page
+        const isProductPage = adapter.detectProduct();
+        if (!isProductPage) {
+          console.warn(`[PriceChecker] Page is no longer a product page: ${productId}`);
+          product.tracking.failedChecks = (product.tracking.failedChecks || 0) + 1;
+          product.tracking.lastChecked = Date.now();
+
+          if (product.tracking.failedChecks >= 3) {
+            product.tracking.status = 'stale';
+          }
+
+          await StorageManager.saveProduct(product);
+
+          return {
+            status: PriceCheckResult.ERROR,
+            error: 'Page is no longer a product page'
+          };
+        }
+
+        // Extract the price
+        newPriceData = adapter.extractPrice();
       } else {
         console.warn(`[PriceChecker] No adapter found for ${hostname}`);
       }
     } catch (adapterError) {
-      console.warn(`[PriceChecker] Adapter detection failed:`, adapterError.message);
+      console.warn(`[PriceChecker] Adapter failed:`, adapterError.message);
     }
 
-    // Check if we found product info
-    if (!detectedProduct || !detectedProduct.price) {
-      console.warn(`[PriceChecker] Could not detect price for ${productId}`);
+    // Check if we found a price
+    if (!newPriceData || !newPriceData.numeric) {
+      console.warn(`[PriceChecker] Could not extract price for ${productId}`);
 
-      // Update lastChecked timestamp even if we couldn't get price
-      product.lastChecked = Date.now();
+      // Update failed checks counter
+      product.tracking.failedChecks = (product.tracking.failedChecks || 0) + 1;
+      product.tracking.lastChecked = Date.now();
+
+      if (product.tracking.failedChecks >= 3) {
+        product.tracking.status = 'stale';
+      }
+
       await StorageManager.saveProduct(product);
 
       return {
         status: PriceCheckResult.ERROR,
-        error: 'Could not detect price on page'
+        error: 'Could not extract price'
       };
     }
 
-    // Parse the new price
-    const newPriceData = parseCurrency(detectedProduct.price, {
-      url: product.url,
-      locale: detectedProduct.locale
-    });
-
-    if (!newPriceData || newPriceData.amount === null) {
-      console.warn(`[PriceChecker] Could not parse price: ${detectedProduct.price}`);
-
-      product.lastChecked = Date.now();
-      await StorageManager.saveProduct(product);
-
-      return {
-        status: PriceCheckResult.ERROR,
-        error: 'Could not parse price'
-      };
-    }
-
-    console.log(`[PriceChecker] New price detected: ${newPriceData.amount} ${newPriceData.currency}`);
+    console.log(`[PriceChecker] New price detected: ${newPriceData.numeric} ${newPriceData.currency}`);
 
     // Compare with current price
-    const oldPrice = product.currentPrice;
-    const newPrice = newPriceData.amount;
+    const oldPrice = product.price.numeric;
+    const newPrice = newPriceData.numeric;
 
     // Check if currency changed (problematic!)
-    if (newPriceData.currency !== product.currency) {
-      console.warn(`[PriceChecker] Currency changed from ${product.currency} to ${newPriceData.currency}`);
+    if (newPriceData.currency !== product.price.currency) {
+      console.warn(`[PriceChecker] Currency changed from ${product.price.currency} to ${newPriceData.currency}`);
 
       // Update product but don't add to history
-      product.currentPrice = newPrice;
-      product.currency = newPriceData.currency;
-      product.lastChecked = Date.now();
+      product.price = newPriceData;
+      product.tracking.lastChecked = Date.now();
       await StorageManager.saveProduct(product);
 
       return {
         status: PriceCheckResult.CURRENCY_CHANGE,
-        oldCurrency: product.currency,
+        oldCurrency: product.price.currency,
         newCurrency: newPriceData.currency,
         newPrice: newPrice
       };
     }
 
-    // Check for out of stock
-    if (detectedProduct.availability === 'OutOfStock' || detectedProduct.availability === 'Discontinued') {
-      console.log(`[PriceChecker] Product is out of stock: ${productId}`);
-
-      product.lastChecked = Date.now();
-      product.availability = detectedProduct.availability;
-      await StorageManager.saveProduct(product);
-
-      return {
-        status: PriceCheckResult.OUT_OF_STOCK,
-        availability: detectedProduct.availability
-      };
-    }
+    // Reset failed checks counter on successful price extraction
+    product.tracking.failedChecks = 0;
+    product.tracking.status = 'active';
 
     // Calculate price change
     const priceDiff = newPrice - oldPrice;

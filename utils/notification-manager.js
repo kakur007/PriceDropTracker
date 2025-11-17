@@ -72,7 +72,7 @@ Save: ${formatPrice(parseFloat(dropAmount), product.currency, product.locale)} (
     // Create the notification
     const notificationId = await chrome.notifications.create(product.id, {
       type: 'basic',
-      iconUrl: chrome.runtime.getURL('assets/icons/icon128.png'),
+      iconUrl: chrome.runtime.getURL('assets/icons/icon-128.png'),
       title,
       message,
       priority: 2,
@@ -157,7 +157,7 @@ export async function showBatchPriceDropNotifications(priceDrops) {
 
     await chrome.notifications.create('batch-price-drops', {
       type: 'basic',
-      iconUrl: chrome.runtime.getURL('assets/icons/icon128.png'),
+      iconUrl: chrome.runtime.getURL('assets/icons/icon-128.png'),
       title,
       message,
       priority: 2,
@@ -197,7 +197,7 @@ export async function showInfoNotification(title, message, options = {}) {
 
     const notificationId = await chrome.notifications.create({
       type: 'basic',
-      iconUrl: chrome.runtime.getURL('assets/icons/icon128.png'),
+      iconUrl: chrome.runtime.getURL('assets/icons/icon-128.png'),
       title,
       message,
       priority: options.priority || 0,
@@ -233,7 +233,7 @@ export async function showErrorNotification(message) {
   try {
     const notificationId = await chrome.notifications.create({
       type: 'basic',
-      iconUrl: chrome.runtime.getURL('assets/icons/icon128.png'),
+      iconUrl: chrome.runtime.getURL('assets/icons/icon-128.png'),
       title: '⚠️ Price Drop Tracker Error',
       message,
       priority: 1,
