@@ -66,6 +66,15 @@ body {
   transform: scale(0.95);
 }
 
+.icon-btn.primary {
+  background: #2563eb;
+  color: white;
+}
+
+.icon-btn.primary:hover {
+  background: #1d4ed8;
+}
+
 /* Stats Bar */
 .stats-bar {
   display: flex;

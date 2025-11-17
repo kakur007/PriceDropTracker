@@ -280,6 +280,59 @@ function escapeHtml(text) {
  * Set up event listeners
  */
 function setupEventListeners() {
+  // Track This Page button - for sites not auto-tracked
+  const trackThisPageBtn = document.getElementById('trackThisPageBtn');
+  trackThisPageBtn.addEventListener('click', async () => {
+    try {
+      // Get current tab
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+      if (!tab || !tab.id) {
+        showTemporaryMessage('Unable to access current tab', 'error');
+        return;
+      }
+
+      // Show loading state
+      trackThisPageBtn.disabled = true;
+      trackThisPageBtn.innerHTML = '<span>⏳</span>';
+
+      // Inject and execute the content script
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ['utils/currency-parser.js']
+      });
+
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ['utils/product-hasher.js']
+      });
+
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ['content-scripts/product-detector.js']
+      });
+
+      // Wait a moment for detection to complete
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Reload products to show the newly tracked item
+      await loadProducts();
+
+      // Show success message
+      showTemporaryMessage('Product scan complete!', 'success');
+
+      // Reset button
+      trackThisPageBtn.innerHTML = '<span>➕</span>';
+      trackThisPageBtn.disabled = false;
+
+    } catch (error) {
+      console.error('[Popup] Error tracking page:', error);
+      showTemporaryMessage('Failed to scan page. Make sure you\'re on a product page.', 'error');
+      trackThisPageBtn.innerHTML = '<span>➕</span>';
+      trackThisPageBtn.disabled = false;
+    }
+  });
+
   // Tab filters
   document.querySelectorAll('.tab').forEach(tab => {
     tab.addEventListener('click', () => {
@@ -411,4 +464,61 @@ function showError(message) {
       <p>${escapeHtml(message)}</p>
     </div>
   `;
+}
+
+/**
+ * Show temporary message to user
+ */
+function showTemporaryMessage(message, type = 'success') {
+  // Remove any existing message
+  const existing = document.querySelector('.temp-message');
+  if (existing) existing.remove();
+
+  // Create message element
+  const messageEl = document.createElement('div');
+  messageEl.className = `temp-message temp-message-${type}`;
+  messageEl.textContent = message;
+
+  // Add CSS if not already added
+  if (!document.getElementById('temp-message-styles')) {
+    const style = document.createElement('style');
+    style.id = 'temp-message-styles';
+    style.textContent = `
+      .temp-message {
+        position: fixed;
+        bottom: 16px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 12px 20px;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        z-index: 10000;
+        animation: slideUp 0.3s ease;
+      }
+      .temp-message-success {
+        background: #16a34a;
+        color: white;
+      }
+      .temp-message-error {
+        background: #dc2626;
+        color: white;
+      }
+      @keyframes slideUp {
+        from { transform: translate(-50%, 100px); opacity: 0; }
+        to { transform: translate(-50%, 0); opacity: 1; }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  document.body.appendChild(messageEl);
+
+  // Remove after 3 seconds
+  setTimeout(() => {
+    messageEl.style.transition = 'opacity 0.3s ease';
+    messageEl.style.opacity = '0';
+    setTimeout(() => messageEl.remove(), 300);
+  }, 3000);
 }

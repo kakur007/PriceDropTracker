@@ -10,7 +10,8 @@
     "alarms",
     "notifications",
     "tabs",
-    "activeTab"
+    "activeTab",
+    "scripting"
   ],
 
   "host_permissions": [
