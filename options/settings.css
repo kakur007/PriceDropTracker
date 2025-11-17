@@ -168,31 +168,6 @@ body {
   color: #111827;
 }
 
-.activity-log {
-  max-height: 300px;
-  overflow-y: auto;
-  background: #f9fafb;
-  border-radius: 8px;
-  padding: 12px;
-  border: 1px solid #e5e7eb;
-}
-
-.log-entry {
-  font-size: 12px;
-  color: #6b7280;
-  padding: 8px;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.log-entry:last-child {
-  border-bottom: none;
-}
-
-.log-entry-time {
-  font-weight: 500;
-  color: #374151;
-}
-
 .about-info {
   line-height: 1.6;
 }

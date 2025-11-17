@@ -338,20 +338,20 @@ export async function updateSettings(newSettings) {
   try {
     const currentSettings = await getSettings();
 
-    // Deep merge
+    // Deep merge - only merge properties that exist in newSettings
     const updated = {
-      tracking: { ...currentSettings.tracking, ...newSettings.tracking },
-      checking: { ...currentSettings.checking, ...newSettings.checking },
-      notifications: { ...currentSettings.notifications, ...newSettings.notifications },
-      privacy: { ...currentSettings.privacy, ...newSettings.privacy },
-      advanced: { ...currentSettings.advanced, ...newSettings.advanced }
+      tracking: { ...currentSettings.tracking, ...(newSettings.tracking || {}) },
+      checking: { ...currentSettings.checking, ...(newSettings.checking || {}) },
+      notifications: { ...currentSettings.notifications, ...(newSettings.notifications || {}) },
+      privacy: { ...currentSettings.privacy, ...(newSettings.privacy || {}) },
+      advanced: { ...currentSettings.advanced, ...(newSettings.advanced || {}) }
     };
 
     // Validate
-    if (updated.tracking.duration < 7 || updated.tracking.duration > 90) {
+    if (updated.tracking && (updated.tracking.duration < 7 || updated.tracking.duration > 90)) {
       throw new Error('Invalid tracking duration');
     }
-    if (updated.checking.interval < 1 || updated.checking.interval > 48) {
+    if (updated.checking && (updated.checking.interval < 1 || updated.checking.interval > 48)) {
       throw new Error('Invalid check interval');
     }
 
