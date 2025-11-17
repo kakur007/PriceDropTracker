@@ -200,7 +200,7 @@ async function handlePriceCheckAlarm() {
 
     // Send notifications for price drops if enabled
     if (settings.notifications.enabled && results.priceDrops > 0) {
-      await notifyPriceDrops(results.results);
+      await notifyPriceDrops(results.details);
     }
 
   } catch (error) {
@@ -233,10 +233,10 @@ async function handleCleanupAlarm() {
 
 /**
  * Send notifications for price drops
- * @param {Array} results - Price check results
+ * @param {Array} checkDetails - Detailed price check results from price-checker
  */
-async function notifyPriceDrops(results) {
-  const priceDrops = results.filter(r => r.status === PriceCheckResult.PRICE_DROP);
+async function notifyPriceDrops(checkDetails) {
+  const priceDrops = checkDetails.filter(r => r.status === PriceCheckResult.PRICE_DROP);
 
   if (priceDrops.length === 0) {
     return;
@@ -258,7 +258,7 @@ async function notifyPriceDrops(results) {
           product,
           oldPrice: drop.oldPrice,
           newPrice: drop.newPrice,
-          dropPercentage: Math.abs(drop.priceChangePercent)
+          dropPercentage: Math.abs(drop.changePercent || 0)
         };
       })
     );
@@ -341,24 +341,38 @@ async function handleMessage(message, sender) {
 
     case MESSAGE_TYPES.CHECK_NOW:
       try {
-        await checkAllProducts({
+        const results = await checkAllProducts({
           batchSize: data.batchSize || 10,
           maxAge: 0 // Check all products regardless of age
         });
         await updateBadge();
-        return { success: true };
+
+        // Send notifications for any price drops found
+        const settings = await StorageManager.getSettings();
+        if (settings.notifications.enabled && results.priceDrops > 0) {
+          await notifyPriceDrops(results.details);
+        }
+
+        return { success: true, results };
       } catch (error) {
         console.error('[ServiceWorker] CHECK_NOW error:', error);
         return { success: false, error: error.message };
       }
 
     case MESSAGE_TYPES.FORCE_CHECK_ALL:
-      const results = await checkAllProducts({
+      const forceResults = await checkAllProducts({
         batchSize: data.batchSize || 10,
         maxAge: 0 // Check all products regardless of age
       });
       await updateBadge();
-      return results;
+
+      // Send notifications for any price drops found
+      const forceSettings = await StorageManager.getSettings();
+      if (forceSettings.notifications.enabled && forceResults.priceDrops > 0) {
+        await notifyPriceDrops(forceResults.details);
+      }
+
+      return forceResults;
 
     default:
       throw new Error(`Unknown message type: ${type}`);
