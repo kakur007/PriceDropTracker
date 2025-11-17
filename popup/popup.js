@@ -426,85 +426,104 @@ function escapeHtml(text) {
  * @returns {Promise<Object>} - Detection result
  */
 async function executeProductDetection(tabId) {
-  const results = await chrome.scripting.executeScript({
-    target: { tabId: tabId },
-    func: async () => {
-      try {
-        // Dynamically import the detector module
-        const detectorUrl = chrome.runtime.getURL('content-scripts/product-detector.js');
-        const { detectProduct } = await import(detectorUrl);
+  try {
+    console.log('[Popup] Executing script on tab:', tabId);
 
-        console.log('[Price Drop Tracker] Manual detection started...');
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      func: async () => {
+        try {
+          // Dynamically import the detector module
+          const detectorUrl = chrome.runtime.getURL('content-scripts/product-detector.js');
+          const { detectProduct } = await import(detectorUrl);
 
-        // Wait for page to be fully loaded
-        await new Promise(resolve => setTimeout(resolve, 1000));
+          console.log('[Price Drop Tracker] Manual detection started...');
 
-        // Detect product
-        const productData = await detectProduct();
+          // Wait for page to be fully loaded
+          await new Promise(resolve => setTimeout(resolve, 1000));
 
-        if (productData) {
-          // Send to background for storage
-          const response = await chrome.runtime.sendMessage({
-            type: 'PRODUCT_DETECTED',
-            data: productData
-          });
+          // Detect product
+          const productData = await detectProduct();
 
-          if (response && response.success && !response.data.alreadyTracked) {
-            console.log('[Price Drop Tracker] ✓ Product tracked:', productData.title);
+          if (productData) {
+            console.log('[Price Drop Tracker] Product detected, sending to background...');
 
-            // Show on-page confirmation
-            const badge = document.createElement('div');
-            badge.style.cssText = `
-              position: fixed;
-              bottom: 20px;
-              right: 20px;
-              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-              color: white;
-              padding: 12px 20px;
-              border-radius: 8px;
-              box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-              font-family: -apple-system, sans-serif;
-              font-size: 14px;
-              font-weight: 500;
-              z-index: 999999;
-              animation: slideIn 0.3s ease;
-            `;
-            badge.innerHTML = `✓ Now tracking: ${productData.price.formatted}`;
+            // Send to background for storage
+            const response = await chrome.runtime.sendMessage({
+              type: 'PRODUCT_DETECTED',
+              data: productData
+            });
 
-            const style = document.createElement('style');
-            style.textContent = `
-              @keyframes slideIn {
-                from { transform: translateY(100px); opacity: 0; }
-                to { transform: translateY(0); opacity: 1; }
-              }
-            `;
-            document.head.appendChild(style);
-            document.body.appendChild(badge);
+            console.log('[Price Drop Tracker] Background response:', response);
 
-            setTimeout(() => {
-              badge.style.transition = 'opacity 0.3s ease';
-              badge.style.opacity = '0';
-              setTimeout(() => badge.remove(), 300);
-            }, 5000);
+            if (response && response.success && !response.data.alreadyTracked) {
+              console.log('[Price Drop Tracker] ✓ Product tracked:', productData.title);
 
-            return { success: true, product: productData };
-          } else if (response && response.success && response.data.alreadyTracked) {
-            return { success: false, error: 'Already tracking this product' };
+              // Show on-page confirmation
+              const badge = document.createElement('div');
+              badge.style.cssText = `
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 12px 20px;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                font-family: -apple-system, sans-serif;
+                font-size: 14px;
+                font-weight: 500;
+                z-index: 999999;
+                animation: slideIn 0.3s ease;
+              `;
+              badge.innerHTML = `✓ Now tracking: ${productData.price.formatted}`;
+
+              const style = document.createElement('style');
+              style.textContent = `
+                @keyframes slideIn {
+                  from { transform: translateY(100px); opacity: 0; }
+                  to { transform: translateY(0); opacity: 1; }
+                }
+              `;
+              document.head.appendChild(style);
+              document.body.appendChild(badge);
+
+              setTimeout(() => {
+                badge.style.transition = 'opacity 0.3s ease';
+                badge.style.opacity = '0';
+                setTimeout(() => badge.remove(), 300);
+              }, 5000);
+
+              return { success: true, product: productData };
+            } else if (response && response.success && response.data.alreadyTracked) {
+              return { success: false, error: 'Already tracking this product' };
+            } else {
+              return { success: false, error: response.error || 'Unable to track product' };
+            }
           } else {
-            return { success: false, error: response.error || 'Unable to track product' };
+            console.log('[Price Drop Tracker] No product detected');
+            return { success: false, error: 'No product found on this page' };
           }
-        } else {
-          console.log('[Price Drop Tracker] No product detected');
-          return { success: false, error: 'No product found on this page' };
+        } catch (error) {
+          console.error('[Price Drop Tracker] Detection error:', error);
+          return { success: false, error: error.message };
         }
-      } catch (error) {
-        console.error('[Price Drop Tracker] Detection error:', error);
-        return { success: false, error: error.message };
       }
-    }
-  });
+    });
 
-  return results && results[0] && results[0].result;
+    console.log('[Popup] Script execution results:', results);
+
+    if (!results || results.length === 0) {
+      console.error('[Popup] No results from script execution');
+      return { success: false, error: 'Script execution failed' };
+    }
+
+    return results[0].result;
+
+  } catch (error) {
+    console.error('[Popup] Error executing script:', error);
+    return { success: false, error: `Script injection failed: ${error.message}` };
+  }
 }
 
 /**
@@ -559,24 +578,35 @@ function setupEventListeners() {
         }
       }
 
-      // If we just granted permission, wait a moment for Chrome to propagate it
+      // If we just granted permission, wait for Chrome to propagate it
       // This prevents script execution failures due to timing issues
       if (justGrantedPermission) {
         console.log('[Popup] Waiting for permission to propagate...');
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 300));
       }
 
       // Now that we have permission, execute product detection
       let result = await executeProductDetection(tab.id);
+      console.log('[Popup] First execution result:', result);
 
-      // If execution failed right after granting permission, retry once
+      // If execution failed right after granting permission, retry with longer delays
       if (justGrantedPermission && (!result || !result.success)) {
-        console.log('[Popup] First execution failed, retrying after permission grant...');
-        await new Promise(resolve => setTimeout(resolve, 200));
-        const retryResult = await executeProductDetection(tab.id);
-        if (retryResult) {
-          // Use retry result instead
-          result = retryResult;
+        console.log('[Popup] First execution failed after permission grant, retrying...');
+
+        // Try up to 2 more times with increasing delays
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          const delay = attempt * 500; // 500ms, then 1000ms
+          console.log(`[Popup] Retry attempt ${attempt} after ${delay}ms delay...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+
+          const retryResult = await executeProductDetection(tab.id);
+          console.log(`[Popup] Retry attempt ${attempt} result:`, retryResult);
+
+          if (retryResult && retryResult.success) {
+            result = retryResult;
+            console.log('[Popup] Retry succeeded!');
+            break;
+          }
         }
       }
 
