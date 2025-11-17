@@ -111,7 +111,8 @@ async function checkAllProducts(options = {}) {
         success: 0,
         errors: 0,
         priceDrops: 0,
-        priceIncreases: 0
+        priceIncreases: 0,
+        details: []
       };
     }
 
@@ -134,7 +135,8 @@ async function checkAllProducts(options = {}) {
         success: 0,
         errors: 0,
         priceDrops: 0,
-        priceIncreases: 0
+        priceIncreases: 0,
+        details: []
       };
     }
 
@@ -156,12 +158,19 @@ async function checkAllProducts(options = {}) {
       success: 0,
       errors: 0,
       priceDrops: 0,
-      priceIncreases: 0
+      priceIncreases: 0,
+      details: [] // Store detailed results for each check
     };
 
     for (const product of batch) {
       try {
         const result = await checkSingleProduct(product.productId);
+
+        // Store detailed result
+        results.details.push({
+          productId: product.productId,
+          ...result
+        });
 
         results.checked++;
 
@@ -185,6 +194,11 @@ async function checkAllProducts(options = {}) {
       } catch (error) {
         console.error(`[PriceChecker] Error checking product ${product.productId}:`, error);
         results.errors++;
+        results.details.push({
+          productId: product.productId,
+          status: PriceCheckResult.ERROR,
+          error: error.message
+        });
       }
     }
 

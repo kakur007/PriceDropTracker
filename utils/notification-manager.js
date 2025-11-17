@@ -43,8 +43,9 @@ export async function showPriceDropNotification(product, oldPrice, newPrice, dro
     }
 
     // Check if drop meets minimum threshold
-    if (dropPercentage < settings.notifications.minDropPercent) {
-      console.log(`[Notifications] Drop ${dropPercentage}% below threshold ${settings.notifications.minDropPercent}%`);
+    const minThreshold = settings.notifications.minDropPercentage || settings.notifications.minDropPercent || 5;
+    if (dropPercentage < minThreshold) {
+      console.log(`[Notifications] Drop ${dropPercentage}% below threshold ${minThreshold}%`);
       return null;
     }
 
