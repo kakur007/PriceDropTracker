@@ -13,7 +13,6 @@
 import { fetchHTML } from '../utils/fetch-helper.js';
 import { StorageManager } from './storage-manager.js';
 import { getAdapter } from '../content-scripts/site-adapters/base-adapter.js';
-import { ProductDetector } from '../content-scripts/product-detector.js';
 import { parseCurrency } from '../utils/currency-parser.js';
 
 /**
@@ -212,16 +211,11 @@ async function checkSingleProduct(productId) {
       if (adapter) {
         console.log(`[PriceChecker] Using ${adapter.constructor.name} for ${hostname}`);
         detectedProduct = adapter.detectProduct(doc, product.url);
+      } else {
+        console.warn(`[PriceChecker] No adapter found for ${hostname}`);
       }
     } catch (adapterError) {
-      console.warn(`[PriceChecker] Adapter failed, falling back to generic detection:`, adapterError.message);
-    }
-
-    // Fallback to generic detection if adapter failed
-    if (!detectedProduct) {
-      console.log(`[PriceChecker] Using generic ProductDetector`);
-      const detector = new ProductDetector();
-      detectedProduct = detector.detectProduct(doc, product.url);
+      console.warn(`[PriceChecker] Adapter detection failed:`, adapterError.message);
     }
 
     // Check if we found product info

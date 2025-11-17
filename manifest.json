@@ -68,6 +68,7 @@
     {
       "resources": [
         "content-scripts/*.js",
+        "content-scripts/site-adapters/*.js",
         "utils/*.js"
       ],
       "matches": [
