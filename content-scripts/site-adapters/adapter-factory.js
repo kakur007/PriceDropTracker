@@ -10,6 +10,7 @@ import { EbayAdapter } from './ebay.js';
 import { WalmartAdapter } from './walmart.js';
 import { TargetAdapter } from './target.js';
 import { BestBuyAdapter } from './bestbuy.js';
+import { WooCommerceAdapter } from './woocommerce.js';
 
 /**
  * Factory function to get the appropriate adapter for a given domain
@@ -21,6 +22,7 @@ import { BestBuyAdapter } from './bestbuy.js';
 export function getAdapter(document, url) {
   const domain = new URL(url).hostname;
 
+  // Check for specific retailer domains first
   if (domain.includes('amazon')) {
     return new AmazonAdapter(document, url);
   }
@@ -39,6 +41,14 @@ export function getAdapter(document, url) {
 
   if (domain.includes('bestbuy')) {
     return new BestBuyAdapter(document, url);
+  }
+
+  // Check for platform-based sites (WooCommerce, Shopify, etc.)
+  // These need to be detected by page structure, not domain
+  const wooAdapter = new WooCommerceAdapter(document, url);
+  if (wooAdapter.detectProduct()) {
+    console.log('[Adapter Factory] Detected WooCommerce site');
+    return wooAdapter;
   }
 
   // Return null if no adapter found

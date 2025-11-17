@@ -6,6 +6,7 @@
 
 import { parsePrice } from '../utils/currency-parser.js';
 import { generateProductId } from '../utils/product-hasher.js';
+import { getAdapter } from './site-adapters/adapter-factory.js';
 
 /**
  * Main product detection function
@@ -19,6 +20,37 @@ export async function detectProduct() {
   if (isNonProductPage()) {
     console.log('[Price Drop Tracker] Non-product page detected, skipping');
     return null;
+  }
+
+  // Try site-specific adapter first (Layer 0: Site-specific adapters)
+  try {
+    const adapter = getAdapter(document, window.location.href);
+    if (adapter) {
+      console.log('[Price Drop Tracker] Using site-specific adapter');
+      const title = adapter.extractTitle();
+      const price = adapter.extractPrice();
+      const imageUrl = adapter.extractImage();
+      const productId = adapter.extractProductId();
+
+      if (title && price) {
+        const productData = {
+          title,
+          price,
+          imageUrl,
+          url: window.location.href,
+          domain: window.location.hostname,
+          sku: productId,
+          availability: null,
+          confidence: 0.90,
+          detectionMethod: 'siteAdapter'
+        };
+        console.log('[Price Drop Tracker] Product detected via adapter (confidence: 0.90)');
+        return await enhanceProductData(productData);
+      }
+    }
+  } catch (error) {
+    console.error('[Price Drop Tracker] Error using adapter:', error);
+    // Fall through to generic detection
   }
 
   // Try detection methods in order of confidence
@@ -468,6 +500,20 @@ function scorePriceCandidate(candidate, titleElement, addToCartButton) {
   // Base score from parser confidence
   score += candidate.parsed.confidence * 100;
 
+  // CRITICAL: Penalize very low prices that are likely shipping costs
+  // Common shipping costs: 3.99, 4.95, 4.99, 5.99, 6.99, etc.
+  const priceValue = candidate.parsed.numeric;
+  if (priceValue > 0 && priceValue < 10) {
+    // Prices under 10 are often shipping/handling fees, not products
+    score -= 30;
+    console.log(`[Price Candidate] Low price penalty for ${priceValue}: -30 points`);
+  }
+  if (priceValue > 0 && priceValue < 2) {
+    // Extremely low prices (under 2) are almost never product prices
+    score -= 50;
+    console.log(`[Price Candidate] Very low price penalty for ${priceValue}: -50 points`);
+  }
+
   // +20 points: Element has price-related class or ID
   if (elementClass.includes('price') || elementId.includes('price')) {
     score += 20;
@@ -499,14 +545,15 @@ function scorePriceCandidate(candidate, titleElement, addToCartButton) {
   if (fontSize >= 24) score += 10;
   else if (fontSize >= 18) score += 5;
 
-  // -30 points: Contains unwanted keywords
-  const badKeywords = ['shipping', 'tax', 'monthly', 'installment', '/mo', 'per month',
-                        'save', 'off', 'was', 'msrp', 'list price'];
+  // -40 points: Contains unwanted keywords (increased penalty)
+  const badKeywords = ['shipping', 'ship', 'delivery', 'tax', 'monthly', 'installment', '/mo', 'per month',
+                        'save', 'off', 'was', 'msrp', 'list price', 'handling', 'freight', 'postage'];
   if (badKeywords.some(keyword => text.includes(keyword))) {
-    score -= 30;
+    score -= 40;
+    console.log(`[Price Candidate] Bad keyword penalty: -40 points`);
   }
 
-  // -50 points: In a "related items" or "also bought" section
+  // -60 points: In a "related items", "upsells", or shipping section (increased penalty)
   let parent = element.parentElement;
   for (let i = 0; i < 5 && parent; i++) {
     const parentClass = (parent.className || '').toLowerCase();
@@ -514,8 +561,12 @@ function scorePriceCandidate(candidate, titleElement, addToCartButton) {
 
     if (parentClass.includes('related') || parentClass.includes('similar') ||
         parentClass.includes('also-bought') || parentClass.includes('recommendations') ||
-        parentId.includes('related') || parentId.includes('similar')) {
-      score -= 50;
+        parentClass.includes('upsell') || parentClass.includes('cross-sell') ||
+        parentClass.includes('shipping') || parentClass.includes('delivery') ||
+        parentId.includes('related') || parentId.includes('similar') ||
+        parentId.includes('shipping') || parentId.includes('delivery')) {
+      score -= 60;
+      console.log(`[Price Candidate] Related/shipping section penalty: -60 points`);
       break;
     }
     parent = parent.parentElement;
