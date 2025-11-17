@@ -81,76 +81,58 @@ export class WooCommerceAdapter extends BaseAdapter {
   }
 
   /**
-   * Extract product price
-   * This is an improved version that prioritizes sale prices and avoids price ranges.
-   *
-   * Priority order:
-   * 1. The price inside an <ins> tag (this is the current sale price).
-   * 2. The price for a selected variation.
-   * 3. A single price that is not part of a range.
+   * Extract product price (Version 3)
+   * This version correctly prioritizes sale prices and explicitly ignores
+   * prices that are inside a <del> (deleted/strikethrough) tag.
    *
    * @returns {Object|null} Parsed price data or null
    */
   extractPrice() {
-    console.log('[WooCommerce Adapter] Starting improved price extraction...');
+    console.log('[WooCommerce Adapter] Starting refined price extraction (v3)...');
 
-    // Scope the search to the main product summary area to avoid grabbing
-    // prices from "related products", shipping info, etc.
     const summaryArea = this.querySelector('.summary.entry-summary') || this.document;
 
-    // Define selectors in order of priority
+    // Selectors are now re-ordered for maximum accuracy.
+    // Sale prices (<ins>) are checked FIRST.
     const priceSelectors = [
-      // 1. Sale Price: This is the most reliable indicator of the current price.
+      // 1. HIGHEST PRIORITY: The sale price, which is inside an <ins> tag.
       'p.price ins .woocommerce-Price-amount',
-      'p.price ins .amount',
+      'ins .amount',
 
-      // 2. Variable Product Price: The price shown after a user selects an option.
+      // 2. Variable Product Price: The price for the selected variation.
       '.woocommerce-variation-price .price .woocommerce-Price-amount',
 
-      // 3. Single Product Price: When there's no sale. We must avoid the <del> tag.
-      'p.price > .woocommerce-Price-amount:not(del *)',
+      // 3. Single Price: The regular price when not on sale.
+      'p.price > .woocommerce-Price-amount',
 
-      // 4. Microdata Price: Fallback using schema.
-      '[itemprop="price"]:not(del *)'
+      // 4. Generic Fallback: Any price amount.
+      '.woocommerce-Price-amount',
     ];
 
     for (const selector of priceSelectors) {
-      const element = summaryArea.querySelector(selector);
+      // Find all elements that match, not just the first one.
+      const elements = summaryArea.querySelectorAll(selector);
 
-      if (element) {
-        // Get the raw text from the element
-        const priceText = element.textContent?.trim();
-
-        // CRITICAL CHECK: Ignore if it's a price range.
-        if (priceText && (priceText.includes('–') || priceText.includes('-'))) {
-            console.log(`[WooCommerce Adapter] Skipping selector "${selector}" because it contains a price range: "${priceText}"`);
-            continue;
+      for (const element of elements) {
+        // *** CRITICAL CHECK ***
+        // If this element is inside a <del> tag, it's the old price. Skip it.
+        if (element.closest('del')) {
+          console.log(`[WooCommerce Adapter] Skipping selector "${selector}" - found price inside a <del> tag.`);
+          continue; // Move to the next element
         }
 
-        if (priceText) {
+        const priceText = element.textContent?.trim();
+        if (priceText && !priceText.includes('–') && !priceText.includes('-')) {
           const parsed = this.parsePriceWithContext(priceText);
           if (parsed && parsed.confidence >= 0.70) {
             console.log(`[WooCommerce Adapter] ✓ Price found with selector "${selector}": ${parsed.numeric} ${parsed.currency}`);
-            return parsed; // Return the first valid price we find
+            return parsed; // Return the first valid, non-deleted price we find.
           }
         }
       }
     }
 
-    // If no specific selectors worked, do a final generic search but be careful.
-    const genericPrice = summaryArea.querySelector('.price, .woocommerce-Price-amount');
-    if (genericPrice) {
-        const priceText = genericPrice.textContent?.trim();
-        if (priceText && !priceText.includes('–') && !priceText.includes('-')) {
-             const parsed = this.parsePriceWithContext(priceText);
-             if (parsed && parsed.confidence >= 0.70) {
-                console.log(`[WooCommerce Adapter] ✓ Price found with generic fallback: ${parsed.numeric} ${parsed.currency}`);
-                return parsed;
-             }
-        }
-    }
-
-    console.log('[WooCommerce Adapter] ✗ No valid price found after all checks.');
+    console.log('[WooCommerce Adapter] ✗ No valid, non-deleted price found.');
     return null;
   }
 
