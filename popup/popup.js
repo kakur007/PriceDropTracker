@@ -554,25 +554,18 @@ function showError(message) {
  */
 async function handlePermissionRequest(domain, productData) {
   try {
-    // Show confirmation dialog
-    const userConfirmed = confirm(
-      `Price Drop Tracker needs permission to access ${domain} to track prices.\n\n` +
-      `Click OK to grant permission, or Cancel to skip this product.`
-    );
-
-    if (!userConfirmed) {
-      console.log('[Popup] User declined permission request for:', domain);
-      return false;
-    }
+    console.log('[Popup] Requesting permission for:', domain);
 
     // Import permission manager
     const { requestPermissionForUrl } = await import('../utils/permission-manager.js');
 
-    // Request permission (this must be called from user gesture)
+    // Request permission directly - Chrome will show its own permission dialog
+    // IMPORTANT: This MUST be called directly from user gesture (button click)
+    // NO confirm() or alert() before this, as they break the user gesture chain
     const granted = await requestPermissionForUrl(productData.url);
 
     if (!granted) {
-      console.log('[Popup] Permission denied by browser for:', domain);
+      console.log('[Popup] Permission denied by user for:', domain);
       return false;
     }
 
@@ -584,9 +577,12 @@ async function handlePermissionRequest(domain, productData) {
       data: productData
     });
 
-    if (response && response.success) {
+    if (response && response.success && !response.data.alreadyTracked) {
       console.log('[Popup] Product saved successfully after permission grant');
       return true;
+    } else if (response && response.success && response.data.alreadyTracked) {
+      console.log('[Popup] Product already tracked');
+      return true; // Still success
     } else {
       console.error('[Popup] Failed to save product after permission grant:', response);
       return false;
