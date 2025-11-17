@@ -81,90 +81,92 @@ export class WooCommerceAdapter extends BaseAdapter {
   }
 
   /**
-   * Extract product price (Version 4)
-   * This version correctly prioritizes sale prices, explicitly ignores
-   * prices that are inside a <del> (deleted/strikethrough) tag, and
-   * excludes prices from cart, header, and navigation areas.
+   * Extract product price (Version 5 - Score-Based)
+   * This version finds all potential prices, scores them based on reliability,
+   * and returns the highest-scoring valid price. This is the most robust
+   * method for handling complex WooCommerce themes with variations and sales.
+   *
+   * Scoring Logic:
+   *   - Inside <ins> (sale price): +100 (highest priority)
+   *   - Variation price: +80
+   *   - General price: +50
    *
    * @returns {Object|null} Parsed price data or null
    */
   extractPrice() {
-    console.log('[WooCommerce Adapter] Starting refined price extraction (v4)...');
+    console.log('[WooCommerce Adapter] Starting score-based price extraction (v5)...');
 
-    // CRITICAL: Only search within the product summary area, not the entire page
-    // Try multiple selectors to find the product info section
-    const summaryArea = this.querySelector('.summary.entry-summary') ||
-                       this.querySelector('.product-summary') ||
-                       this.querySelector('div.product') ||
-                       this.querySelector('.product-details');
+    const summaryArea = this.querySelector('.summary.entry-summary') || this.document;
+    const priceCandidates = [];
 
-    if (!summaryArea) {
-      console.log('[WooCommerce Adapter] ✗ No product summary area found - cannot extract price safely');
-      return null;
-    }
+    // Find all elements that look like a price
+    const potentialElements = summaryArea.querySelectorAll('.woocommerce-Price-amount, .amount');
 
-    console.log('[WooCommerce Adapter] Found summary area, searching for prices...');
+    console.log(`[WooCommerce Adapter] Found ${potentialElements.length} potential price elements.`);
 
-    // Selectors are ordered by priority, with sale prices first
-    const priceSelectors = [
-      // 1. HIGHEST PRIORITY: The sale price inside an <ins> tag within p.price
-      'p.price ins .woocommerce-Price-amount',
-      'p.price ins .amount',
+    for (const element of potentialElements) {
+      // *** Run critical checks on each element ***
 
-      // 2. Variable Product Price: The price for the selected variation
-      '.woocommerce-variation-price .price .woocommerce-Price-amount',
+      // 1. Skip if inside a <del> tag (old price)
+      if (element.closest('del')) {
+        continue;
+      }
 
-      // 3. Single Price: The regular price when not on sale
-      'p.price > .woocommerce-Price-amount',
-      'p.price .woocommerce-Price-amount',
+      // 2. Skip if in an excluded area (cart, related products, etc.)
+      if (element.closest('.related, .upsells, .cart, header, footer, nav')) {
+        continue;
+      }
 
-      // 4. Generic Fallback: Any price amount in the summary
-      '.woocommerce-Price-amount',
-    ];
+      const priceText = element.textContent?.trim();
 
-    for (const selector of priceSelectors) {
-      // Find all elements that match, not just the first one
-      const elements = summaryArea.querySelectorAll(selector);
+      // 3. Skip if it's a price range
+      if (priceText && (priceText.includes('–') || priceText.includes('-'))) {
+        continue;
+      }
 
-      for (const element of elements) {
-        // *** CRITICAL CHECKS ***
+      if (priceText) {
+        const parsed = this.parsePriceWithContext(priceText);
+        if (parsed && parsed.confidence >= 0.70) {
 
-        // 1. Skip if inside a <del> tag (old/crossed-out price)
-        if (element.closest('del')) {
-          console.log(`[WooCommerce Adapter] Skipping "${selector}" - inside <del> tag`);
-          continue;
-        }
+          // *** Score the candidate ***
+          let score = parsed.confidence * 50; // Base score
 
-        // 2. Skip if in cart, header, navigation, or related products areas
-        const excludedContainers = element.closest(
-          'header, nav, .cart, .mini-cart, .cart-contents, .widget_shopping_cart, ' +
-          '.related, .upsells, .cross-sells, .shipping, footer'
-        );
-        if (excludedContainers) {
-          console.log(`[WooCommerce Adapter] Skipping "${selector}" - in excluded area (cart/header/nav)`);
-          continue;
-        }
-
-        const priceText = element.textContent?.trim();
-
-        // 3. Skip price ranges
-        if (priceText && (priceText.includes('–') || priceText.includes('-'))) {
-          console.log(`[WooCommerce Adapter] Skipping "${selector}" - contains price range: "${priceText}"`);
-          continue;
-        }
-
-        if (priceText) {
-          const parsed = this.parsePriceWithContext(priceText);
-          if (parsed && parsed.confidence >= 0.70) {
-            console.log(`[WooCommerce Adapter] ✓ Price found with selector "${selector}": ${parsed.numeric} ${parsed.currency}`);
-            return parsed; // Return the first valid, non-deleted price we find
+          // Highest score for sale price
+          if (element.closest('ins')) {
+            score += 100;
           }
+          // High score for selected variation price
+          if (element.closest('.woocommerce-variation-price')) {
+            score += 80;
+          }
+          // Medium score for a standard price paragraph
+          if (element.closest('p.price')) {
+            score += 50;
+          }
+
+          priceCandidates.push({ parsed, score });
         }
       }
     }
 
-    console.log('[WooCommerce Adapter] ✗ No valid, non-deleted price found.');
-    return null;
+    if (priceCandidates.length === 0) {
+      console.log('[WooCommerce Adapter] ✗ No valid price candidates found.');
+      return null;
+    }
+
+    // Sort candidates by score, descending
+    priceCandidates.sort((a, b) => b.score - a.score);
+
+    console.log('[WooCommerce Adapter] Price candidates sorted by score:');
+    priceCandidates.forEach((c, i) => {
+      console.log(`  ${i+1}. ${c.parsed.numeric} ${c.parsed.currency} (Score: ${c.score.toFixed(2)})`);
+    });
+
+    // The best candidate is the one with the highest score
+    const bestCandidate = priceCandidates[0];
+
+    console.log(`[WooCommerce Adapter] ✓ Best price selected: ${bestCandidate.parsed.numeric} ${bestCandidate.parsed.currency}`);
+    return bestCandidate.parsed;
   }
 
   /**
