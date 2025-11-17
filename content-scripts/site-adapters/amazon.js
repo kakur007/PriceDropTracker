@@ -48,7 +48,9 @@ export class AmazonAdapter extends BaseAdapter {
    * @returns {string} Currency code (e.g., 'USD', 'GBP')
    */
   getExpectedCurrency() {
-    return AmazonAdapter.CURRENCY_BY_DOMAIN[this.domain] || 'USD';
+    // Strip 'www.' prefix if present for lookup
+    const lookupDomain = this.domain.replace(/^www\./, '');
+    return AmazonAdapter.CURRENCY_BY_DOMAIN[lookupDomain] || 'USD';
   }
 
   /**
