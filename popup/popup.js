@@ -563,6 +563,9 @@ function setupEventListeners() {
         if (!hasPermission) {
           // Request permission RIGHT NOW while still in user gesture
           console.log('[Popup] Requesting permission for:', tab.url);
+
+          // IMPORTANT: Requesting permission will close the popup!
+          // We need to save state and continue after the popup reopens
           const granted = await requestPermissionForUrl(tab.url);
 
           if (!granted) {
@@ -573,42 +576,23 @@ function setupEventListeners() {
             return;
           }
 
-          console.log('[Popup] Permission granted!');
-          justGrantedPermission = true;
-        }
-      }
+          console.log('[Popup] Permission granted! Reloading tab to enable access...');
 
-      // If we just granted permission, wait for Chrome to propagate it
-      // This prevents script execution failures due to timing issues
-      if (justGrantedPermission) {
-        console.log('[Popup] Waiting for permission to propagate...');
-        await new Promise(resolve => setTimeout(resolve, 300));
+          // Reload the tab to ensure the extension can access the page
+          // This is necessary because the popup closes when permission dialog appears
+          await chrome.tabs.reload(tab.id);
+
+          // Show success message and inform user to click again
+          showTemporaryMessage('Permission granted! The page is reloading. Click + again to track the product.', 'success');
+          trackThisPageBtn.innerHTML = '<span>➕</span>';
+          trackThisPageBtn.disabled = false;
+          return;
+        }
       }
 
       // Now that we have permission, execute product detection
       let result = await executeProductDetection(tab.id);
       console.log('[Popup] First execution result:', result);
-
-      // If execution failed right after granting permission, retry with longer delays
-      if (justGrantedPermission && (!result || !result.success)) {
-        console.log('[Popup] First execution failed after permission grant, retrying...');
-
-        // Try up to 2 more times with increasing delays
-        for (let attempt = 1; attempt <= 2; attempt++) {
-          const delay = attempt * 500; // 500ms, then 1000ms
-          console.log(`[Popup] Retry attempt ${attempt} after ${delay}ms delay...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-
-          const retryResult = await executeProductDetection(tab.id);
-          console.log(`[Popup] Retry attempt ${attempt} result:`, retryResult);
-
-          if (retryResult && retryResult.success) {
-            result = retryResult;
-            console.log('[Popup] Retry succeeded!');
-            break;
-          }
-        }
-      }
 
       if (result && result.success) {
         // Reload products to show the newly tracked item
