@@ -45,6 +45,9 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     if (details.reason === 'install') {
       console.log('[ServiceWorker] First time installation - setting up defaults');
 
+      // Open welcome page on first install
+      chrome.tabs.create({ url: chrome.runtime.getURL('onboarding/welcome.html') });
+
       // Initialize default settings
       await StorageManager.initializeSettings();
 

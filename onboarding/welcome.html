@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Welcome to Price Drop Tracker!</title>
+  <link rel="stylesheet" href="welcome.css">
+</head>
+<body>
+  <div class="container">
+    <div class="hero">
+      <div class="icon">💰</div>
+      <h1>Welcome to Price Drop Tracker!</h1>
+      <p class="tagline">Never miss a deal again</p>
+    </div>
+
+    <div class="content">
+      <section class="feature">
+        <div class="feature-icon">✨</div>
+        <h2>Automatic Price Tracking</h2>
+        <p>Just browse normally. The extension automatically detects and tracks product prices as you shop. No manual adding, no wishlists, no hassle.</p>
+      </section>
+
+      <section class="feature">
+        <div class="feature-icon">🔔</div>
+        <h2>Smart Notifications</h2>
+        <p>Get notified when prices drop on products you've viewed. Set your own thresholds (5%, 10%, 15%, or 20%) to control alerts.</p>
+      </section>
+
+      <section class="feature">
+        <div class="feature-icon">🌍</div>
+        <h2>Multi-Currency Support</h2>
+        <p>Works across 30+ currencies and major stores including Amazon, eBay, Walmart, Target, and Best Buy.</p>
+      </section>
+
+      <section class="feature">
+        <div class="feature-icon">🔒</div>
+        <h2>100% Private</h2>
+        <p>All data stays on YOUR device. No external servers, no tracking, no data collection. We take your privacy seriously.</p>
+      </section>
+
+      <div class="permissions-section">
+        <h2>Why We Need Permissions</h2>
+        <div class="permission-item">
+          <strong>Access product pages:</strong> To detect products and check prices automatically
+        </div>
+        <div class="permission-item">
+          <strong>Storage:</strong> To save your tracked products locally on your device
+        </div>
+        <div class="permission-item">
+          <strong>Notifications:</strong> To alert you when prices drop
+        </div>
+        <div class="permission-item">
+          <strong>Alarms:</strong> To schedule price checks every few hours
+        </div>
+        <p class="permissions-note">
+          <strong>Important:</strong> We ONLY access product pages from e-commerce sites.
+          We do NOT track your browsing history, read your emails, or access personal sites.
+        </p>
+      </div>
+
+      <div class="cta-section">
+        <h2>Ready to Start Saving?</h2>
+        <p>Visit any product page on Amazon, eBay, Walmart, Target, or Best Buy to start tracking prices!</p>
+        <button id="getStartedBtn" class="cta-button">Get Started</button>
+      </div>
+    </div>
+
+    <footer>
+      <p>Questions? <a href="https://github.com/yourusername/price-drop-tracker/issues" target="_blank">Get Support</a></p>
+    </footer>
+  </div>
+
+  <script>
+    document.getElementById('getStartedBtn').addEventListener('click', () => {
+      chrome.tabs.create({ url: 'https://www.amazon.com' });
+      window.close();
+    });
+  </script>
+</body>
+</html>
