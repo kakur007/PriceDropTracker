@@ -1,0 +1,71 @@
+# Node.js
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock
+
+# Operating System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# IDE and Editor Files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+*~
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# Build Artifacts
+dist/
+build/
+*.zip
+*.crx
+*.pem
+
+# Test Coverage
+coverage/
+.nyc_output/
+*.lcov
+
+# Environment Files
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Temporary Files
+*.tmp
+*.temp
+*.bak
+*.cache
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Chrome Extension Development
+web-ext-artifacts/
+.web-extension-id
+
+# Miscellaneous
+.sass-cache/
+.parcel-cache/
