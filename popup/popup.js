@@ -266,6 +266,18 @@ function displayProducts(products, filter) {
       e.stopPropagation();
       await handleDeleteProduct(productId);
     });
+
+    // Handle image loading errors
+    const img = card.querySelector('.product-image[data-fallback]');
+    if (img) {
+      img.addEventListener('error', function() {
+        this.style.display = 'none';
+        const placeholder = this.nextElementSibling;
+        if (placeholder && placeholder.classList.contains('product-image-placeholder')) {
+          placeholder.style.display = 'flex';
+        }
+      });
+    }
   });
 }
 
@@ -337,10 +349,10 @@ function createProductCard(product) {
       <div class="product-header">
         ${product.imageUrl ?
           `<img class="product-image"
-                src="${product.imageUrl}"
-                onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
+                src="${escapeHtml(product.imageUrl)}"
                 loading="lazy"
-                alt="${escapeHtml(product.title)}">
+                alt="${escapeHtml(product.title)}"
+                data-fallback="true">
            <div class="product-image-placeholder" style="display:none;">📦</div>`
           : '<div class="product-image-placeholder">📦</div>'}
         <div class="product-info">
