@@ -296,30 +296,94 @@ function setupEventListeners() {
       trackThisPageBtn.disabled = true;
       trackThisPageBtn.innerHTML = '<span>⏳</span>';
 
-      // Inject and execute the content script
-      await chrome.scripting.executeScript({
+      // Inject an inline script that dynamically imports and runs detection
+      const results = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        files: ['utils/currency-parser.js']
+        func: async () => {
+          try {
+            // Dynamically import the detector module
+            const detectorUrl = chrome.runtime.getURL('content-scripts/product-detector.js');
+            const { detectProduct } = await import(detectorUrl);
+
+            console.log('[Price Drop Tracker] Manual detection started...');
+
+            // Wait for page to be fully loaded
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            // Detect product
+            const productData = await detectProduct();
+
+            if (productData) {
+              // Send to background for storage
+              const response = await chrome.runtime.sendMessage({
+                type: 'PRODUCT_DETECTED',
+                data: productData
+              });
+
+              if (response && response.success) {
+                console.log('[Price Drop Tracker] ✓ Product tracked:', productData.title);
+
+                // Show on-page confirmation
+                const badge = document.createElement('div');
+                badge.style.cssText = `
+                  position: fixed;
+                  bottom: 20px;
+                  right: 20px;
+                  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                  color: white;
+                  padding: 12px 20px;
+                  border-radius: 8px;
+                  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                  font-family: -apple-system, sans-serif;
+                  font-size: 14px;
+                  font-weight: 500;
+                  z-index: 999999;
+                  animation: slideIn 0.3s ease;
+                `;
+                badge.innerHTML = `✓ Now tracking: ${productData.price.formatted}`;
+
+                const style = document.createElement('style');
+                style.textContent = `
+                  @keyframes slideIn {
+                    from { transform: translateY(100px); opacity: 0; }
+                    to { transform: translateY(0); opacity: 1; }
+                  }
+                `;
+                document.head.appendChild(style);
+                document.body.appendChild(badge);
+
+                setTimeout(() => {
+                  badge.style.transition = 'opacity 0.3s ease';
+                  badge.style.opacity = '0';
+                  setTimeout(() => badge.remove(), 300);
+                }, 5000);
+
+                return { success: true, product: productData };
+              } else {
+                return { success: false, error: 'Already tracking this product' };
+              }
+            } else {
+              console.log('[Price Drop Tracker] No product detected');
+              return { success: false, error: 'No product found on this page' };
+            }
+          } catch (error) {
+            console.error('[Price Drop Tracker] Detection error:', error);
+            return { success: false, error: error.message };
+          }
+        }
       });
 
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: ['utils/product-hasher.js']
-      });
+      // Check results
+      const result = results && results[0] && results[0].result;
 
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: ['content-scripts/product-detector.js']
-      });
-
-      // Wait a moment for detection to complete
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // Reload products to show the newly tracked item
-      await loadProducts();
-
-      // Show success message
-      showTemporaryMessage('Product scan complete!', 'success');
+      if (result && result.success) {
+        // Reload products to show the newly tracked item
+        await loadProducts();
+        showTemporaryMessage('Product tracked successfully!', 'success');
+      } else {
+        const errorMsg = result && result.error ? result.error : 'Unable to detect product';
+        showTemporaryMessage(errorMsg, 'error');
+      }
 
       // Reset button
       trackThisPageBtn.innerHTML = '<span>➕</span>';
