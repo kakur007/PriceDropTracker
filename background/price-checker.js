@@ -12,7 +12,7 @@
 
 import { fetchHTML } from '../utils/fetch-helper.js';
 import { StorageManager } from './storage-manager.js';
-import { getAdapter } from '../content-scripts/site-adapters/base-adapter.js';
+import { getAdapter } from '../content-scripts/site-adapters/adapter-factory.js';
 import { parsePrice } from '../utils/currency-parser.js';
 
 /**
