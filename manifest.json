@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "Price Drop Tracker",
+  "name": "Price Genius by GoGoNano",
   "version": "1.0.0",
   "description": "Automatically track product prices and get notified when they drop. Works across Amazon, eBay, Walmart, Etsy, Shopify stores, and thousands more e-commerce sites.",
-  "author": "Price Drop Tracker Team",
+  "author": "GoGoNano",
 
   "permissions": [
     "storage",
