@@ -81,92 +81,101 @@ export class WooCommerceAdapter extends BaseAdapter {
   }
 
   /**
-   * Extract product price (Version 5 - Score-Based)
-   * This version finds all potential prices, scores them based on reliability,
-   * and returns the highest-scoring valid price. This is the most robust
-   * method for handling complex WooCommerce themes with variations and sales.
-   *
-   * Scoring Logic:
-   *   - Inside <ins> (sale price): +100 (highest priority)
-   *   - Variation price: +80
-   *   - General price: +50
+   * Extract product price (Version 7 - Variation Price Priority)
+   * This version specifically targets the .woocommerce-variation-price container
+   * and extracts the sale price from the <ins> tag, which contains the actual
+   * discounted price for variable products.
    *
    * @returns {Object|null} Parsed price data or null
    */
   extractPrice() {
-    console.log('[WooCommerce Adapter] Starting score-based price extraction (v5)...');
+    console.log('[WooCommerce Adapter] Starting variation-focused price extraction (v7)...');
 
     const summaryArea = this.querySelector('.summary.entry-summary') || this.document;
-    const priceCandidates = [];
 
-    // Find all elements that look like a price
-    const potentialElements = summaryArea.querySelectorAll('.woocommerce-Price-amount, .amount');
+    // PRIORITY 1: Check for variation price (variable products with selected variation)
+    const variationPriceContainer = summaryArea.querySelector('.woocommerce-variation-price');
+    if (variationPriceContainer) {
+      console.log('[WooCommerce Adapter] Found .woocommerce-variation-price container');
 
-    console.log(`[WooCommerce Adapter] Found ${potentialElements.length} potential price elements.`);
-
-    for (const element of potentialElements) {
-      // *** Run critical checks on each element ***
-
-      // 1. Skip if inside a <del> tag (old price)
-      if (element.closest('del')) {
-        continue;
+      // Look for sale price in <ins> tag (highest priority)
+      const salePrice = variationPriceContainer.querySelector('ins .woocommerce-Price-amount, ins .amount');
+      if (salePrice) {
+        const salePriceText = salePrice.textContent?.trim();
+        if (salePriceText) {
+          const parsed = this.parsePriceWithContext(salePriceText);
+          if (parsed && parsed.confidence >= 0.70) {
+            console.log(`[WooCommerce Adapter] ✓ Found sale price in variation: ${parsed.numeric} ${parsed.currency}`);
+            return parsed;
+          }
+        }
       }
 
-      // 2. Skip if in an excluded area (cart, related products, etc.)
-      if (element.closest('.related, .upsells, .cart, header, footer, nav')) {
-        continue;
-      }
-
-      const priceText = element.textContent?.trim();
-
-      // 3. Skip if it's a price range
-      if (priceText && (priceText.includes('–') || priceText.includes('-'))) {
-        continue;
-      }
-
-      if (priceText) {
-        const parsed = this.parsePriceWithContext(priceText);
-        if (parsed && parsed.confidence >= 0.70) {
-
-          // *** Score the candidate ***
-          let score = parsed.confidence * 50; // Base score
-
-          // Highest score for sale price
-          if (element.closest('ins')) {
-            score += 100;
+      // If no sale price, look for regular price (not in <del>)
+      const regularPrice = variationPriceContainer.querySelector('.woocommerce-Price-amount:not(del .woocommerce-Price-amount), .amount:not(del .amount)');
+      if (regularPrice) {
+        const regularPriceText = regularPrice.textContent?.trim();
+        if (regularPriceText && !regularPriceText.includes('–') && !regularPriceText.includes('-')) {
+          const parsed = this.parsePriceWithContext(regularPriceText);
+          if (parsed && parsed.confidence >= 0.70) {
+            console.log(`[WooCommerce Adapter] ✓ Found regular price in variation: ${parsed.numeric} ${parsed.currency}`);
+            return parsed;
           }
-          // High score for selected variation price
-          if (element.closest('.woocommerce-variation-price')) {
-            score += 80;
-          }
-          // Medium score for a standard price paragraph
-          if (element.closest('p.price')) {
-            score += 50;
-          }
-
-          priceCandidates.push({ parsed, score });
         }
       }
     }
 
-    if (priceCandidates.length === 0) {
-      console.log('[WooCommerce Adapter] ✗ No valid price candidates found.');
-      return null;
+    // PRIORITY 2: Check for standard product price with sale
+    const standardPriceContainer = summaryArea.querySelector('p.price');
+    if (standardPriceContainer) {
+      console.log('[WooCommerce Adapter] Found p.price container');
+
+      // Look for sale price in <ins> tag
+      const salePrice = standardPriceContainer.querySelector('ins .woocommerce-Price-amount, ins .amount');
+      if (salePrice) {
+        const salePriceText = salePrice.textContent?.trim();
+        if (salePriceText) {
+          const parsed = this.parsePriceWithContext(salePriceText);
+          if (parsed && parsed.confidence >= 0.70) {
+            console.log(`[WooCommerce Adapter] ✓ Found sale price in p.price: ${parsed.numeric} ${parsed.currency}`);
+            return parsed;
+          }
+        }
+      }
+
+      // If no sale, look for regular price (not in <del>, not a range)
+      const regularPrice = standardPriceContainer.querySelector('.woocommerce-Price-amount:not(del .woocommerce-Price-amount), .amount:not(del .amount)');
+      if (regularPrice) {
+        const regularPriceText = regularPrice.textContent?.trim();
+        if (regularPriceText && !regularPriceText.includes('–') && !regularPriceText.includes('-')) {
+          const parsed = this.parsePriceWithContext(regularPriceText);
+          if (parsed && parsed.confidence >= 0.70) {
+            console.log(`[WooCommerce Adapter] ✓ Found regular price in p.price: ${parsed.numeric} ${parsed.currency}`);
+            return parsed;
+          }
+        }
+      }
     }
 
-    // Sort candidates by score, descending
-    priceCandidates.sort((a, b) => b.score - a.score);
+    // PRIORITY 3: Generic fallback - avoid cart/header/footer
+    console.log('[WooCommerce Adapter] Using generic fallback...');
+    const allPrices = summaryArea.querySelectorAll('.woocommerce-Price-amount, .amount');
+    for (const element of allPrices) {
+      if (element.closest('del')) continue;
+      if (element.closest('.related, .upsells, .cart, header, footer, nav')) continue;
 
-    console.log('[WooCommerce Adapter] Price candidates sorted by score:');
-    priceCandidates.forEach((c, i) => {
-      console.log(`  ${i+1}. ${c.parsed.numeric} ${c.parsed.currency} (Score: ${c.score.toFixed(2)})`);
-    });
+      const priceText = element.textContent?.trim();
+      if (priceText && !priceText.includes('–') && !priceText.includes('-')) {
+        const parsed = this.parsePriceWithContext(priceText);
+        if (parsed && parsed.confidence >= 0.70) {
+          console.log(`[WooCommerce Adapter] ✓ Found fallback price: ${parsed.numeric} ${parsed.currency}`);
+          return parsed;
+        }
+      }
+    }
 
-    // The best candidate is the one with the highest score
-    const bestCandidate = priceCandidates[0];
-
-    console.log(`[WooCommerce Adapter] ✓ Best price selected: ${bestCandidate.parsed.numeric} ${bestCandidate.parsed.currency}`);
-    return bestCandidate.parsed;
+    console.log('[WooCommerce Adapter] ✗ No valid price found.');
+    return null;
   }
 
   /**
