@@ -536,6 +536,7 @@ function setupEventListeners() {
       console.log('[Popup] Is default supported:', isDefaultSupported);
 
       // If not in default list, check if we have permission
+      let justGrantedPermission = false;
       if (!isDefaultSupported) {
         const hasPermission = await hasPermissionForUrl(tab.url);
         console.log('[Popup] Has permission:', hasPermission);
@@ -554,11 +555,30 @@ function setupEventListeners() {
           }
 
           console.log('[Popup] Permission granted!');
+          justGrantedPermission = true;
         }
       }
 
+      // If we just granted permission, wait a moment for Chrome to propagate it
+      // This prevents script execution failures due to timing issues
+      if (justGrantedPermission) {
+        console.log('[Popup] Waiting for permission to propagate...');
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
       // Now that we have permission, execute product detection
-      const result = await executeProductDetection(tab.id);
+      let result = await executeProductDetection(tab.id);
+
+      // If execution failed right after granting permission, retry once
+      if (justGrantedPermission && (!result || !result.success)) {
+        console.log('[Popup] First execution failed, retrying after permission grant...');
+        await new Promise(resolve => setTimeout(resolve, 200));
+        const retryResult = await executeProductDetection(tab.id);
+        if (retryResult) {
+          // Use retry result instead
+          result = retryResult;
+        }
+      }
 
       if (result && result.success) {
         // Reload products to show the newly tracked item
