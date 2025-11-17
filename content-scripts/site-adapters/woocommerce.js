@@ -26,11 +26,11 @@ export class WooCommerceAdapter extends BaseAdapter {
       // URL patterns
       this.url.includes('/product/'),
       this.url.includes('/produkt/'), // German
-      this.url.includes('/produit/'), // French
+      this.url.includes('/produit/') // French (removed trailing comma)
     ];
 
     return indicators.some(indicator => indicator);
-  },
+  }
 
   /**
    * Extracts the product ID (SKU or post ID)
