@@ -91,6 +91,7 @@ function displayProducts(products, filter) {
     if (filter === 'all') {
       showEmptyState();
     } else {
+      hideEmptyState();  // Hide the global empty state
       container.innerHTML = `
         <div class="empty-state">
           <div class="empty-icon">🔍</div>
@@ -99,6 +100,7 @@ function displayProducts(products, filter) {
         </div>
       `;
       hideLoading();
+      document.getElementById('productsList').style.display = 'block';  // Make sure list is visible
     }
     return;
   }
@@ -317,7 +319,11 @@ function setupEventListeners() {
                 data: productData
               });
 
-              if (response && response.success) {
+              // Check for permission request FIRST (before checking success)
+              if (response && response.success && response.data && response.data.needsPermission) {
+                // Need to request permission - return to popup for handling
+                return { needsPermission: true, domain: response.data.domain, productData: response.data.productData };
+              } else if (response && response.success && !response.data.alreadyTracked) {
                 console.log('[Price Drop Tracker] ✓ Product tracked:', productData.title);
 
                 // Show on-page confirmation
@@ -356,11 +362,10 @@ function setupEventListeners() {
                 }, 5000);
 
                 return { success: true, product: productData };
-              } else if (response && response.data && response.data.needsPermission) {
-                // Need to request permission - return to popup for handling
-                return { needsPermission: true, domain: response.data.domain, productData: response.data.productData };
-              } else {
+              } else if (response && response.success && response.data.alreadyTracked) {
                 return { success: false, error: 'Already tracking this product' };
+              } else {
+                return { success: false, error: response.error || 'Unable to track product' };
               }
             } else {
               console.log('[Price Drop Tracker] No product detected');
