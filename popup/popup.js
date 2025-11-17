@@ -266,6 +266,18 @@ function displayProducts(products, filter) {
       e.stopPropagation();
       await handleDeleteProduct(productId);
     });
+
+    // Handle image loading errors
+    const img = card.querySelector('.product-image[data-fallback]');
+    if (img) {
+      img.addEventListener('error', function() {
+        this.style.display = 'none';
+        const placeholder = this.nextElementSibling;
+        if (placeholder && placeholder.classList.contains('product-image-placeholder')) {
+          placeholder.style.display = 'flex';
+        }
+      });
+    }
   });
 }
 
@@ -337,10 +349,10 @@ function createProductCard(product) {
       <div class="product-header">
         ${product.imageUrl ?
           `<img class="product-image"
-                src="${product.imageUrl}"
-                onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
+                src="${escapeHtml(product.imageUrl)}"
                 loading="lazy"
-                alt="${escapeHtml(product.title)}">
+                alt="${escapeHtml(product.title)}"
+                data-fallback="true">
            <div class="product-image-placeholder" style="display:none;">📦</div>`
           : '<div class="product-image-placeholder">📦</div>'}
         <div class="product-info">
@@ -459,38 +471,54 @@ async function executeProductDetection(tabId) {
             if (response && response.success && !response.data.alreadyTracked) {
               console.log('[Price Drop Tracker] ✓ Product tracked:', productData.title);
 
-              // Show on-page confirmation
+              // Show on-page confirmation with brand colors
               const badge = document.createElement('div');
               badge.style.cssText = `
                 position: fixed;
                 bottom: 20px;
                 right: 20px;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                background: #1eadbd;
                 color: white;
-                padding: 12px 20px;
-                border-radius: 8px;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-                font-family: -apple-system, sans-serif;
-                font-size: 14px;
-                font-weight: 500;
+                padding: 14px 22px;
+                border-radius: 10px;
+                box-shadow: 0 6px 20px rgba(30, 173, 189, 0.3);
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                font-size: 15px;
+                font-weight: 600;
                 z-index: 999999;
-                animation: slideIn 0.3s ease;
+                animation: slideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+                display: flex;
+                align-items: center;
+                gap: 10px;
               `;
-              badge.innerHTML = `✓ Now tracking: ${productData.price.formatted}`;
+              badge.innerHTML = `
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="10" cy="10" r="10" fill="white" fill-opacity="0.2"/>
+                  <path d="M6 10L9 13L14 7" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>Now tracking: ${productData.price.formatted}</span>
+              `;
 
               const style = document.createElement('style');
               style.textContent = `
                 @keyframes slideIn {
-                  from { transform: translateY(100px); opacity: 0; }
-                  to { transform: translateY(0); opacity: 1; }
+                  from {
+                    transform: translateY(100px);
+                    opacity: 0;
+                  }
+                  to {
+                    transform: translateY(0);
+                    opacity: 1;
+                  }
                 }
               `;
               document.head.appendChild(style);
               document.body.appendChild(badge);
 
               setTimeout(() => {
-                badge.style.transition = 'opacity 0.3s ease';
+                badge.style.transition = 'all 0.3s ease';
                 badge.style.opacity = '0';
+                badge.style.transform = 'translateY(20px)';
                 setTimeout(() => badge.remove(), 300);
               }, 5000);
 
