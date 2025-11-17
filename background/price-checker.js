@@ -7,13 +7,46 @@
  * - Priority-based checking (check older products first)
  * - Batch processing with delays
  * - Price comparison and change detection
- * - Integration with site adapters
+ * - Self-contained HTML parsing (no content-script dependencies)
  */
 
 import { fetchHTML } from '../utils/fetch-helper.js';
 import { StorageManager } from './storage-manager.js';
-import { getAdapter } from '../content-scripts/site-adapters/adapter-factory.js';
-import { parsePrice } from '../utils/currency-parser.js';
+
+/**
+ * Simple price parser for service worker context
+ * Avoids complex dependencies that require DOM/window access
+ * @param {string} priceString - The raw text to parse
+ * @returns {number|null} The numeric price or null
+ */
+function simpleParsePrice(priceString) {
+  if (!priceString || typeof priceString !== 'string') return null;
+
+  // Remove currency symbols, letters, and whitespace, except for . and ,
+  const numericString = priceString.replace(/[^0-9.,]/g, '').trim();
+
+  if (!numericString) return null;
+
+  // Handle European format (e.g., "1.299,99")
+  if (numericString.includes(',') && numericString.includes('.')) {
+    if (numericString.lastIndexOf(',') > numericString.lastIndexOf('.')) {
+      // Comma is the decimal separator
+      return parseFloat(numericString.replace(/\./g, '').replace(',', '.'));
+    }
+  }
+
+  // Handle comma as decimal separator (e.g., "1299,99")
+  if (numericString.includes(',')) {
+    const parts = numericString.split(',');
+    if (parts.length === 2 && parts[1].length <= 2) {
+      return parseFloat(numericString.replace(',', '.'));
+    }
+  }
+
+  // Default to parseFloat for US-style or simple numbers
+  const price = parseFloat(numericString.replace(/,/g, ''));
+  return isNaN(price) ? null : price;
+}
 
 /**
  * Price check result types
@@ -50,7 +83,8 @@ async function checkAllProducts(options = {}) {
 
   try {
     // Get all tracked products
-    const allProducts = await StorageManager.getAllProducts();
+    const allProductsObj = await StorageManager.getAllProducts();
+    const allProducts = Object.values(allProductsObj);
 
     if (allProducts.length === 0) {
       console.log('[PriceChecker] No products to check.');
@@ -70,7 +104,7 @@ async function checkAllProducts(options = {}) {
     // Filter products that need checking (based on lastChecked timestamp)
     const now = Date.now();
     const productsToCheck = allProducts.filter(product => {
-      const timeSinceLastCheck = now - (product.lastChecked || 0);
+      const timeSinceLastCheck = now - (product.tracking?.lastChecked || 0);
       return timeSinceLastCheck >= maxAge;
     });
 
@@ -90,8 +124,8 @@ async function checkAllProducts(options = {}) {
 
     // Sort by priority (oldest lastChecked first)
     productsToCheck.sort((a, b) => {
-      const aLastChecked = a.lastChecked || 0;
-      const bLastChecked = b.lastChecked || 0;
+      const aLastChecked = a.tracking?.lastChecked || 0;
+      const bLastChecked = b.tracking?.lastChecked || 0;
       return aLastChecked - bLastChecked;
     });
 
@@ -106,57 +140,35 @@ async function checkAllProducts(options = {}) {
       success: 0,
       errors: 0,
       priceDrops: 0,
-      priceIncreases: 0,
-      results: []
+      priceIncreases: 0
     };
 
-    // Check each product in the batch
     for (const product of batch) {
       try {
-        const result = await checkSingleProduct(product.id);
+        const result = await checkSingleProduct(product.productId);
+
         results.checked++;
 
-        if (result.status === PriceCheckResult.SUCCESS ||
-            result.status === PriceCheckResult.NO_CHANGE ||
-            result.status === PriceCheckResult.PRICE_DROP ||
-            result.status === PriceCheckResult.PRICE_INCREASE) {
+        if (result.status === PriceCheckResult.SUCCESS || result.status === PriceCheckResult.NO_CHANGE) {
           results.success++;
+        } else if (result.status === PriceCheckResult.ERROR) {
+          results.errors++;
         }
 
         if (result.status === PriceCheckResult.PRICE_DROP) {
           results.priceDrops++;
-        }
-
-        if (result.status === PriceCheckResult.PRICE_INCREASE) {
+        } else if (result.status === PriceCheckResult.PRICE_INCREASE) {
           results.priceIncreases++;
         }
 
-        if (result.status === PriceCheckResult.ERROR ||
-            result.status === PriceCheckResult.NOT_FOUND) {
-          results.errors++;
+        // Delay between checks to avoid rate limiting
+        if (delayBetweenChecks > 0) {
+          await new Promise(resolve => setTimeout(resolve, delayBetweenChecks));
         }
 
-        results.results.push({
-          productId: product.id,
-          title: product.title,
-          ...result
-        });
-
       } catch (error) {
-        console.error(`[PriceChecker] Error checking product ${product.id}:`, error);
-        results.checked++;
+        console.error(`[PriceChecker] Error checking product ${product.productId}:`, error);
         results.errors++;
-        results.results.push({
-          productId: product.id,
-          title: product.title,
-          status: PriceCheckResult.ERROR,
-          error: error.message
-        });
-      }
-
-      // Delay between checks to be respectful
-      if (delayBetweenChecks > 0 && batch.indexOf(product) < batch.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, delayBetweenChecks));
       }
     }
 
@@ -202,48 +214,75 @@ async function checkSingleProduct(productId) {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
 
-    // Try to extract price using site adapter
-    let newPriceData = null;
-    const hostname = new URL(product.url).hostname;
+    // Extract price using simple, service-worker-friendly methods
+    let newPrice = null;
+    let detectionMethod = 'none';
 
-    try {
-      const adapter = getAdapter(doc, product.url);
-      if (adapter) {
-        console.log(`[PriceChecker] Using ${adapter.constructor.name} for ${hostname}`);
+    // 1. Try to find price via Schema.org JSON-LD (most reliable)
+    const schemaScripts = doc.querySelectorAll('script[type="application/ld+json"]');
+    for (const script of schemaScripts) {
+      try {
+        const schema = JSON.parse(script.textContent);
+        const items = schema['@graph'] || (Array.isArray(schema) ? schema : [schema]);
 
-        // Check if this is still a product page
-        const isProductPage = adapter.detectProduct();
-        if (!isProductPage) {
-          console.warn(`[PriceChecker] Page is no longer a product page: ${productId}`);
-          product.tracking.failedChecks = (product.tracking.failedChecks || 0) + 1;
-          product.tracking.lastChecked = Date.now();
+        for (const item of items) {
+          if (item['@type'] === 'Product' && item.offers) {
+            const offers = Array.isArray(item.offers) ? item.offers : [item.offers];
 
-          if (product.tracking.failedChecks >= 3) {
-            product.tracking.status = 'stale';
+            for (const offer of offers) {
+              const priceString = offer.price || offer.lowPrice;
+              if (priceString) {
+                newPrice = simpleParsePrice(String(priceString));
+                if (newPrice !== null) {
+                  detectionMethod = 'schema.org';
+                  break;
+                }
+              }
+            }
           }
-
-          await StorageManager.saveProduct(product);
-
-          return {
-            status: PriceCheckResult.ERROR,
-            error: 'Page is no longer a product page'
-          };
+          if (newPrice !== null) break;
         }
-
-        // Extract the price
-        newPriceData = adapter.extractPrice();
-      } else {
-        console.warn(`[PriceChecker] No adapter found for ${hostname}`);
+      } catch (e) {
+        // Ignore JSON parse errors
       }
-    } catch (adapterError) {
-      console.warn(`[PriceChecker] Adapter failed:`, adapterError.message);
+      if (newPrice !== null) break;
+    }
+
+    // 2. If Schema.org fails, try common meta tags and selectors
+    if (newPrice === null) {
+      const selectors = [
+        { sel: 'meta[property="og:price:amount"]', attr: 'content' },
+        { sel: 'meta[property="product:price:amount"]', attr: 'content' },
+        { sel: 'meta[itemprop="price"]', attr: 'content' },
+        { sel: '.a-price .a-offscreen', attr: 'textContent' }, // Amazon
+        { sel: '.a-price-whole', attr: 'textContent' }, // Amazon
+        { sel: '[data-testid="customer-price"]', attr: 'textContent' }, // Best Buy
+        { sel: '.x-price-primary span', attr: 'textContent' }, // eBay
+        { sel: '#priceblock_ourprice', attr: 'textContent' }, // Amazon (old)
+        { sel: '[itemprop="price"]', attr: 'content' } // Generic microdata
+      ];
+
+      for (const { sel, attr } of selectors) {
+        const element = doc.querySelector(sel);
+        if (element) {
+          const priceText = attr === 'content' ? element.getAttribute('content') : element.textContent;
+          if (priceText) {
+            newPrice = simpleParsePrice(priceText);
+            if (newPrice !== null) {
+              detectionMethod = `selector: ${sel}`;
+              break;
+            }
+          }
+        }
+      }
     }
 
     // Check if we found a price
-    if (!newPriceData || !newPriceData.numeric) {
+    if (newPrice === null) {
       console.warn(`[PriceChecker] Could not extract price for ${productId}`);
 
       // Update failed checks counter
+      product.tracking = product.tracking || {};
       product.tracking.failedChecks = (product.tracking.failedChecks || 0) + 1;
       product.tracking.lastChecked = Date.now();
 
@@ -255,36 +294,38 @@ async function checkSingleProduct(productId) {
 
       return {
         status: PriceCheckResult.ERROR,
-        error: 'Could not extract price'
+        error: 'Could not extract price from page'
       };
     }
 
-    console.log(`[PriceChecker] New price detected: ${newPriceData.numeric} ${newPriceData.currency}`);
+    console.log(`[PriceChecker] New price detected: ${newPrice} (via ${detectionMethod})`);
 
     // Compare with current price
     const oldPrice = product.price.numeric;
-    const newPrice = newPriceData.numeric;
 
-    // Check if currency changed (problematic!)
-    if (newPriceData.currency !== product.price.currency) {
-      console.warn(`[PriceChecker] Currency changed from ${product.price.currency} to ${newPriceData.currency}`);
+    // Check for no significant change (less than 1 cent)
+    if (Math.abs(oldPrice - newPrice) < 0.01) {
+      console.log(`[PriceChecker] Price unchanged for ${productId}`);
 
-      // Update product but don't add to history
-      product.price = newPriceData;
+      // Update timestamp and reset failed checks
+      product.tracking = product.tracking || {};
       product.tracking.lastChecked = Date.now();
+      product.tracking.failedChecks = 0;
+      product.tracking.status = 'active';
+
       await StorageManager.saveProduct(product);
 
       return {
-        status: PriceCheckResult.CURRENCY_CHANGE,
-        oldCurrency: product.price.currency,
-        newCurrency: newPriceData.currency,
-        newPrice: newPrice
+        status: PriceCheckResult.NO_CHANGE,
+        price: newPrice
       };
     }
 
     // Reset failed checks counter on successful price extraction
+    product.tracking = product.tracking || {};
     product.tracking.failedChecks = 0;
     product.tracking.status = 'active';
+    product.tracking.lastChecked = Date.now();
 
     // Calculate price change
     const priceDiff = newPrice - oldPrice;
@@ -292,73 +333,48 @@ async function checkSingleProduct(productId) {
 
     console.log(`[PriceChecker] Price change: ${priceDiff.toFixed(2)} (${priceChangePercent.toFixed(2)}%)`);
 
-    // Update product data
-    product.currentPrice = newPrice;
-    product.lastChecked = Date.now();
-    product.availability = detectedProduct.availability || 'InStock';
-
-    // Add to price history if price changed significantly (>0.5%)
-    if (Math.abs(priceChangePercent) >= 0.5) {
-      if (!product.priceHistory) {
-        product.priceHistory = [];
-      }
-
-      product.priceHistory.push({
-        price: newPrice,
-        timestamp: Date.now()
-      });
-
-      // Keep only last 30 entries
-      if (product.priceHistory.length > 30) {
-        product.priceHistory = product.priceHistory.slice(-30);
-      }
-
-      console.log(`[PriceChecker] Added to price history. Total entries: ${product.priceHistory.length}`);
-    }
-
-    // Update title and image if available
-    if (detectedProduct.title) {
-      product.title = detectedProduct.title;
-    }
-    if (detectedProduct.image) {
-      product.image = detectedProduct.image;
-    }
-
-    // Save updated product
-    await StorageManager.saveProduct(product);
+    // Update product price using storage manager
+    await StorageManager.updateProductPrice(productId, {
+      ...product.price,
+      numeric: newPrice
+    });
 
     // Determine result status
-    let status = PriceCheckResult.NO_CHANGE;
-    if (Math.abs(priceChangePercent) >= 0.5) {
-      if (priceDiff < 0) {
-        status = PriceCheckResult.PRICE_DROP;
-      } else {
-        status = PriceCheckResult.PRICE_INCREASE;
-      }
+    let status = PriceCheckResult.SUCCESS;
+    if (priceDiff < 0) {
+      status = PriceCheckResult.PRICE_DROP;
+    } else if (priceDiff > 0) {
+      status = PriceCheckResult.PRICE_INCREASE;
     }
 
     return {
       status,
       oldPrice,
       newPrice,
-      priceDiff,
-      priceChangePercent: parseFloat(priceChangePercent.toFixed(2)),
-      currency: product.currency,
-      title: product.title
+      change: priceDiff,
+      changePercent: priceChangePercent,
+      detectionMethod
     };
 
   } catch (error) {
     console.error(`[PriceChecker] Error checking product ${productId}:`, error);
 
-    // Try to update lastChecked even on error
+    // Try to update failed checks even on error
     try {
       const product = await StorageManager.getProduct(productId);
       if (product) {
-        product.lastChecked = Date.now();
+        product.tracking = product.tracking || {};
+        product.tracking.failedChecks = (product.tracking.failedChecks || 0) + 1;
+        product.tracking.lastChecked = Date.now();
+
+        if (product.tracking.failedChecks >= 3) {
+          product.tracking.status = 'stale';
+        }
+
         await StorageManager.saveProduct(product);
       }
     } catch (updateError) {
-      console.error(`[PriceChecker] Could not update lastChecked:`, updateError);
+      console.error(`[PriceChecker] Failed to update error status:`, updateError);
     }
 
     return {
@@ -369,39 +385,24 @@ async function checkSingleProduct(productId) {
 }
 
 /**
- * Get products that need checking
- * Returns products sorted by priority (oldest lastChecked first)
- *
- * @param {number} maxAge - Only return products older than this (in ms, default: 6 hours)
- * @param {number} limit - Maximum number of products to return
- * @returns {Promise<Array>} - Array of products needing check
+ * Get products that need checking based on age
+ * @param {number} maxAge - Maximum age since last check (ms)
+ * @returns {Promise<Array>} - Products that need checking
  */
-async function getProductsNeedingCheck(maxAge = 6 * 60 * 60 * 1000, limit = null) {
-  const allProducts = await StorageManager.getAllProducts();
+async function getProductsNeedingCheck(maxAge = 60 * 60 * 1000) {
+  const allProductsObj = await StorageManager.getAllProducts();
+  const allProducts = Object.values(allProductsObj);
   const now = Date.now();
 
-  const productsNeedingCheck = allProducts
-    .filter(product => {
-      const timeSinceLastCheck = now - (product.lastChecked || 0);
-      return timeSinceLastCheck >= maxAge;
-    })
-    .sort((a, b) => {
-      const aLastChecked = a.lastChecked || 0;
-      const bLastChecked = b.lastChecked || 0;
-      return aLastChecked - bLastChecked;
-    });
-
-  if (limit) {
-    return productsNeedingCheck.slice(0, limit);
-  }
-
-  return productsNeedingCheck;
+  return allProducts.filter(product => {
+    const timeSinceLastCheck = now - (product.tracking?.lastChecked || 0);
+    return timeSinceLastCheck >= maxAge;
+  });
 }
 
 /**
- * Force check a product immediately (ignoring age)
- *
- * @param {string} productId - Product ID to check
+ * Force check a product immediately (bypasses age check)
+ * @param {string} productId - Product ID
  * @returns {Promise<Object>} - Check result
  */
 async function forceCheckProduct(productId) {
