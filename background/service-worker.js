@@ -12,7 +12,7 @@
 import { StorageManager } from './storage-manager.js';
 import { checkAllProducts, checkSingleProduct, PriceCheckResult } from './price-checker.js';
 import { showBatchPriceDropNotifications, showInfoNotification, showErrorNotification } from '../utils/notification-manager.js';
-import { validateUrl, getSupportedStoresList, isUrlSupportedOrPermitted, isUrlSupported } from '../utils/domain-validator.js';
+import { validateUrl, getSupportedStoresList, isUrlSupported } from '../utils/domain-validator.js';
 import { checkPermissionStatus, extractDomain } from '../utils/permission-manager.js';
 
 // Alarm names
@@ -409,10 +409,8 @@ async function handleProductDetected(productData, sender) {
       };
     }
 
-    // Check if we have permission (either from manifest or granted at runtime)
-    const hasPermission = await isUrlSupportedOrPermitted(productData.url);
-
-    if (!hasPermission) {
+    // Check if permission exists (from the comprehensive check above)
+    if (!permissionStatus.hasPermission) {
       console.warn('[ServiceWorker] No permission for domain:', productData.url);
 
       await showErrorNotification(
