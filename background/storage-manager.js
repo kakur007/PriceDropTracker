@@ -56,10 +56,30 @@ export async function saveProduct(productData) {
       // Add to price history if price changed
       if (existing.price.numeric !== productData.price.numeric) {
         existing.priceHistory = existing.priceHistory || [];
+        const now = Date.now();
+        const lastHistoryPrice = existing.priceHistory[existing.priceHistory.length - 1]?.price;
+
+        // If the new price has a regularPrice (product is on sale) and that regularPrice
+        // is different from the last recorded price, add it to history first.
+        // This handles variation changes where the new variation also has a discount.
+        if (productData.price.regularPrice &&
+            productData.price.regularPrice > productData.price.numeric &&
+            productData.price.regularPrice !== lastHistoryPrice) {
+
+          existing.priceHistory.push({
+            price: productData.price.regularPrice,
+            currency: productData.price.currency,
+            timestamp: now - 1000, // 1 second earlier
+            checkMethod: productData.detectionMethod,
+            note: 'regular_price_for_variation'
+          });
+        }
+
+        // Add the current price
         existing.priceHistory.push({
           price: productData.price.numeric,
           currency: productData.price.currency,
-          timestamp: Date.now(),
+          timestamp: now,
           checkMethod: productData.detectionMethod
         });
 
