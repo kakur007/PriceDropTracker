@@ -11,6 +11,7 @@
 
 import { StorageManager } from './storage-manager.js';
 import { checkAllProducts, checkSingleProduct, PriceCheckResult } from './price-checker.js';
+import { showBatchPriceDropNotifications, showInfoNotification } from '../utils/notification-manager.js';
 
 // Alarm names
 const ALARMS = {
@@ -239,22 +240,35 @@ async function notifyPriceDrops(results) {
 
   console.log(`[ServiceWorker] Sending notifications for ${priceDrops.length} price drops`);
 
-  const settings = await StorageManager.getSettings();
-  const minDropPercent = settings.notifications.minDropPercent;
+  try {
+    // Get full product data for each drop
+    const dropData = await Promise.all(
+      priceDrops.map(async (drop) => {
+        const product = await StorageManager.getProduct(drop.productId);
+        if (!product) {
+          console.warn(`[ServiceWorker] Product not found for notification: ${drop.productId}`);
+          return null;
+        }
 
-  for (const drop of priceDrops) {
-    // Only notify if drop meets minimum threshold
-    if (Math.abs(drop.priceChangePercent) >= minDropPercent) {
-      const dropAmount = Math.abs(drop.priceChangePercent).toFixed(1);
+        return {
+          product,
+          oldPrice: drop.oldPrice,
+          newPrice: drop.newPrice,
+          dropPercentage: Math.abs(drop.priceChangePercent)
+        };
+      })
+    );
 
-      chrome.notifications.create({
-        type: 'basic',
-        iconUrl: '../assets/icons/icon128.png',
-        title: 'Price Drop Alert! 🎉',
-        message: `${drop.title}\n${dropAmount}% off: ${drop.currency}${drop.newPrice.toFixed(2)}`,
-        priority: 2
-      });
+    // Filter out any null results
+    const validDrops = dropData.filter(d => d !== null);
+
+    if (validDrops.length > 0) {
+      // Use the notification manager to handle batching and cooldowns
+      await showBatchPriceDropNotifications(validDrops);
     }
+
+  } catch (error) {
+    console.error('[ServiceWorker] Error sending price drop notifications:', error);
   }
 }
 
@@ -358,16 +372,11 @@ async function handleProductDetected(productData, sender) {
     await updateBadge();
 
     // Show notification if enabled
-    const settings = await StorageManager.getSettings();
-    if (settings.notifications.enabled && settings.notifications.onAddProduct) {
-      chrome.notifications.create({
-        type: 'basic',
-        iconUrl: '../assets/icons/icon128.png',
-        title: 'Product Added',
-        message: `Now tracking: ${productData.title}`,
-        priority: 0
-      });
-    }
+    await showInfoNotification(
+      'Product Added',
+      `Now tracking: ${productData.title}`,
+      { type: 'product_added', duration: 5000 }
+    );
 
     return {
       alreadyTracked: false,
