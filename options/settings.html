@@ -4,73 +4,161 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Price Drop Tracker - Settings</title>
-  <style>
-    body {
-      max-width: 800px;
-      margin: 0 auto;
-      padding: 40px 20px;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-      background: #f5f5f5;
-    }
-    .container {
-      background: white;
-      padding: 30px;
-      border-radius: 8px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    h1 {
-      font-size: 24px;
-      margin: 0 0 10px 0;
-      color: #333;
-    }
-    .subtitle {
-      color: #666;
-      margin-bottom: 30px;
-    }
-    .placeholder {
-      color: #666;
-      padding: 40px 20px;
-      text-align: center;
-      background: #f9f9f9;
-      border-radius: 4px;
-      margin-top: 20px;
-    }
-    .placeholder p {
-      margin: 10px 0;
-      line-height: 1.6;
-    }
-    .status {
-      background: #e8f5e9;
-      padding: 15px;
-      border-radius: 4px;
-      margin-top: 20px;
-      color: #2e7d32;
-    }
-  </style>
+  <link rel="stylesheet" href="settings.css">
 </head>
 <body>
   <div class="container">
-    <h1>Price Drop Tracker Settings</h1>
-    <p class="subtitle">Configure your price tracking preferences</p>
+    <header class="header">
+      <h1>Settings</h1>
+      <p class="subtitle">Configure your Price Drop Tracker preferences</p>
+    </header>
 
-    <div class="placeholder">
-      <p><strong>Settings page placeholder</strong></p>
-      <p>This is a basic settings page created during Session 1.</p>
-      <p>Full settings functionality will be implemented in Session 9.</p>
-      <p>Future settings will include:</p>
-      <ul style="text-align: left; display: inline-block; margin-top: 15px;">
-        <li>Tracking duration (7, 14, 30, 60 days)</li>
-        <li>Price check interval (3, 6, 12, 24 hours)</li>
-        <li>Notification thresholds (5%, 10%, 15%, 20%)</li>
-        <li>Maximum products to track</li>
-        <li>Privacy settings</li>
-      </ul>
+    <div class="settings-grid">
+      <!-- Tracking Settings -->
+      <section class="settings-section">
+        <h2>Tracking</h2>
+
+        <div class="setting-item">
+          <label for="trackingDuration">Tracking Duration</label>
+          <select id="trackingDuration" class="select">
+            <option value="7">7 days</option>
+            <option value="14">14 days</option>
+            <option value="30" selected>30 days</option>
+            <option value="60">60 days</option>
+          </select>
+          <p class="setting-description">How long to track products before auto-removal</p>
+        </div>
+
+        <div class="setting-item">
+          <label for="maxProducts">Maximum Products</label>
+          <select id="maxProducts" class="select">
+            <option value="50">50 products</option>
+            <option value="100" selected>100 products</option>
+            <option value="150">150 products</option>
+          </select>
+          <p class="setting-description">Maximum number of products to track simultaneously</p>
+        </div>
+      </section>
+
+      <!-- Price Checking -->
+      <section class="settings-section">
+        <h2>Price Checking</h2>
+
+        <div class="setting-item">
+          <label for="checkInterval">Check Frequency</label>
+          <select id="checkInterval" class="select">
+            <option value="3">Every 3 hours</option>
+            <option value="6" selected>Every 6 hours</option>
+            <option value="12">Every 12 hours</option>
+            <option value="24">Once daily</option>
+          </select>
+          <p class="setting-description">How often to check product prices</p>
+        </div>
+
+        <div class="setting-item">
+          <button id="checkNowBtn" class="btn btn-secondary">Check All Prices Now</button>
+          <p class="setting-description">Manually trigger price check for all products</p>
+        </div>
+      </section>
+
+      <!-- Notifications -->
+      <section class="settings-section">
+        <h2>Notifications</h2>
+
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="notificationsEnabled" checked>
+            <span>Enable notifications</span>
+          </label>
+        </div>
+
+        <div class="setting-item">
+          <label for="minDropPercentage">Minimum Drop Percentage</label>
+          <select id="minDropPercentage" class="select">
+            <option value="5" selected>5%</option>
+            <option value="10">10%</option>
+            <option value="15">15%</option>
+            <option value="20">20%</option>
+          </select>
+          <p class="setting-description">Only notify for drops above this threshold</p>
+        </div>
+
+        <div class="setting-item">
+          <label for="maxNotificationsPerDay">Max Notifications Per Day</label>
+          <select id="maxNotificationsPerDay" class="select">
+            <option value="3" selected>3 per day</option>
+            <option value="5">5 per day</option>
+            <option value="10">10 per day</option>
+            <option value="999">Unlimited</option>
+          </select>
+          <p class="setting-description">Limit daily notification volume</p>
+        </div>
+      </section>
+
+      <!-- Data Management -->
+      <section class="settings-section">
+        <h2>Data Management</h2>
+
+        <div class="setting-item">
+          <div class="storage-info">
+            <div class="storage-stat">
+              <span class="stat-label">Products tracked:</span>
+              <span class="stat-value" id="productCount">0</span>
+            </div>
+            <div class="storage-stat">
+              <span class="stat-label">Storage used:</span>
+              <span class="stat-value" id="storageUsed">0 KB</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="setting-item">
+          <button id="exportDataBtn" class="btn btn-secondary">Export All Data</button>
+          <p class="setting-description">Download your tracking data as JSON</p>
+        </div>
+
+        <div class="setting-item">
+          <button id="importDataBtn" class="btn btn-secondary">Import Data</button>
+          <input type="file" id="importFileInput" accept=".json" style="display: none;">
+          <p class="setting-description">Restore data from a previous export</p>
+        </div>
+
+        <div class="setting-item">
+          <button id="clearDataBtn" class="btn btn-danger">Clear All Data</button>
+          <p class="setting-description">⚠️ Permanently delete all tracked products</p>
+        </div>
+      </section>
+
+      <!-- Activity Log -->
+      <section class="settings-section full-width">
+        <h2>Activity Log</h2>
+        <div id="activityLog" class="activity-log">
+          <!-- Log entries will be inserted here -->
+        </div>
+      </section>
+
+      <!-- About -->
+      <section class="settings-section full-width">
+        <h2>About</h2>
+        <div class="about-info">
+          <p><strong>Price Drop Tracker</strong> - Version 1.0.0</p>
+          <p>Automatically track product prices and get notified when they drop.</p>
+          <p>100% privacy-focused - all data stays on your device.</p>
+          <div class="about-links">
+            <a href="https://github.com/yourusername/price-drop-tracker" target="_blank">GitHub</a>
+            <a href="https://github.com/yourusername/price-drop-tracker/issues" target="_blank">Report Issue</a>
+            <a href="#" id="giveFeedbackLink">Give Feedback</a>
+          </div>
+        </div>
+      </section>
     </div>
 
-    <div class="status">
-      ✓ Extension is properly configured and running
+    <!-- Save Indicator -->
+    <div id="saveIndicator" class="save-indicator" style="display: none;">
+      ✓ Settings saved
     </div>
   </div>
-  <script src="settings.js"></script>
+
+  <script type="module" src="settings.js"></script>
 </body>
 </html>

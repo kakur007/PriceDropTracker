@@ -28,6 +28,7 @@ const MESSAGE_TYPES = {
   GET_ALL_PRODUCTS: 'GET_ALL_PRODUCTS',
   UPDATE_SETTINGS: 'UPDATE_SETTINGS',
   GET_SETTINGS: 'GET_SETTINGS',
+  CHECK_NOW: 'CHECK_NOW',
   FORCE_CHECK_ALL: 'FORCE_CHECK_ALL'
 };
 
@@ -328,6 +329,19 @@ async function handleMessage(message, sender) {
 
     case MESSAGE_TYPES.GET_SETTINGS:
       return await StorageManager.getSettings();
+
+    case MESSAGE_TYPES.CHECK_NOW:
+      try {
+        await checkAllProducts({
+          batchSize: data.batchSize || 10,
+          maxAge: 0 // Check all products regardless of age
+        });
+        await updateBadge();
+        return { success: true };
+      } catch (error) {
+        console.error('[ServiceWorker] CHECK_NOW error:', error);
+        return { success: false, error: error.message };
+      }
 
     case MESSAGE_TYPES.FORCE_CHECK_ALL:
       const results = await checkAllProducts({
