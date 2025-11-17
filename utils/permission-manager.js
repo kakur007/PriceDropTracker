@@ -133,12 +133,12 @@ export async function removePermissionForUrl(url) {
 
 /**
  * Check if domain needs permission request
- * (i.e., not in default manifest permissions)
  *
  * @param {string} url - URL to check
+ * @param {boolean} isDefaultSupported - Whether this domain is in default manifest list
  * @returns {Promise<Object>} - { needsRequest: boolean, hasPermission: boolean }
  */
-export async function checkPermissionStatus(url) {
+export async function checkPermissionStatus(url, isDefaultSupported = false) {
   try {
     const hasPermission = await hasPermissionForUrl(url);
 
@@ -150,17 +150,8 @@ export async function checkPermissionStatus(url) {
       };
     }
 
-    // Check if it's in default manifest permissions
-    // (This would already be granted at install time)
-    const urlObj = new URL(url);
-    const domain = urlObj.hostname;
-
-    // Import domain validator to check if it's a default supported domain
-    const { isDomainSupported } = await import('./domain-validator.js');
-
-    if (isDomainSupported(domain)) {
-      // Should have permission from manifest, but doesn't?
-      // Might be a permission issue
+    // If it's in default manifest but we don't have permission, something's wrong
+    if (isDefaultSupported) {
       return {
         needsRequest: false,
         hasPermission: false,
