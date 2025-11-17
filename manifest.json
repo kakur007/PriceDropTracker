@@ -2,14 +2,15 @@
   "manifest_version": 3,
   "name": "Price Drop Tracker",
   "version": "1.0.0",
-  "description": "Automatically track product prices and get notified when they drop. Works across major e-commerce sites with zero setup.",
+  "description": "Automatically track product prices and get notified when they drop. Works across Amazon, eBay, Walmart, Etsy, Shopify stores, and thousands more e-commerce sites.",
   "author": "Price Drop Tracker Team",
 
   "permissions": [
     "storage",
     "alarms",
     "notifications",
-    "tabs"
+    "tabs",
+    "activeTab"
   ],
 
   "host_permissions": [
@@ -23,12 +24,34 @@
     "*://*.amazon.com.au/*",
     "*://*.amazon.co.jp/*",
     "*://*.amazon.in/*",
+    "*://*.amazon.com.mx/*",
+    "*://*.amazon.com.br/*",
+    "*://*.amazon.nl/*",
+    "*://*.amazon.se/*",
     "*://*.ebay.com/*",
     "*://*.ebay.co.uk/*",
     "*://*.ebay.de/*",
+    "*://*.ebay.fr/*",
+    "*://*.ebay.it/*",
+    "*://*.ebay.es/*",
+    "*://*.ebay.ca/*",
+    "*://*.ebay.com.au/*",
     "*://*.walmart.com/*",
     "*://*.target.com/*",
-    "*://*.bestbuy.com/*"
+    "*://*.bestbuy.com/*",
+    "*://*.etsy.com/*",
+    "*://*.aliexpress.com/*",
+    "*://*.newegg.com/*",
+    "*://*.costco.com/*",
+    "*://*.homedepot.com/*",
+    "*://*.lowes.com/*",
+    "*://*.wayfair.com/*",
+    "*://*.overstock.com/*",
+    "*://*.myshopify.com/*"
+  ],
+
+  "optional_host_permissions": [
+    "<all_urls>"
   ],
 
   "background": {
@@ -49,12 +72,30 @@
         "*://*.amazon.com.au/*",
         "*://*.amazon.co.jp/*",
         "*://*.amazon.in/*",
+        "*://*.amazon.com.mx/*",
+        "*://*.amazon.com.br/*",
+        "*://*.amazon.nl/*",
+        "*://*.amazon.se/*",
         "*://*.ebay.com/*",
         "*://*.ebay.co.uk/*",
         "*://*.ebay.de/*",
+        "*://*.ebay.fr/*",
+        "*://*.ebay.it/*",
+        "*://*.ebay.es/*",
+        "*://*.ebay.ca/*",
+        "*://*.ebay.com.au/*",
         "*://*.walmart.com/*",
         "*://*.target.com/*",
-        "*://*.bestbuy.com/*"
+        "*://*.bestbuy.com/*",
+        "*://*.etsy.com/*",
+        "*://*.aliexpress.com/*",
+        "*://*.newegg.com/*",
+        "*://*.costco.com/*",
+        "*://*.homedepot.com/*",
+        "*://*.lowes.com/*",
+        "*://*.wayfair.com/*",
+        "*://*.overstock.com/*",
+        "*://*.myshopify.com/*"
       ],
       "js": [
         "content-scripts/main.js"
@@ -71,24 +112,7 @@
         "content-scripts/site-adapters/*.js",
         "utils/*.js"
       ],
-      "matches": [
-        "*://*.amazon.com/*",
-        "*://*.amazon.co.uk/*",
-        "*://*.amazon.de/*",
-        "*://*.amazon.fr/*",
-        "*://*.amazon.it/*",
-        "*://*.amazon.es/*",
-        "*://*.amazon.ca/*",
-        "*://*.amazon.com.au/*",
-        "*://*.amazon.co.jp/*",
-        "*://*.amazon.in/*",
-        "*://*.ebay.com/*",
-        "*://*.ebay.co.uk/*",
-        "*://*.ebay.de/*",
-        "*://*.walmart.com/*",
-        "*://*.target.com/*",
-        "*://*.bestbuy.com/*"
-      ]
+      "matches": ["<all_urls>"]
     }
   ],
 
