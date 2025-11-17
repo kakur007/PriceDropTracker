@@ -82,135 +82,75 @@ export class WooCommerceAdapter extends BaseAdapter {
 
   /**
    * Extract product price
-   * Priority order:
-   * 1. Sale price (inside <ins> tag) - current active price
-   * 2. Single price (no sale) - regular price
-   * 3. Variable product selected variation price
+   * This is an improved version that prioritizes sale prices and avoids price ranges.
    *
-   * IMPORTANT: Only look in the product summary area to avoid picking up:
-   * - Shipping costs
-   * - Related product prices
-   * - Addon/upsell prices
+   * Priority order:
+   * 1. The price inside an <ins> tag (this is the current sale price).
+   * 2. The price for a selected variation.
+   * 3. A single price that is not part of a range.
    *
    * @returns {Object|null} Parsed price data or null
    */
   extractPrice() {
-    console.log('[WooCommerce Adapter] Starting price extraction...');
+    console.log('[WooCommerce Adapter] Starting improved price extraction...');
 
-    // CRITICAL: Find the main product summary area
-    // This contains the actual product price, not related products/shipping
-    const summaryArea = this.querySelector('.summary.entry-summary') ||
-                       this.querySelector('.product-summary') ||
-                       this.querySelector('div.product') ||
-                       this.querySelector('.product-details');
+    // Scope the search to the main product summary area to avoid grabbing
+    // prices from "related products", shipping info, etc.
+    const summaryArea = this.querySelector('.summary.entry-summary') || this.document;
 
-    if (!summaryArea) {
-      console.log('[WooCommerce Adapter] No product summary area found, using document');
-    }
-
-    const searchRoot = summaryArea || this.document;
-
-    // WooCommerce price structure priority:
-    // 1. Sale price (inside <ins> tag) - this is the actual current price when on sale
-    // 2. Single price (no ins/del) - regular price when not on sale
-    // 3. Variable product selected variation price
-
+    // Define selectors in order of priority
     const priceSelectors = [
-      // Sale price (highest priority - this is the actual current price)
-      {
-        selector: 'p.price ins .woocommerce-Price-amount',
-        desc: 'Sale price (ins tag with woocommerce class)'
-      },
-      {
-        selector: '.price ins .amount',
-        desc: 'Sale price (ins tag with amount class)'
-      },
-      {
-        selector: 'ins .woocommerce-Price-amount',
-        desc: 'Sale price (any ins tag)'
-      },
+      // 1. Sale Price: This is the most reliable indicator of the current price.
+      'p.price ins .woocommerce-Price-amount',
+      'p.price ins .amount',
 
-      // Variable product selected variation price
-      {
-        selector: '.woocommerce-variation-price .price .woocommerce-Price-amount',
-        desc: 'Variable product selected price'
-      },
-      {
-        selector: '.woocommerce-variation-price .woocommerce-Price-amount',
-        desc: 'Variable product price (simplified)'
-      },
+      // 2. Variable Product Price: The price shown after a user selects an option.
+      '.woocommerce-variation-price .price .woocommerce-Price-amount',
 
-      // Single price (no sale) - but avoid old prices in <del> tags
-      {
-        selector: 'p.price .woocommerce-Price-amount:not(del *)',
-        desc: 'Regular price (not deleted)'
-      },
-      {
-        selector: '.price > .woocommerce-Price-amount:first-child',
-        desc: 'First price in price container'
-      },
+      // 3. Single Product Price: When there's no sale. We must avoid the <del> tag.
+      'p.price > .woocommerce-Price-amount:not(del *)',
 
-      // Microdata price (within summary)
-      {
-        selector: '[itemprop="price"]:not(del *)',
-        desc: 'Microdata price (not deleted)'
-      },
-
-      // Last resort: any non-deleted price in summary
-      {
-        selector: '.woocommerce-Price-amount:not(del *):not(del .woocommerce-Price-amount)',
-        desc: 'Any non-deleted price'
-      }
+      // 4. Microdata Price: Fallback using schema.
+      '[itemprop="price"]:not(del *)'
     ];
 
-    for (const { selector, desc } of priceSelectors) {
-      console.log(`[WooCommerce Adapter] Trying: ${desc}`);
+    for (const selector of priceSelectors) {
+      const element = summaryArea.querySelector(selector);
 
-      const element = searchRoot.querySelector(selector);
-      if (!element) {
-        console.log(`[WooCommerce Adapter]   ✗ Not found`);
-        continue;
-      }
+      if (element) {
+        // Get the raw text from the element
+        const priceText = element.textContent?.trim();
 
-      // Double-check: Skip if inside <del> tag (old/crossed-out price)
-      if (element.closest('del')) {
-        console.log(`[WooCommerce Adapter]   ✗ Inside <del> tag, skipping`);
-        continue;
-      }
+        // CRITICAL CHECK: Ignore if it's a price range.
+        if (priceText && (priceText.includes('–') || priceText.includes('-'))) {
+            console.log(`[WooCommerce Adapter] Skipping selector "${selector}" because it contains a price range: "${priceText}"`);
+            continue;
+        }
 
-      // Skip if this is in a related products/upsell section
-      const container = element.closest('.related, .upsells, .cross-sells, .shipping');
-      if (container) {
-        console.log(`[WooCommerce Adapter]   ✗ In related/upsell section, skipping`);
-        continue;
-      }
-
-      const priceText = element.getAttribute('content') ||
-                       element.getAttribute('data-price') ||
-                       element.textContent?.trim();
-
-      console.log(`[WooCommerce Adapter]   Text: "${priceText}"`);
-
-      if (!priceText) {
-        continue;
-      }
-
-      const parsed = this.parsePriceWithContext(priceText);
-
-      if (parsed && parsed.confidence >= 0.70) {
-        console.log(`[WooCommerce Adapter] ✓ Success: ${parsed.numeric} ${parsed.currency}`);
-
-        // Validation: exclude suspiciously low prices (< 0.50) unless it's 0 (free)
-        // This helps avoid picking up shipping costs like "4.95"
-        if (parsed.numeric >= 0.50 || parsed.numeric === 0) {
-          return parsed;
-        } else {
-          console.log(`[WooCommerce Adapter]   ✗ Too low (${parsed.numeric}), might be shipping`);
+        if (priceText) {
+          const parsed = this.parsePriceWithContext(priceText);
+          if (parsed && parsed.confidence >= 0.70) {
+            console.log(`[WooCommerce Adapter] ✓ Price found with selector "${selector}": ${parsed.numeric} ${parsed.currency}`);
+            return parsed; // Return the first valid price we find
+          }
         }
       }
     }
 
-    console.log('[WooCommerce Adapter] ✗ No valid price found');
+    // If no specific selectors worked, do a final generic search but be careful.
+    const genericPrice = summaryArea.querySelector('.price, .woocommerce-Price-amount');
+    if (genericPrice) {
+        const priceText = genericPrice.textContent?.trim();
+        if (priceText && !priceText.includes('–') && !priceText.includes('-')) {
+             const parsed = this.parsePriceWithContext(priceText);
+             if (parsed && parsed.confidence >= 0.70) {
+                console.log(`[WooCommerce Adapter] ✓ Price found with generic fallback: ${parsed.numeric} ${parsed.currency}`);
+                return parsed;
+             }
+        }
+    }
+
+    console.log('[WooCommerce Adapter] ✗ No valid price found after all checks.');
     return null;
   }
 
