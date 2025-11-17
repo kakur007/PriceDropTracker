@@ -27,6 +27,18 @@ const SUPPORTED_DOMAINS = [
   'etsy.com', 'aliexpress.com', 'newegg.com', 'costco.com',
   'homedepot.com', 'lowes.com', 'wayfair.com', 'overstock.com',
 
+  // Zalando
+  'zalando.com', 'zalando.co.uk', 'zalando.de', 'zalando.fr', 'zalando.it',
+  'zalando.es', 'zalando.nl', 'zalando.be', 'zalando.ee', 'zalando.fi',
+  'zalando.se', 'zalando.dk', 'zalando.no', 'zalando.pl', 'zalando.at',
+  'zalando.ch',
+
+  // ASOS
+  'asos.com',
+
+  // MediaMarkt
+  'mediamarkt.com', 'mediamarkt.de', 'mediamarkt.nl',
+
   // Shopify stores (generic)
   'myshopify.com'
 ];
@@ -129,6 +141,9 @@ function getStoreName(domain) {
   if (cleanDomain.includes('lowes')) return "Lowe's";
   if (cleanDomain.includes('wayfair')) return 'Wayfair';
   if (cleanDomain.includes('overstock')) return 'Overstock';
+  if (cleanDomain.includes('zalando')) return 'Zalando';
+  if (cleanDomain.includes('asos')) return 'ASOS';
+  if (cleanDomain.includes('mediamarkt')) return 'MediaMarkt';
   if (cleanDomain.includes('myshopify')) return 'Shopify Store';
 
   // Fallback: capitalize first letter of domain
@@ -154,6 +169,9 @@ function getSupportedStoresList() {
     "Lowe's",
     'Wayfair',
     'Overstock',
+    'Zalando (all regions)',
+    'ASOS',
+    'MediaMarkt',
     'Shopify Stores'
   ];
 }

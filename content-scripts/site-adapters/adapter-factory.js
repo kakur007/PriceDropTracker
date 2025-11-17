@@ -11,6 +11,9 @@ import { WalmartAdapter } from './walmart.js';
 import { TargetAdapter } from './target.js';
 import { BestBuyAdapter } from './bestbuy.js';
 import { WooCommerceAdapter } from './woocommerce.js';
+import { ZalandoAdapter } from './zalando.js';
+import { EtsyAdapter } from './etsy.js';
+import { AliExpressAdapter } from './aliexpress.js';
 
 /**
  * Factory function to get the appropriate adapter for a given domain
@@ -41,6 +44,18 @@ export function getAdapter(document, url) {
 
   if (domain.includes('bestbuy')) {
     return new BestBuyAdapter(document, url);
+  }
+
+  if (domain.includes('zalando')) {
+    return new ZalandoAdapter(document, url);
+  }
+
+  if (domain.includes('etsy')) {
+    return new EtsyAdapter(document, url);
+  }
+
+  if (domain.includes('aliexpress')) {
+    return new AliExpressAdapter(document, url);
   }
 
   // Check for platform-based sites (WooCommerce, Shopify, etc.)
