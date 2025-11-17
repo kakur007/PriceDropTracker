@@ -1,0 +1,94 @@
+{
+  "manifest_version": 3,
+  "name": "Price Drop Tracker",
+  "version": "1.0.0",
+  "description": "Automatically track product prices and get notified when they drop. Works across major e-commerce sites with zero setup.",
+  "author": "Price Drop Tracker Team",
+
+  "permissions": [
+    "storage",
+    "alarms",
+    "notifications",
+    "tabs"
+  ],
+
+  "host_permissions": [
+    "*://*.amazon.com/*",
+    "*://*.amazon.co.uk/*",
+    "*://*.amazon.de/*",
+    "*://*.amazon.fr/*",
+    "*://*.amazon.it/*",
+    "*://*.amazon.es/*",
+    "*://*.amazon.ca/*",
+    "*://*.amazon.com.au/*",
+    "*://*.amazon.co.jp/*",
+    "*://*.amazon.in/*",
+    "*://*.ebay.com/*",
+    "*://*.ebay.co.uk/*",
+    "*://*.ebay.de/*",
+    "*://*.walmart.com/*",
+    "*://*.target.com/*",
+    "*://*.bestbuy.com/*"
+  ],
+
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.amazon.com/*",
+        "*://*.amazon.co.uk/*",
+        "*://*.amazon.de/*",
+        "*://*.amazon.fr/*",
+        "*://*.amazon.it/*",
+        "*://*.amazon.es/*",
+        "*://*.amazon.ca/*",
+        "*://*.amazon.com.au/*",
+        "*://*.amazon.co.jp/*",
+        "*://*.amazon.in/*",
+        "*://*.ebay.com/*",
+        "*://*.ebay.co.uk/*",
+        "*://*.ebay.de/*",
+        "*://*.walmart.com/*",
+        "*://*.target.com/*",
+        "*://*.bestbuy.com/*"
+      ],
+      "js": [
+        "content-scripts/product-detector.js",
+        "content-scripts/price-extractor.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "assets/icons/icon-16.png",
+      "32": "assets/icons/icon-32.png",
+      "48": "assets/icons/icon-48.png",
+      "128": "assets/icons/icon-128.png"
+    }
+  },
+
+  "options_page": "options/settings.html",
+  "options_ui": {
+    "page": "options/settings.html",
+    "open_in_tab": true
+  },
+
+  "icons": {
+    "16": "assets/icons/icon-16.png",
+    "32": "assets/icons/icon-32.png",
+    "48": "assets/icons/icon-48.png",
+    "128": "assets/icons/icon-128.png"
+  },
+
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}

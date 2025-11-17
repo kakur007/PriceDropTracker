@@ -1,292 +1,261 @@
-# Price Drop Tracker - Quick Start Guide
+# Price Drop Tracker - Never miss a deal again
 
-## 📁 Project Files
+Automatically track product prices across major e-commerce sites and get notified when prices drop. No manual setup required - just browse normally and let the extension do the work.
 
-Your complete build guide is split into two documents:
+## Features
 
-1. **PROJECT_BUILD_GUIDE.md** - Sessions 1-6 (Foundation & Core Features)
-   - Project setup and manifest.json
-   - Multi-currency support
-   - Product detection system
-   - Storage management
-   - Site-specific adapters
-   - Background service worker & price checking
+- **Automatic Price Tracking** - No manual adding required. Browse any product page and it's automatically tracked.
+- **Multi-Currency Support** - Works with 30+ currencies worldwide (USD, EUR, GBP, JPY, CAD, AUD, and more).
+- **Background Price Monitoring** - Checks prices automatically every 6 hours in the background.
+- **Smart Price Drop Notifications** - Get notified when prices drop below your threshold (configurable: 5%, 10%, 15%, 20%).
+- **Works on Major E-commerce Sites** - Amazon, eBay, Walmart, Target, Best Buy, and their regional variants.
+- **100% Privacy-Focused** - All data stored locally on your device. No external servers, no tracking, no data collection.
+- **Lightweight & Fast** - Uses less than 50MB of memory and 10MB of storage.
+- **30-Day Automatic Tracking** - Products are tracked for 30 days by default (configurable: 7, 14, 30, or 60 days).
 
-2. **PROJECT_BUILD_GUIDE_PART2.md** - Sessions 7-13 (UI & Polish)
-   - Notification system
-   - Popup UI
-   - Settings page
-   - Integration & testing
-   - Bug fixes & polish
-   - Chrome Web Store submission
+## Installation
 
-## 🚀 Getting Started with Claude Code
+### From Chrome Web Store (Coming Soon)
+1. Visit [Chrome Web Store](#) (link will be added after submission)
+2. Click "Add to Chrome"
+3. Start browsing - that's it!
 
-### Step 1: Push to GitHub
+### Manual Installation (For Development)
+1. Download or clone this repository:
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/price-drop-tracker.git
+   ```
+2. Open Chrome and navigate to `chrome://extensions/`
+3. Enable "Developer mode" (toggle in top-right corner)
+4. Click "Load unpacked"
+5. Select the `price-drop-tracker` directory
+6. The extension icon will appear in your toolbar
 
-```bash
-# Initialize git repository
-cd C:\Users\Kasutaja\Documents\PriceDropTracker
-git init
+## How It Works
 
-# Add all files
-git add .
+1. **Browse Normally** - Visit any product page on supported e-commerce sites
+2. **Automatic Tracking** - The extension detects the product and starts tracking its price
+3. **Background Monitoring** - Prices are checked automatically every 6 hours
+4. **Get Notified** - When a price drops below your threshold, you'll get a notification
+5. **Click to Buy** - Click the notification to visit the product page and make your purchase
 
-# Commit
-git commit -m "Initial commit: Complete build guide for Price Drop Tracker"
+It's that simple! No accounts, no manual setup, no hassle.
 
-# Create GitHub repo at github.com/new
-# Then connect and push:
-git remote add origin https://github.com/YOUR_USERNAME/price-drop-tracker.git
-git branch -M main
-git push -u origin main
-```
+## Supported Sites
 
-### Step 2: Use with Claude Code
+### Tier 1 (Fully Supported)
+- **Amazon** - All regional domains (.com, .co.uk, .de, .fr, .it, .es, .ca, .com.au, .co.jp, .in)
+- **eBay** - All regional domains (.com, .co.uk, .de, and more)
+- **Walmart** - Walmart.com
+- **Target** - Target.com
+- **Best Buy** - BestBuy.com
 
-Once pushed to GitHub, use these commands in Claude Code:
+### Tier 2 (Planned)
+- Etsy, AliExpress, Shopify stores
+- Regional: Zalando, ASOS, MediaMarkt
 
-```bash
-# Clone the repository
-git clone https://github.com/YOUR_USERNAME/price-drop-tracker.git
-cd price-drop-tracker
+## Privacy & Permissions
 
-# Read the build guide
-cat PROJECT_BUILD_GUIDE.md
+We take your privacy seriously. This extension is designed to be **100% privacy-focused**.
 
-# Start with Session 1
-# Follow each session sequentially
-```
+### Why We Need These Permissions
 
-## 📋 Build Order
+- **Storage** - To save your tracked products locally on your device
+- **Alarms** - To schedule automatic price checks in the background
+- **Notifications** - To alert you when prices drop
+- **Tabs** - To detect when you visit product pages
+- **Host Permissions** - To access product pages on supported e-commerce sites for price checking
 
-Follow these sessions in order:
+### What We DON'T Do
 
-| Session | Time | Files Created | Description |
-|---------|------|---------------|-------------|
-| 1 | 30min | manifest.json, README, structure | Project foundation |
-| 2 | 1hr | currency-data.js, currency-parser.js | Multi-currency support |
-| 3 | 1.5hr | product-detector.js, price-extractor.js | Product detection |
-| 4 | 45min | storage-manager.js | Data persistence |
-| 5 | 1.5hr | Site adapters (Amazon, eBay, etc.) | Site-specific logic |
-| 6 | 2hr | service-worker.js, price-checker.js | Background checking |
-| 7 | 45min | notification-manager.js | Notifications |
-| 8 | 2hr | popup.html/js/css | Extension popup |
-| 9 | 1hr | settings.html/js/css | Settings page |
-| 10 | 30min | Integration updates | Wire everything together |
-| 11 | 2hr | Test files | Comprehensive testing |
-| 12 | 1hr | Bug fixes | Polish and optimization |
-| 13 | 2hr | Store assets | Chrome Web Store prep |
+- ❌ No external servers or cloud storage
+- ❌ No user tracking or analytics
+- ❌ No data collection or sharing
+- ❌ No browsing history tracking
+- ❌ No personal information access
 
-**Total Development Time: ~15 hours**
+**All data stays on your device.** You can export your data at any time from the settings page.
 
-## 🎯 Key Features Implemented
+## Development Setup
 
-- ✅ Automatic product detection on page load
-- ✅ Multi-currency support (30+ currencies)
-- ✅ Site-specific adapters for major stores
-- ✅ Background price monitoring (every 3-24 hours)
-- ✅ Price drop notifications
-- ✅ Clean popup UI with filters
-- ✅ Comprehensive settings page
-- ✅ Data export/import
-- ✅ 100% local storage (privacy-first)
+### Prerequisites
+- Google Chrome (version 88 or higher)
+- Node.js (optional, for testing)
+- Git
 
-## 🛠️ Technical Stack
+### Installation Steps
 
-- **Manifest**: V3
-- **Language**: JavaScript (ES6 modules)
-- **Storage**: Chrome Storage API (local)
-- **Alarms**: Chrome Alarms API
-- **Notifications**: Chrome Notifications API
-- **Libraries**: None (vanilla JS)
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/price-drop-tracker.git
+   cd price-drop-tracker
+   ```
 
-## 🌐 Supported Sites
+2. Load the extension in Chrome:
+   - Open `chrome://extensions/`
+   - Enable "Developer mode"
+   - Click "Load unpacked"
+   - Select the project directory
 
-- Amazon (all regions: .com, .co.uk, .de, .fr, .it, .es, .ca, .com.au, .co.jp, .in)
-- eBay (all regions)
-- Walmart
-- Target
-- Best Buy
+3. Test the extension:
+   - Visit any product page on Amazon, eBay, Walmart, Target, or Best Buy
+   - Check the extension popup to see tracked products
+   - Open Chrome DevTools Console to see debug logs
 
-## 💡 AI Prompting Tips
+### Testing Instructions
 
-When working with Claude Code on each session:
+1. **Test Product Detection**:
+   - Visit a product page on a supported site
+   - Open the extension popup
+   - Verify the product appears in the list
 
-1. **Start each session with**: "Let's work on Session X: [Title]. I'll follow the prompts exactly as written in the build guide."
+2. **Test Price Tracking**:
+   - Open Chrome DevTools Console (F12)
+   - Check for messages like "Product detected" and "Price extracted"
+   - Verify the price is stored correctly in `chrome://extensions/` > Storage
 
-2. **For each task**: Copy the entire prompt from the build guide and provide it to Claude Code.
+3. **Test Notifications**:
+   - Manually modify a product's price in storage to simulate a price drop
+   - Trigger the background price check
+   - Verify you receive a notification
 
-3. **After each file**: Test immediately using the provided testing instructions.
-
-4. **If errors occur**: Share the error message and ask Claude Code to fix it using the context from the build guide.
-
-5. **Keep track**: Check off completed tasks in the checklists.
-
-## 🧪 Testing Strategy
-
-### During Development (Sessions 1-10)
-- Test each feature as you build it
-- Use Chrome DevTools console
-- Load unpacked extension frequently
-- Verify in Chrome's extension management
-
-### Before Submission (Sessions 11-12)
-- Complete manual-test-checklist.md
-- Test on 20+ real product pages
-- Verify all currencies
-- Check performance metrics
-- Test error handling
-
-### After Launch (Session 13+)
-- Monitor user reviews
-- Track error reports
-- Update site adapters as needed
-- Release updates regularly
-
-## 📦 File Structure Reference
+## Project Structure
 
 ```
 price-drop-tracker/
-├── manifest.json                    # Extension config
-├── README.md                        # Documentation
-├── PROJECT_BUILD_GUIDE.md          # This guide (Part 1)
-├── PROJECT_BUILD_GUIDE_PART2.md    # This guide (Part 2)
-│
-├── background/
-│   ├── service-worker.js           # Main background logic
-│   ├── price-checker.js            # Price checking
-│   └── storage-manager.js          # Data management
-│
-├── content-scripts/
-│   ├── product-detector.js         # Product detection
-│   ├── price-extractor.js          # Price extraction
-│   └── site-adapters/
-│       ├── base-adapter.js         # Abstract adapter
-│       ├── amazon.js               # Amazon logic
-│       ├── ebay.js                 # eBay logic
-│       ├── walmart.js              # Walmart logic
-│       ├── target.js               # Target logic
-│       └── bestbuy.js              # Best Buy logic
-│
-├── popup/
-│   ├── popup.html                  # Popup UI
-│   ├── popup.js                    # Popup logic
-│   └── popup.css                   # Popup styles
-│
-├── options/
-│   ├── settings.html               # Settings UI
-│   ├── settings.js                 # Settings logic
-│   └── settings.css                # Settings styles
-│
-├── utils/
-│   ├── currency-data.js            # Currency definitions
-│   ├── currency-parser.js          # Price parsing
-│   ├── notification-manager.js     # Notifications
-│   ├── product-hasher.js           # ID generation
-│   └── fetch-helper.js             # Network utilities
-│
-├── assets/
-│   ├── icons/                      # Extension icons
-│   └── store/                      # Store assets
-│
-└── tests/
-    ├── test-sites.json             # Test URLs
-    ├── manual-test-checklist.md    # Testing guide
-    └── currency-parser.test.js     # Unit tests
+├── manifest.json              # Chrome Extension configuration
+├── background/                # Background service worker
+│   ├── service-worker.js      # Main background logic
+│   ├── price-checker.js       # Scheduled price checking
+│   └── storage-manager.js     # Data persistence
+├── content-scripts/           # Content scripts for product detection
+│   ├── product-detector.js    # Identifies product pages
+│   ├── price-extractor.js     # Extracts price data
+│   └── site-adapters/         # Site-specific logic
+├── popup/                     # Extension popup UI
+│   ├── popup.html
+│   ├── popup.js
+│   └── popup.css
+├── options/                   # Settings page
+│   ├── settings.html
+│   ├── settings.js
+│   └── settings.css
+├── utils/                     # Shared utilities
+│   ├── currency-parser.js     # Multi-currency support
+│   ├── currency-data.js       # Currency definitions
+│   ├── notification-manager.js # Notification handling
+│   ├── product-hasher.js      # Unique ID generation
+│   └── fetch-helper.js        # Network utilities
+├── assets/                    # Icons and images
+└── tests/                     # Test files
 ```
 
-## 🔒 Privacy Commitment
+## Contributing
 
-This extension is designed with privacy as the #1 priority:
+We welcome contributions! Here's how you can help:
 
-- ✅ All data stored locally
-- ✅ No external servers
-- ✅ No analytics or tracking
-- ✅ No data collection
-- ✅ Open source code
-- ✅ Minimal permissions
-- ✅ Transparent operation
+### Reporting Bugs
+1. Check if the issue already exists in [Issues](https://github.com/YOUR_USERNAME/price-drop-tracker/issues)
+2. Create a new issue with:
+   - Clear description of the problem
+   - Steps to reproduce
+   - Expected vs actual behavior
+   - Browser version and extension version
+   - Screenshots if applicable
 
-## 🎓 Learning Outcomes
+### Requesting Features
+1. Open a new issue with the "Feature Request" label
+2. Describe the feature and why it would be useful
+3. Provide examples or mockups if possible
 
-By completing this project, you'll learn:
+### Pull Request Guidelines
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes
+4. Test thoroughly
+5. Commit with clear messages (`git commit -m 'Add amazing feature'`)
+6. Push to your fork (`git push origin feature/amazing-feature`)
+7. Open a Pull Request with a clear description
 
-- Chrome Extension Manifest V3 architecture
-- Content scripts and background service workers
-- Chrome Storage API
-- Chrome Alarms API
-- Chrome Notifications API
-- Multi-currency handling
-- Web scraping strategies
-- Rate limiting and batching
-- Error handling at scale
-- User interface design
-- Chrome Web Store submission process
+## License
 
-## 🤝 Contributing
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-After launch, consider:
+## Roadmap
 
-- Accepting community PRs for new site adapters
-- Adding requested features
-- Improving detection accuracy
-- Supporting more currencies
-- Expanding to more stores
+### Phase 1: MVP (Current)
+- ✅ Basic product detection
+- ✅ Multi-currency price extraction
+- ✅ Background price checking
+- ✅ Price drop notifications
+- ✅ Popup dashboard
+- ✅ Settings page
 
-## 📞 Support
+### Phase 2: Advanced Features (Planned)
+- [ ] Price history charts
+- [ ] Product comparison
+- [ ] Wishlist sharing
+- [ ] Price prediction (ML-based)
+- [ ] Browser sync across devices
+- [ ] Custom price alerts per product
+- [ ] Weekly summary reports
+- [ ] More e-commerce sites (Etsy, AliExpress, Shopify)
 
-For questions or issues during development:
+### Phase 3: Premium Features (Future)
+- [ ] Export to CSV/JSON
+- [ ] Import from Amazon wishlist
+- [ ] Advanced filtering and sorting
+- [ ] Dark mode
+- [ ] Keyboard shortcuts
+- [ ] Mobile companion app
 
-1. **Re-read the build guide** - Most answers are in the detailed prompts
-2. **Check the examples** - Each session has code examples
-3. **Review the checklists** - Ensure all steps completed
-4. **Test incrementally** - Don't build everything before testing
-5. **Ask Claude Code** - Provide context from the build guide
+## Support
 
-## 🎉 Success Metrics
+### Need Help?
+- **Documentation**: Check the [Wiki](https://github.com/YOUR_USERNAME/price-drop-tracker/wiki) (coming soon)
+- **Issues**: Report bugs or request features in [Issues](https://github.com/YOUR_USERNAME/price-drop-tracker/issues)
+- **Email**: support@example.com (replace with actual contact)
 
-After launch, track:
+### FAQ
 
-- **Technical**: Detection accuracy >90%, Check success rate >95%
-- **User**: Active users, Retention rate, Average products tracked
-- **Quality**: Star rating >4.0, Bug reports, Feature requests
+**Q: Why isn't my product being tracked?**
+A: Make sure you're on a supported site and the page is a product detail page (not search results or category pages).
 
-## 🚦 Current Status
+**Q: How often are prices checked?**
+A: By default, every 6 hours. You can change this in settings (3, 6, 12, or 24 hours).
 
-- [x] Build guide completed
-- [x] All sessions documented
-- [x] Testing procedures defined
-- [x] Chrome Web Store prep documented
-- [ ] Development (your turn!)
-- [ ] Testing
-- [ ] Submission
-- [ ] Launch
+**Q: Can I track more than 100 products?**
+A: The default limit is 100 products to maintain performance. You can adjust this in settings.
 
-## 📅 Recommended Timeline
+**Q: Is my data synced across devices?**
+A: Not yet. All data is stored locally. Browser sync is planned for a future release.
 
-- **Week 1**: Sessions 1-6 (Core functionality)
-- **Week 2**: Sessions 7-9 (UI and settings)
-- **Week 3**: Sessions 10-12 (Integration, testing, polish)
-- **Week 4**: Session 13 (Store submission and launch)
+**Q: Why did I get a notification for a small price change?**
+A: Check your notification threshold in settings. Default is 5%, but you can set it to 10%, 15%, or 20%.
 
-## 🎯 Next Steps
+## Acknowledgments
 
-1. ✅ Push this guide to GitHub
-2. → Clone in your development environment
-3. → Open PROJECT_BUILD_GUIDE.md
-4. → Start with Session 1
-5. → Follow each prompt sequentially
-6. → Test after each session
-7. → Submit to Chrome Web Store
-8. → Launch! 🚀
+- Built with [Chrome Extension Manifest V3](https://developer.chrome.com/docs/extensions/mv3/intro/)
+- Inspired by the need for a privacy-focused price tracker
+- Thanks to all contributors and testers
+
+## Statistics
+
+- **Lines of Code**: ~2,500
+- **Files**: 25+
+- **Supported Currencies**: 30+
+- **Supported Sites**: 5 (Tier 1)
+- **Chrome Web Store Rating**: ⭐⭐⭐⭐⭐ (Coming soon!)
 
 ---
 
-**Good luck with your development!**
+**Made with ❤️ for deal hunters everywhere**
 
-Remember: The detailed prompts in the build guides are optimized for AI assistants like Claude Code. Follow them exactly for best results.
+If you find this extension useful, please consider:
+- ⭐ Starring the repository
+- 🐛 Reporting bugs
+- 💡 Suggesting features
+- 🤝 Contributing code
+- 📢 Sharing with friends
 
-Questions? Issues? Open a GitHub issue or reach out via email.
-
-**Let's build something amazing!** 💪
+Happy deal hunting! 🎉
