@@ -12,7 +12,7 @@
 
 import { fetchHTML } from '../utils/fetch-helper.js';
 import { StorageManager } from './storage-manager.js';
-import { AdapterFactory } from '../content-scripts/site-adapters/base-adapter.js';
+import { getAdapter } from '../content-scripts/site-adapters/base-adapter.js';
 import { ProductDetector } from '../content-scripts/product-detector.js';
 import { parseCurrency } from '../utils/currency-parser.js';
 
@@ -208,7 +208,7 @@ async function checkSingleProduct(productId) {
     const hostname = new URL(product.url).hostname;
 
     try {
-      const adapter = AdapterFactory.getAdapter(hostname);
+      const adapter = getAdapter(doc, product.url);
       if (adapter) {
         console.log(`[PriceChecker] Using ${adapter.constructor.name} for ${hostname}`);
         detectedProduct = adapter.detectProduct(doc, product.url);

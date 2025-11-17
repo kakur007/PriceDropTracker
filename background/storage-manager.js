@@ -417,3 +417,46 @@ export async function clearAllData() {
     return false;
   }
 }
+
+/**
+ * Initialize settings with defaults if not present
+ * Called on extension installation
+ * @returns {Promise<void>}
+ */
+export async function initializeSettings() {
+  const settings = await getSettings();
+  // getSettings already returns defaults if settings don't exist
+  // Just save them to ensure they're persisted
+  await chrome.storage.local.set({ settings });
+  console.log('[Storage] Settings initialized with defaults');
+}
+
+/**
+ * Save settings to storage (alias for updateSettings for compatibility)
+ * @param {object} settings - Settings object to save
+ * @returns {Promise<void>}
+ */
+export async function saveSettings(settings) {
+  return await updateSettings(settings);
+}
+
+/**
+ * StorageManager namespace object for compatibility with service worker
+ * Provides all storage functions as methods
+ */
+export const StorageManager = {
+  saveProduct,
+  getProduct,
+  getAllProducts,
+  deleteProduct,
+  updateProductPrice,
+  cleanupOldProducts,
+  getSettings,
+  updateSettings,
+  saveSettings,
+  initializeSettings,
+  getStorageStats,
+  exportData,
+  importData,
+  clearAllData
+};
