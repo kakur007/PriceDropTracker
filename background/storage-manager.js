@@ -83,14 +83,33 @@ export async function saveProduct(productData) {
       }
 
       // Create new product entry
+      // Initialize price history - if product has a regularPrice (pre-discount),
+      // add that first so we track the full price drop
+      const priceHistory = [];
+      const now = Date.now();
+
+      if (productData.price.regularPrice && productData.price.regularPrice > productData.price.numeric) {
+        // Add the regular/original price first
+        priceHistory.push({
+          price: productData.price.regularPrice,
+          currency: productData.price.currency,
+          timestamp: now - 1000, // 1 second earlier to maintain chronological order
+          checkMethod: productData.detectionMethod,
+          note: 'original_price'
+        });
+      }
+
+      // Add the current price
+      priceHistory.push({
+        price: productData.price.numeric,
+        currency: productData.price.currency,
+        timestamp: now,
+        checkMethod: productData.detectionMethod
+      });
+
       products[productId] = {
         ...productData,
-        priceHistory: [{
-          price: productData.price.numeric,
-          currency: productData.price.currency,
-          timestamp: Date.now(),
-          checkMethod: productData.detectionMethod
-        }],
+        priceHistory,
         tracking: {
           firstSeen: Date.now(),
           lastViewed: Date.now(),
