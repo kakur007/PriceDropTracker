@@ -12,7 +12,7 @@
 
 import { fetchHTML } from '../utils/fetch-helper.js';
 import { StorageManager } from './storage-manager.js';
-import { isUrlSupported } from '../utils/domain-validator.js';
+import { isUrlSupportedOrPermitted } from '../utils/domain-validator.js';
 
 /**
  * Ensures the offscreen document is created and ready
@@ -234,21 +234,22 @@ async function checkSingleProduct(productId) {
       };
     }
 
-    // Check if domain is supported
-    if (!isUrlSupported(product.url)) {
-      console.warn(`[PriceChecker] Unsupported domain, skipping: ${product.url}`);
+    // Check if domain is supported or has permission
+    const hasPermission = await isUrlSupportedOrPermitted(product.url);
+    if (!hasPermission) {
+      console.warn(`[PriceChecker] No permission for domain, skipping: ${product.url}`);
 
-      // Mark product as stale (unsupported)
+      // Mark product as stale (no permission)
       product.tracking = product.tracking || {};
       product.tracking.failedChecks = (product.tracking.failedChecks || 0) + 1;
       product.tracking.lastChecked = Date.now();
-      product.tracking.status = 'unsupported';
+      product.tracking.status = 'no_permission';
 
       await StorageManager.saveProduct(product);
 
       return {
         status: PriceCheckResult.ERROR,
-        error: 'Domain not supported for price checking (missing host permissions)'
+        error: 'No permission for this domain (grant permission in extension settings)'
       };
     }
 

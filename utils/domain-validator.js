@@ -83,6 +83,28 @@ function isUrlSupported(url) {
 }
 
 /**
+ * Check if a URL is supported OR has granted permission
+ * This is async because it checks runtime permissions
+ * @param {string} url - Full URL to check
+ * @returns {Promise<boolean>} - True if URL is supported or has permission
+ */
+async function isUrlSupportedOrPermitted(url) {
+  // First check if it's in the default supported list
+  if (isUrlSupported(url)) {
+    return true;
+  }
+
+  // Check if we have runtime permission for this URL
+  try {
+    const { hasPermissionForUrl } = await import('./permission-manager.js');
+    return await hasPermissionForUrl(url);
+  } catch (error) {
+    console.error('[DomainValidator] Error checking permissions:', error);
+    return false;
+  }
+}
+
+/**
  * Get user-friendly store name from domain
  * @param {string} domain - Domain name
  * @returns {string} - Friendly store name
@@ -172,6 +194,7 @@ export {
   extractDomain,
   isDomainSupported,
   isUrlSupported,
+  isUrlSupportedOrPermitted,
   getStoreName,
   getSupportedStoresList,
   validateUrl

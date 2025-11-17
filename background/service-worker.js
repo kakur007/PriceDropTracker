@@ -12,7 +12,8 @@
 import { StorageManager } from './storage-manager.js';
 import { checkAllProducts, checkSingleProduct, PriceCheckResult } from './price-checker.js';
 import { showBatchPriceDropNotifications, showInfoNotification, showErrorNotification } from '../utils/notification-manager.js';
-import { validateUrl, getSupportedStoresList } from '../utils/domain-validator.js';
+import { validateUrl, getSupportedStoresList, isUrlSupportedOrPermitted } from '../utils/domain-validator.js';
+import { checkPermissionStatus, extractDomain } from '../utils/permission-manager.js';
 
 // Alarm names
 const ALARMS = {
@@ -390,21 +391,34 @@ async function handleProductDetected(productData, sender) {
   console.log('[ServiceWorker] Product detected:', productData.title);
 
   try {
-    // Validate domain is supported
-    const validation = validateUrl(productData.url);
-    if (!validation.valid) {
-      console.warn('[ServiceWorker] Unsupported domain:', validation.error);
+    // Check if we have permission for this URL
+    const permissionStatus = await checkPermissionStatus(productData.url);
 
-      // Show error notification
+    // If we need to request permission, return status to trigger UI prompt
+    if (permissionStatus.needsRequest && !permissionStatus.hasPermission) {
+      console.log('[ServiceWorker] Permission needed for:', extractDomain(productData.url));
+
+      return {
+        needsPermission: true,
+        domain: extractDomain(productData.url),
+        url: productData.url,
+        productData: productData // Send back so we can retry after permission granted
+      };
+    }
+
+    // Check if we have permission (either from manifest or granted at runtime)
+    const hasPermission = await isUrlSupportedOrPermitted(productData.url);
+
+    if (!hasPermission) {
+      console.warn('[ServiceWorker] No permission for domain:', productData.url);
+
       await showErrorNotification(
-        `Cannot track this product: ${validation.error}. Supported stores: ${getSupportedStoresList().slice(0, 5).join(', ')}, and more.`
+        `Cannot track this product: No permission to access ${extractDomain(productData.url)}. You can grant permission when prompted.`
       );
 
       return {
-        error: validation.error,
-        unsupportedDomain: true,
-        domain: validation.domain,
-        supportedStores: validation.supportedStores
+        error: 'No permission for this domain',
+        domain: extractDomain(productData.url)
       };
     }
 
