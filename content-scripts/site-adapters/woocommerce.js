@@ -81,47 +81,75 @@ export class WooCommerceAdapter extends BaseAdapter {
   }
 
   /**
-   * Extract product price (Version 7 - Variation Price Priority)
-   * This version specifically targets the .woocommerce-variation-price container
-   * and extracts the sale price from the <ins> tag, which contains the actual
-   * discounted price for variable products.
+   * Extract product price (Version 8 - With Regular Price)
+   * This version extracts both the current price and the regular/original price
+   * (if available) to provide complete pricing information to the tracker.
    *
    * @returns {Object|null} Parsed price data or null
    */
   extractPrice() {
-    console.log('[WooCommerce Adapter] Starting variation-focused price extraction (v7)...');
+    console.log('[WooCommerce Adapter] Starting price extraction with regular price support (v8)...');
 
     const summaryArea = this.querySelector('.summary.entry-summary') || this.document;
+    let currentPrice = null;
+    let regularPrice = null;
 
     // PRIORITY 1: Check for variation price (variable products with selected variation)
     const variationPriceContainer = summaryArea.querySelector('.woocommerce-variation-price');
     if (variationPriceContainer) {
       console.log('[WooCommerce Adapter] Found .woocommerce-variation-price container');
 
-      // Look for sale price in <ins> tag (highest priority)
-      const salePrice = variationPriceContainer.querySelector('ins .woocommerce-Price-amount, ins .amount');
-      if (salePrice) {
-        const salePriceText = salePrice.textContent?.trim();
-        if (salePriceText) {
-          const parsed = this.parsePriceWithContext(salePriceText);
-          if (parsed && parsed.confidence >= 0.70) {
-            console.log(`[WooCommerce Adapter] ✓ Found sale price in variation: ${parsed.numeric} ${parsed.currency}`);
-            return parsed;
+      // Extract regular price from <del> tag (original price before discount)
+      const delElement = variationPriceContainer.querySelector('del .woocommerce-Price-amount, del .amount');
+      if (delElement) {
+        const delPriceText = delElement.textContent?.trim();
+        if (delPriceText) {
+          const parsedDel = this.parsePriceWithContext(delPriceText);
+          if (parsedDel && parsedDel.confidence >= 0.70) {
+            regularPrice = parsedDel.numeric;
+            console.log(`[WooCommerce Adapter] ✓ Found regular price in <del>: ${parsedDel.numeric} ${parsedDel.currency}`);
           }
         }
       }
 
-      // If no sale price, look for regular price (not in <del>)
-      const regularPrice = variationPriceContainer.querySelector('.woocommerce-Price-amount:not(del .woocommerce-Price-amount), .amount:not(del .amount)');
-      if (regularPrice) {
-        const regularPriceText = regularPrice.textContent?.trim();
-        if (regularPriceText && !regularPriceText.includes('–') && !regularPriceText.includes('-')) {
-          const parsed = this.parsePriceWithContext(regularPriceText);
+      // Look for current/sale price in <ins> tag
+      const insElement = variationPriceContainer.querySelector('ins .woocommerce-Price-amount, ins .amount');
+      if (insElement) {
+        const insPriceText = insElement.textContent?.trim();
+        if (insPriceText) {
+          const parsed = this.parsePriceWithContext(insPriceText);
           if (parsed && parsed.confidence >= 0.70) {
-            console.log(`[WooCommerce Adapter] ✓ Found regular price in variation: ${parsed.numeric} ${parsed.currency}`);
-            return parsed;
+            currentPrice = parsed;
+            console.log(`[WooCommerce Adapter] ✓ Found sale price in <ins>: ${parsed.numeric} ${parsed.currency}`);
           }
         }
+      }
+
+      // If no sale price found, look for regular price (not in <del>, not a range)
+      if (!currentPrice) {
+        const priceElement = variationPriceContainer.querySelector('.woocommerce-Price-amount:not(del .woocommerce-Price-amount), .amount:not(del .amount)');
+        if (priceElement) {
+          const priceText = priceElement.textContent?.trim();
+          if (priceText && !priceText.includes('–') && !priceText.includes('-')) {
+            const parsed = this.parsePriceWithContext(priceText);
+            if (parsed && parsed.confidence >= 0.70) {
+              currentPrice = parsed;
+              console.log(`[WooCommerce Adapter] ✓ Found current price in variation: ${parsed.numeric} ${parsed.currency}`);
+            }
+          }
+        }
+      }
+
+      // If we found a price in the variation container, return it with metadata
+      if (currentPrice) {
+        if (regularPrice && regularPrice > currentPrice.numeric) {
+          currentPrice.regularPrice = regularPrice;
+          currentPrice.isOnSale = true;
+          const savings = regularPrice - currentPrice.numeric;
+          const savingsPercent = ((savings / regularPrice) * 100).toFixed(0);
+          console.log(`[WooCommerce Adapter] ✓ Product is on sale! Regular: ${regularPrice}, Current: ${currentPrice.numeric}, Savings: ${savings} (${savingsPercent}%)`);
+        }
+        return currentPrice;
       }
     }
 
@@ -130,30 +158,57 @@ export class WooCommerceAdapter extends BaseAdapter {
     if (standardPriceContainer) {
       console.log('[WooCommerce Adapter] Found p.price container');
 
-      // Look for sale price in <ins> tag
-      const salePrice = standardPriceContainer.querySelector('ins .woocommerce-Price-amount, ins .amount');
-      if (salePrice) {
-        const salePriceText = salePrice.textContent?.trim();
-        if (salePriceText) {
-          const parsed = this.parsePriceWithContext(salePriceText);
-          if (parsed && parsed.confidence >= 0.70) {
-            console.log(`[WooCommerce Adapter] ✓ Found sale price in p.price: ${parsed.numeric} ${parsed.currency}`);
-            return parsed;
+      // Extract regular price from <del> tag
+      const delElement = standardPriceContainer.querySelector('del .woocommerce-Price-amount, del .amount');
+      if (delElement) {
+        const delPriceText = delElement.textContent?.trim();
+        if (delPriceText) {
+          const parsedDel = this.parsePriceWithContext(delPriceText);
+          if (parsedDel && parsedDel.confidence >= 0.70) {
+            regularPrice = parsedDel.numeric;
+            console.log(`[WooCommerce Adapter] ✓ Found regular price in <del>: ${parsedDel.numeric} ${parsedDel.currency}`);
           }
         }
       }
 
-      // If no sale, look for regular price (not in <del>, not a range)
-      const regularPrice = standardPriceContainer.querySelector('.woocommerce-Price-amount:not(del .woocommerce-Price-amount), .amount:not(del .amount)');
-      if (regularPrice) {
-        const regularPriceText = regularPrice.textContent?.trim();
-        if (regularPriceText && !regularPriceText.includes('–') && !regularPriceText.includes('-')) {
-          const parsed = this.parsePriceWithContext(regularPriceText);
+      // Look for sale price in <ins> tag
+      const insElement = standardPriceContainer.querySelector('ins .woocommerce-Price-amount, ins .amount');
+      if (insElement) {
+        const insPriceText = insElement.textContent?.trim();
+        if (insPriceText) {
+          const parsed = this.parsePriceWithContext(insPriceText);
           if (parsed && parsed.confidence >= 0.70) {
-            console.log(`[WooCommerce Adapter] ✓ Found regular price in p.price: ${parsed.numeric} ${parsed.currency}`);
-            return parsed;
+            currentPrice = parsed;
+            console.log(`[WooCommerce Adapter] ✓ Found sale price in <ins>: ${parsed.numeric} ${parsed.currency}`);
           }
         }
+      }
+
+      // If no sale price, look for regular price
+      if (!currentPrice) {
+        const priceElement = standardPriceContainer.querySelector('.woocommerce-Price-amount:not(del .woocommerce-Price-amount), .amount:not(del .amount)');
+        if (priceElement) {
+          const priceText = priceElement.textContent?.trim();
+          if (priceText && !priceText.includes('–') && !priceText.includes('-')) {
+            const parsed = this.parsePriceWithContext(priceText);
+            if (parsed && parsed.confidence >= 0.70) {
+              currentPrice = parsed;
+              console.log(`[WooCommerce Adapter] ✓ Found current price in p.price: ${parsed.numeric} ${parsed.currency}`);
+            }
+          }
+        }
+      }
+
+      // If we found a price, return it with metadata
+      if (currentPrice) {
+        if (regularPrice && regularPrice > currentPrice.numeric) {
+          currentPrice.regularPrice = regularPrice;
+          currentPrice.isOnSale = true;
+          const savings = regularPrice - currentPrice.numeric;
+          const savingsPercent = ((savings / regularPrice) * 100).toFixed(0);
+          console.log(`[WooCommerce Adapter] ✓ Product is on sale! Regular: ${regularPrice}, Current: ${currentPrice.numeric}, Savings: ${savings} (${savingsPercent}%)`);
+        }
+        return currentPrice;
       }
     }
 
