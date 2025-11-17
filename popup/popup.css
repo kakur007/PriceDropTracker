@@ -36,7 +36,7 @@ body {
 .title {
   font-size: 18px;
   font-weight: 600;
-  color: #2563eb;
+  color: #1eadbd;
 }
 
 .header-actions {
@@ -94,7 +94,7 @@ body {
 .stat-value {
   font-size: 20px;
   font-weight: 700;
-  color: #2563eb;
+  color: #1eadbd;
 }
 
 .stat-label {
@@ -132,8 +132,8 @@ body {
 }
 
 .tab.active {
-  background: #eff6ff;
-  color: #2563eb;
+  background: #e8f7f9;
+  color: #1eadbd;
 }
 
 /* Products List */
@@ -146,16 +146,17 @@ body {
 
 .product-card {
   background: #ffffff;
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 12px;
   margin-bottom: 8px;
   border: 1px solid #e5e7eb;
   transition: all 0.2s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .product-card:hover {
-  border-color: #2563eb;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.1);
+  border-color: #1eadbd;
+  box-shadow: 0 4px 12px rgba(30, 173, 189, 0.12);
 }
 
 .product-card.stale {
@@ -208,7 +209,7 @@ body {
 
 .product-title {
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   color: #111827;
   margin-bottom: 4px;
   overflow: hidden;
@@ -256,24 +257,26 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 8px;
-  background: #dcfce7;
   color: #16a34a;
-  border-radius: 4px;
   font-size: 12px;
   font-weight: 600;
+}
+
+.price-drop::before {
+  content: "↓";
 }
 
 .price-increase {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 8px;
-  background: #fee2e2;
   color: #dc2626;
-  border-radius: 4px;
   font-size: 12px;
   font-weight: 600;
+}
+
+.price-increase::before {
+  content: "↑";
 }
 
 .product-actions {
@@ -285,18 +288,19 @@ body {
 .btn-small {
   flex: 1;
   padding: 6px 12px;
-  border: 1px solid #e5e7eb;
-  background: #ffffff;
+  border: none;
+  background: #f3f4f6;
   border-radius: 4px;
   font-size: 12px;
   font-weight: 500;
+  color: #6b7280;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .btn-small:hover {
-  background: #f9fafb;
-  border-color: #d1d5db;
+  background: #e5e7eb;
+  color: #1eadbd;
 }
 
 .btn-small:active {
@@ -304,13 +308,13 @@ body {
 }
 
 .btn-danger {
-  color: #dc2626;
-  border-color: #fecaca;
+  background: #f3f4f6;
+  color: #6b7280;
 }
 
 .btn-danger:hover {
-  background: #fef2f2;
-  border-color: #fca5a5;
+  background: #fee2e2;
+  color: #dc2626;
 }
 
 /* Empty State */
@@ -347,7 +351,7 @@ body {
   width: 32px;
   height: 32px;
   border: 3px solid #e5e7eb;
-  border-top-color: #2563eb;
+  border-top-color: #1eadbd;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   margin: 0 auto 16px;

@@ -212,9 +212,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Support
 
 ### Need Help?
-- **Documentation**: Check the [Wiki](https://github.com/YOUR_USERNAME/price-drop-tracker/wiki) (coming soon)
-- **Issues**: Report bugs or request features in [Issues](https://github.com/YOUR_USERNAME/price-drop-tracker/issues)
-- **Email**: support@example.com (replace with actual contact)
+- **Developer**: [GoGoNano](https://gogonano.com)
+- **Support**: Visit [GoGoNano Support](https://gogonano.com/support)
+- **Issues**: Report bugs or request features in [Issues](https://github.com/kakur007/PriceDropTracker/issues)
 
 ### FAQ
 
@@ -236,6 +236,7 @@ A: Check your notification threshold in settings. Default is 5%, but you can set
 ## Acknowledgments
 
 - Built with [Chrome Extension Manifest V3](https://developer.chrome.com/docs/extensions/mv3/intro/)
+- Developed by [GoGoNano](https://gogonano.com)
 - Inspired by the need for a privacy-focused price tracker
 - Thanks to all contributors and testers
 
@@ -249,11 +250,11 @@ A: Check your notification threshold in settings. Default is 5%, but you can set
 
 ---
 
-**Made with ❤️ for deal hunters everywhere**
+**Developed by [GoGoNano](https://gogonano.com)**
 
 If you find this extension useful, please consider:
 - ⭐ Starring the repository
-- 🐛 Reporting bugs
+- 🐛 Reporting bugs at [GoGoNano Support](https://gogonano.com/support)
 - 💡 Suggesting features
 - 🤝 Contributing code
 - 📢 Sharing with friends

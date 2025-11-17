@@ -91,8 +91,8 @@ body {
 
 .select:focus {
   outline: none;
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  border-color: #1eadbd;
+  box-shadow: 0 0 0 3px rgba(30, 173, 189, 0.1);
 }
 
 .checkbox-label {
@@ -216,11 +216,12 @@ body {
 
 .about-links a {
   font-size: 14px;
-  color: #2563eb;
+  color: #1eadbd;
   text-decoration: none;
 }
 
 .about-links a:hover {
+  color: #168a99;
   text-decoration: underline;
 }
 
