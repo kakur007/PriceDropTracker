@@ -1,0 +1,57 @@
+{
+  "amazon": [
+    {
+      "url": "https://www.amazon.com/dp/B08N5WRWNW",
+      "description": "Amazon US - Electronics",
+      "expectedCurrency": "USD"
+    },
+    {
+      "url": "https://www.amazon.co.uk/dp/B08N5WRWNW",
+      "description": "Amazon UK - Same product",
+      "expectedCurrency": "GBP"
+    },
+    {
+      "url": "https://www.amazon.de/dp/B08N5WRWNW",
+      "description": "Amazon Germany",
+      "expectedCurrency": "EUR"
+    },
+    {
+      "url": "https://www.amazon.co.jp/dp/B08N5WRWNW",
+      "description": "Amazon Japan",
+      "expectedCurrency": "JPY"
+    }
+  ],
+  "ebay": [
+    {
+      "url": "https://www.ebay.com/itm/185053838278",
+      "description": "eBay US",
+      "expectedCurrency": "USD"
+    },
+    {
+      "url": "https://www.ebay.co.uk/itm/185053838278",
+      "description": "eBay UK",
+      "expectedCurrency": "GBP"
+    }
+  ],
+  "walmart": [
+    {
+      "url": "https://www.walmart.com/ip/Apple-AirPods-Pro-2nd-Generation/1752657021",
+      "description": "Walmart",
+      "expectedCurrency": "USD"
+    }
+  ],
+  "target": [
+    {
+      "url": "https://www.target.com/p/apple-airpods-pro-2nd-generation/-/A-85978622",
+      "description": "Target",
+      "expectedCurrency": "USD"
+    }
+  ],
+  "bestbuy": [
+    {
+      "url": "https://www.bestbuy.com/site/apple-airpods-pro-2nd-generation/6447382.p",
+      "description": "Best Buy",
+      "expectedCurrency": "USD"
+    }
+  ]
+}
