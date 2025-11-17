@@ -12,7 +12,7 @@
 import { StorageManager } from './storage-manager.js';
 import { checkAllProducts, checkSingleProduct, PriceCheckResult } from './price-checker.js';
 import { showBatchPriceDropNotifications, showInfoNotification, showErrorNotification } from '../utils/notification-manager.js';
-import { validateUrl, getSupportedStoresList, isUrlSupportedOrPermitted } from '../utils/domain-validator.js';
+import { validateUrl, getSupportedStoresList, isUrlSupportedOrPermitted, isUrlSupported } from '../utils/domain-validator.js';
 import { checkPermissionStatus, extractDomain } from '../utils/permission-manager.js';
 
 // Alarm names
@@ -391,8 +391,11 @@ async function handleProductDetected(productData, sender) {
   console.log('[ServiceWorker] Product detected:', productData.title);
 
   try {
+    // Check if URL is in default supported list
+    const isDefaultSupported = isUrlSupported(productData.url);
+
     // Check if we have permission for this URL
-    const permissionStatus = await checkPermissionStatus(productData.url);
+    const permissionStatus = await checkPermissionStatus(productData.url, isDefaultSupported);
 
     // If we need to request permission, return status to trigger UI prompt
     if (permissionStatus.needsRequest && !permissionStatus.hasPermission) {

@@ -5,6 +5,8 @@
  * has host permissions for in manifest.json
  */
 
+import { hasPermissionForUrl } from './permission-manager.js';
+
 /**
  * List of supported domains (must match manifest.json host_permissions)
  */
@@ -96,7 +98,6 @@ async function isUrlSupportedOrPermitted(url) {
 
   // Check if we have runtime permission for this URL
   try {
-    const { hasPermissionForUrl } = await import('./permission-manager.js');
     return await hasPermissionForUrl(url);
   } catch (error) {
     console.error('[DomainValidator] Error checking permissions:', error);
