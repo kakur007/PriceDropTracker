@@ -310,7 +310,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
  * @returns {Promise<any>} - Response data
  */
 async function handleMessage(message, sender) {
-  const { type, data } = message;
+  const { type, data = {} } = message;
 
   switch (type) {
     case MESSAGE_TYPES.PRODUCT_DETECTED:
