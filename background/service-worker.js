@@ -31,7 +31,8 @@ const MESSAGE_TYPES = {
   UPDATE_SETTINGS: 'UPDATE_SETTINGS',
   GET_SETTINGS: 'GET_SETTINGS',
   CHECK_NOW: 'CHECK_NOW',
-  FORCE_CHECK_ALL: 'FORCE_CHECK_ALL'
+  FORCE_CHECK_ALL: 'FORCE_CHECK_ALL',
+  REFRESH_SINGLE_PRODUCT: 'REFRESH_SINGLE_PRODUCT'
 };
 
 console.log('[ServiceWorker] Price Drop Tracker: Service worker initializing...');
@@ -328,6 +329,14 @@ async function handleMessage(message, sender) {
       await StorageManager.deleteProduct(data.productId);
       await updateBadge();
       return { deleted: true };
+
+    case MESSAGE_TYPES.REFRESH_SINGLE_PRODUCT:
+      console.log('[ServiceWorker] Refreshing single product:', data.productId);
+      const refreshResult = await checkSingleProduct(data.productId);
+      await updateBadge();
+      // Return the updated product
+      const refreshedProduct = await StorageManager.getProduct(data.productId);
+      return { product: refreshedProduct, checkResult: refreshResult };
 
     case MESSAGE_TYPES.GET_ALL_PRODUCTS:
       return await StorageManager.getAllProducts();

@@ -8,9 +8,65 @@ let currentFilter = 'all';
 
 // Initialize popup
 document.addEventListener('DOMContentLoaded', async () => {
+  await initializeTheme();
   await loadProducts();
   setupEventListeners();
 });
+
+/**
+ * Initialize theme from saved preference
+ */
+async function initializeTheme() {
+  try {
+    const result = await chrome.storage.local.get(['theme']);
+    const theme = result.theme || 'light';
+    applyTheme(theme);
+  } catch (error) {
+    console.error('[Popup] Error loading theme:', error);
+    applyTheme('light');
+  }
+}
+
+/**
+ * Apply theme to document
+ */
+function applyTheme(theme) {
+  document.body.setAttribute('data-theme', theme);
+  updateThemeIcon(theme);
+}
+
+/**
+ * Update theme toggle icon
+ */
+function updateThemeIcon(theme) {
+  const lightIcon = document.querySelector('.theme-icon-light');
+  const darkIcon = document.querySelector('.theme-icon-dark');
+
+  if (theme === 'dark') {
+    lightIcon.style.display = 'none';
+    darkIcon.style.display = 'block';
+  } else {
+    lightIcon.style.display = 'block';
+    darkIcon.style.display = 'none';
+  }
+}
+
+/**
+ * Toggle between light and dark theme
+ */
+async function toggleTheme() {
+  const currentTheme = document.body.getAttribute('data-theme') || 'light';
+  const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+
+  applyTheme(newTheme);
+
+  // Save preference
+  try {
+    await chrome.storage.local.set({ theme: newTheme });
+  } catch (error) {
+    console.error('[Popup] Error saving theme:', error);
+  }
+}
 
 /**
  * Load all products from storage
@@ -81,6 +137,45 @@ function hasActivePriceDrop(product) {
 }
 
 /**
+ * Group products by domain
+ */
+function groupProductsByDomain(products) {
+  const groups = {};
+
+  products.forEach(product => {
+    const domain = product.domain || 'unknown';
+
+    if (!groups[domain]) {
+      groups[domain] = [];
+    }
+
+    groups[domain].push(product);
+  });
+
+  // Sort groups: known stores first, then custom sites alphabetically
+  const knownStores = ['amazon.com', 'ebay.com', 'walmart.com', 'target.com', 'bestbuy.com'];
+  const sortedGroups = {};
+
+  // Add known stores first
+  knownStores.forEach(store => {
+    const matchingDomain = Object.keys(groups).find(domain => domain.includes(store.replace('.com', '')));
+    if (matchingDomain && groups[matchingDomain]) {
+      sortedGroups[matchingDomain] = groups[matchingDomain];
+    }
+  });
+
+  // Add remaining custom sites alphabetically
+  Object.keys(groups)
+    .filter(domain => !Object.keys(sortedGroups).includes(domain))
+    .sort()
+    .forEach(domain => {
+      sortedGroups[domain] = groups[domain];
+    });
+
+  return sortedGroups;
+}
+
+/**
  * Display products based on filter
  */
 function displayProducts(products, filter) {
@@ -115,7 +210,39 @@ function displayProducts(products, filter) {
     return bChecked - aChecked;
   });
 
-  container.innerHTML = filteredProducts.map(product => createProductCard(product)).join('');
+  // Group products by domain
+  const groupedProducts = groupProductsByDomain(filteredProducts);
+
+  // Create HTML for grouped products
+  container.innerHTML = Object.entries(groupedProducts).map(([domain, products]) => {
+    const storeName = getStoreName(domain);
+    const productCards = products.map(product => createProductCard(product)).join('');
+
+    return `
+      <div class="product-group">
+        <div class="group-header" data-domain="${escapeHtml(domain)}">
+          <div class="group-info">
+            <span class="group-name">${escapeHtml(storeName)}</span>
+            <span class="group-count">${products.length} ${products.length === 1 ? 'product' : 'products'}</span>
+          </div>
+          <svg class="group-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="group-products">
+          ${productCards}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Add event listeners to group headers for collapse/expand
+  container.querySelectorAll('.group-header').forEach(header => {
+    header.addEventListener('click', (e) => {
+      const group = header.closest('.product-group');
+      group.classList.toggle('collapsed');
+    });
+  });
 
   // Add event listeners to cards
   container.querySelectorAll('.product-card').forEach(card => {
@@ -128,6 +255,11 @@ function displayProducts(products, filter) {
     card.querySelector('.btn-visit')?.addEventListener('click', (e) => {
       e.stopPropagation();
       openProduct(productId);
+    });
+
+    card.querySelector('.btn-refresh')?.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await handleRefreshSingleProduct(productId, e.currentTarget);
     });
 
     card.querySelector('.btn-delete')?.addEventListener('click', async (e) => {
@@ -225,8 +357,21 @@ function createProductCard(product) {
       </div>
 
       <div class="product-actions">
-        <button class="btn-small btn-visit">Visit Page</button>
-        <button class="btn-small btn-danger btn-delete">Remove</button>
+        <button class="product-icon-btn btn-refresh" title="Refresh price">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M13.65 2.35C12.2 0.9 10.21 0 8 0C3.58 0 0.01 3.58 0.01 8C0.01 12.42 3.58 16 8 16C11.73 16 14.84 13.45 15.73 10H13.65C12.83 12.33 10.61 14 8 14C4.69 14 2 11.31 2 8C2 4.69 4.69 2 8 2C9.66 2 11.14 2.69 12.22 3.78L9 7H16V0L13.65 2.35Z" fill="currentColor"/>
+          </svg>
+        </button>
+        <button class="product-icon-btn btn-visit" title="Visit page">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M14 9V14C14 14.5304 13.7893 15.0391 13.4142 15.4142C13.0391 15.7893 12.5304 16 12 16H2C1.46957 16 0.960859 15.7893 0.585786 15.4142C0.210714 15.0391 0 14.5304 0 14V4C0 3.46957 0.210714 2.96086 0.585786 2.58579C0.960859 2.21071 1.46957 2 2 2H7M11 0H16M16 0V5M16 0L7 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <button class="product-icon-btn btn-delete" title="Remove product">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M2 4H3.33333H14M5.33333 4V2.66667C5.33333 2.31304 5.47381 1.97391 5.72386 1.72386C5.97391 1.47381 6.31304 1.33333 6.66667 1.33333H9.33333C9.68696 1.33333 10.0261 1.47381 10.2761 1.72386C10.5262 1.97391 10.6667 2.31304 10.6667 2.66667V4M12.6667 4V13.3333C12.6667 13.687 12.5262 14.0261 12.2761 14.2761C12.0261 14.5262 11.687 14.6667 11.3333 14.6667H4.66667C4.31304 14.6667 3.97391 14.5262 3.72386 14.2761C3.47381 14.0261 3.33333 13.687 3.33333 13.3333V4H12.6667Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
       </div>
     </div>
   `;
@@ -455,6 +600,9 @@ function setupEventListeners() {
     }
   });
 
+  // Theme toggle button
+  document.getElementById('themeToggleBtn').addEventListener('click', toggleTheme);
+
   // Settings button
   document.getElementById('settingsBtn').addEventListener('click', () => {
     chrome.runtime.openOptionsPage();
@@ -468,6 +616,44 @@ function openProduct(productId) {
   const product = allProducts[productId];
   if (product && product.url) {
     chrome.tabs.create({ url: product.url });
+  }
+}
+
+/**
+ * Handle refreshing a single product
+ */
+async function handleRefreshSingleProduct(productId, buttonElement) {
+  try {
+    // Add loading state to button
+    buttonElement.classList.add('refreshing');
+    buttonElement.disabled = true;
+
+    // Request price check for this specific product
+    const response = await chrome.runtime.sendMessage({
+      type: 'REFRESH_SINGLE_PRODUCT',
+      data: { productId }
+    });
+
+    if (response && response.success) {
+      // Update the product in our local cache
+      const updatedProduct = response.data.product;
+      if (updatedProduct) {
+        allProducts[productId] = updatedProduct;
+        displayProducts(allProducts, currentFilter);
+        updateStats(allProducts);
+
+        showTemporaryMessage('Price updated!', 'success');
+      }
+    } else {
+      showTemporaryMessage('Failed to update price', 'error');
+    }
+  } catch (error) {
+    console.error('[Popup] Error refreshing product:', error);
+    showTemporaryMessage('Failed to update price', 'error');
+  } finally {
+    // Remove loading state
+    buttonElement.classList.remove('refreshing');
+    buttonElement.disabled = false;
   }
 }
 
