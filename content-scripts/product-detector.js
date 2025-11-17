@@ -89,6 +89,8 @@ function isNonProductPage() {
 function extractFromSchemaOrg() {
   const scripts = document.querySelectorAll('script[type="application/ld+json"]');
 
+  console.log(`[Price Drop Tracker] Found ${scripts.length} JSON-LD scripts`);
+
   for (const script of scripts) {
     try {
       const data = JSON.parse(script.textContent);
@@ -103,12 +105,17 @@ function extractFromSchemaOrg() {
           continue;
         }
 
+        console.log('[Price Drop Tracker] Found Product in Schema.org:', item);
+
         // Extract offers (could be single object or array)
         const offers = Array.isArray(item.offers) ? item.offers[0] : item.offers;
 
         if (!offers || !offers.price) {
+          console.log('[Price Drop Tracker] No offers or price in Schema.org data');
           continue;
         }
+
+        console.log('[Price Drop Tracker] Schema.org price:', offers.price, 'Currency:', offers.priceCurrency);
 
         // Parse price using our currency parser
         const priceString = String(offers.price);
@@ -119,6 +126,7 @@ function extractFromSchemaOrg() {
         });
 
         if (!priceData) {
+          console.log('[Price Drop Tracker] Failed to parse Schema.org price');
           continue;
         }
 
@@ -274,42 +282,73 @@ function extractFromSelectors() {
     return null;
   }
 
-  // Try to find price with common selectors
-  const priceSelectors = [
-    '[data-price]',
-    '.price',
-    '.product-price',
-    '[class*="price"]',
-    '[id*="price"]',
-    '#priceblock_ourprice',           // Amazon
-    '#priceblock_dealprice',           // Amazon deal price
-    '.a-price .a-offscreen',           // Amazon hidden price
-    '[data-testid="price"]',           // Modern React apps
-    '.x-price-primary',                // eBay
-    '[itemprop="price"]'               // Microdata fallback
-  ];
-
+  // Amazon-specific price extraction (more reliable)
   let priceData = null;
 
-  for (const selector of priceSelectors) {
-    const elements = document.querySelectorAll(selector);
-    for (const element of elements) {
-      const priceText =
-        element.getAttribute('data-price') ||
-        element.getAttribute('content') ||
-        element.textContent;
+  if (window.location.hostname.includes('amazon')) {
+    // Try Amazon-specific selectors in order of reliability
+    const amazonSelectors = [
+      '.a-price .a-offscreen',           // Screen reader price (most reliable - full formatted price)
+      '#corePrice_feature_div .a-offscreen',
+      '#corePriceDisplay_desktop_feature_div .a-offscreen',
+      '.reinventPricePriceToPayMargin .a-offscreen',
+      '#priceblock_ourprice',
+      '#priceblock_dealprice'
+    ];
 
-      const parsed = parsePrice(priceText, {
-        domain: window.location.hostname,
-        locale: document.documentElement.lang
-      });
+    for (const selector of amazonSelectors) {
+      const element = document.querySelector(selector);
+      if (element) {
+        const priceText = element.textContent?.trim();
+        console.log(`[Price Drop Tracker] Trying Amazon selector "${selector}": "${priceText}"`);
 
-      if (parsed && parsed.confidence >= 0.70) {
-        priceData = parsed;
-        break;
+        const parsed = parsePrice(priceText, {
+          domain: window.location.hostname,
+          locale: document.documentElement.lang
+        });
+
+        if (parsed && parsed.confidence >= 0.70) {
+          priceData = parsed;
+          console.log('[Price Drop Tracker] ✓ Amazon price parsed:', priceData.numeric);
+          break;
+        }
       }
     }
-    if (priceData) break;
+  }
+
+  // Generic price selectors for other sites or if Amazon-specific failed
+  if (!priceData) {
+    const genericSelectors = [
+      '[data-price]',
+      '[itemprop="price"]',
+      '.price',
+      '.product-price',
+      '[data-testid="price"]',
+      '.x-price-primary',                // eBay
+      '[class*="price"]',
+      '[id*="price"]'
+    ];
+
+    for (const selector of genericSelectors) {
+      const elements = document.querySelectorAll(selector);
+      for (const element of elements) {
+        const priceText =
+          element.getAttribute('data-price') ||
+          element.getAttribute('content') ||
+          element.textContent;
+
+        const parsed = parsePrice(priceText, {
+          domain: window.location.hostname,
+          locale: document.documentElement.lang
+        });
+
+        if (parsed && parsed.confidence >= 0.70) {
+          priceData = parsed;
+          break;
+        }
+      }
+      if (priceData) break;
+    }
   }
 
   if (!priceData) {
