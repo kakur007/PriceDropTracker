@@ -212,24 +212,14 @@ function createProductCard(product) {
         <div class="product-info">
           <div class="product-title">${escapeHtml(product.title)}</div>
           <div class="product-store">${storeName}</div>
+          <div class="product-pricing">
+            <span class="current-price">${formattedCurrent}</span>
+            ${hasPriceChange ? `<span class="original-price">${formattedOriginal}</span>` : ''}
+            ${hasDropped ? `<span class="price-drop">${Math.abs(priceChangePercent).toFixed(0)}%</span>` : ''}
+            ${hasIncreased ? `<span class="price-increase">${Math.abs(priceChangePercent).toFixed(0)}%</span>` : ''}
+          </div>
           ${isStale ? '<div class="stale-indicator" title="Could not update price. The product page may have changed.">⚠️ Update failed</div>' : ''}
         </div>
-      </div>
-
-      <div class="product-pricing">
-        <div class="price-info">
-          <span class="current-price">${formattedCurrent}</span>
-          ${hasPriceChange ? `<span class="original-price">${formattedOriginal}</span>` : ''}
-        </div>
-        ${hasDropped ? `
-          <div class="price-drop">
-            ${Math.abs(priceChangePercent).toFixed(0)}%
-          </div>
-        ` : hasIncreased ? `
-          <div class="price-increase">
-            ${Math.abs(priceChangePercent).toFixed(0)}%
-          </div>
-        ` : ''}
       </div>
 
       <div class="product-actions">

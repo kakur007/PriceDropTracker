@@ -213,7 +213,7 @@ body {
 .product-header {
   display: flex;
   gap: 12px;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
   cursor: pointer;
 }
 
@@ -262,18 +262,10 @@ body {
 .product-store {
   font-size: 11px;
   color: #6b7280;
+  margin-bottom: 6px;
 }
 
 .product-pricing {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 8px;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.price-info {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -281,14 +273,14 @@ body {
 }
 
 .current-price {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   color: #111827;
 }
 
 .original-price {
-  font-size: 13px;
-  color: #6b7280;
+  font-size: 12px;
+  color: #9ca3af;
   text-decoration: line-through;
 }
 
