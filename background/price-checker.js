@@ -12,6 +12,7 @@
 
 import { fetchHTML } from '../utils/fetch-helper.js';
 import { StorageManager } from './storage-manager.js';
+import { isUrlSupported } from '../utils/domain-validator.js';
 
 /**
  * Ensures the offscreen document is created and ready
@@ -230,6 +231,24 @@ async function checkSingleProduct(productId) {
       return {
         status: PriceCheckResult.NOT_FOUND,
         error: 'Product not found in storage'
+      };
+    }
+
+    // Check if domain is supported
+    if (!isUrlSupported(product.url)) {
+      console.warn(`[PriceChecker] Unsupported domain, skipping: ${product.url}`);
+
+      // Mark product as stale (unsupported)
+      product.tracking = product.tracking || {};
+      product.tracking.failedChecks = (product.tracking.failedChecks || 0) + 1;
+      product.tracking.lastChecked = Date.now();
+      product.tracking.status = 'unsupported';
+
+      await StorageManager.saveProduct(product);
+
+      return {
+        status: PriceCheckResult.ERROR,
+        error: 'Domain not supported for price checking (missing host permissions)'
       };
     }
 

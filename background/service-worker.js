@@ -11,7 +11,8 @@
 
 import { StorageManager } from './storage-manager.js';
 import { checkAllProducts, checkSingleProduct, PriceCheckResult } from './price-checker.js';
-import { showBatchPriceDropNotifications, showInfoNotification } from '../utils/notification-manager.js';
+import { showBatchPriceDropNotifications, showInfoNotification, showErrorNotification } from '../utils/notification-manager.js';
+import { validateUrl, getSupportedStoresList } from '../utils/domain-validator.js';
 
 // Alarm names
 const ALARMS = {
@@ -389,6 +390,24 @@ async function handleProductDetected(productData, sender) {
   console.log('[ServiceWorker] Product detected:', productData.title);
 
   try {
+    // Validate domain is supported
+    const validation = validateUrl(productData.url);
+    if (!validation.valid) {
+      console.warn('[ServiceWorker] Unsupported domain:', validation.error);
+
+      // Show error notification
+      await showErrorNotification(
+        `Cannot track this product: ${validation.error}. Supported stores: ${getSupportedStoresList().slice(0, 5).join(', ')}, and more.`
+      );
+
+      return {
+        error: validation.error,
+        unsupportedDomain: true,
+        domain: validation.domain,
+        supportedStores: validation.supportedStores
+      };
+    }
+
     // Check if product already exists
     const existingProduct = await StorageManager.getProduct(productData.id);
 
