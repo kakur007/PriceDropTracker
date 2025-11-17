@@ -283,6 +283,12 @@ async function notifyPriceDrops(results) {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('[ServiceWorker] Message received:', message.type, sender.tab?.url);
 
+  // Ignore messages meant for offscreen document (PARSE_HTML)
+  if (message.type === 'PARSE_HTML') {
+    // This message is for the offscreen document, not the service worker
+    return false;
+  }
+
   // Handle message asynchronously
   handleMessage(message, sender)
     .then(response => {

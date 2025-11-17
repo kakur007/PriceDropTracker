@@ -11,7 +11,8 @@
     "notifications",
     "tabs",
     "activeTab",
-    "scripting"
+    "scripting",
+    "offscreen"
   ],
 
   "host_permissions": [
