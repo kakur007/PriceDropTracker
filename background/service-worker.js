@@ -388,18 +388,21 @@ async function handleMessage(message, sender) {
  * @returns {Promise<Object>} - Saved product or status
  */
 async function handleProductDetected(productData, sender) {
-  console.log('[ServiceWorker] Product detected:', productData.title);
+  console.log('[ServiceWorker] Product detected:', productData.title, 'ID:', productData.productId);
+  console.log('[ServiceWorker] Product URL:', productData.url);
 
   try {
     // Check if URL is in default supported list
     const isDefaultSupported = isUrlSupported(productData.url);
+    console.log('[ServiceWorker] Is default supported:', isDefaultSupported);
 
     // Check if we have permission for this URL
     const permissionStatus = await checkPermissionStatus(productData.url, isDefaultSupported);
+    console.log('[ServiceWorker] Permission status:', permissionStatus);
 
     // If we need to request permission, return status to trigger UI prompt
     if (permissionStatus.needsRequest && !permissionStatus.hasPermission) {
-      console.log('[ServiceWorker] Permission needed for:', extractDomain(productData.url));
+      console.log('[ServiceWorker] ⚠️ Permission needed for:', extractDomain(productData.url));
 
       return {
         needsPermission: true,
@@ -411,9 +414,10 @@ async function handleProductDetected(productData, sender) {
 
     // Check if we have permission (either from manifest or granted at runtime)
     const hasPermission = await isUrlSupportedOrPermitted(productData.url);
+    console.log('[ServiceWorker] Has permission (final check):', hasPermission);
 
     if (!hasPermission) {
-      console.warn('[ServiceWorker] No permission for domain:', productData.url);
+      console.warn('[ServiceWorker] ✗ No permission for domain:', productData.url);
 
       await showErrorNotification(
         `Cannot track this product: No permission to access ${extractDomain(productData.url)}. You can grant permission when prompted.`
@@ -426,10 +430,10 @@ async function handleProductDetected(productData, sender) {
     }
 
     // Check if product already exists
-    const existingProduct = await StorageManager.getProduct(productData.id);
+    const existingProduct = await StorageManager.getProduct(productData.productId);
 
     if (existingProduct) {
-      console.log('[ServiceWorker] Product already tracked:', productData.id);
+      console.log('[ServiceWorker] ℹ️ Product already tracked:', productData.productId);
       return {
         alreadyTracked: true,
         product: existingProduct
@@ -437,9 +441,10 @@ async function handleProductDetected(productData, sender) {
     }
 
     // Save new product
+    console.log('[ServiceWorker] Saving new product:', productData.productId);
     await StorageManager.saveProduct(productData);
 
-    console.log('[ServiceWorker] New product saved:', productData.id);
+    console.log('[ServiceWorker] ✓ New product saved successfully:', productData.productId);
 
     // Update badge
     await updateBadge();

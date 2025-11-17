@@ -555,6 +555,7 @@ function showError(message) {
 async function handlePermissionRequest(domain, productData) {
   try {
     console.log('[Popup] Requesting permission for:', domain);
+    console.log('[Popup] Product data to save:', productData);
 
     // Import permission manager
     const { requestPermissionForUrl } = await import('../utils/permission-manager.js');
@@ -569,7 +570,7 @@ async function handlePermissionRequest(domain, productData) {
       return false;
     }
 
-    console.log('[Popup] Permission granted for:', domain);
+    console.log('[Popup] Permission granted for:', domain, '- Now retrying product save...');
 
     // Now retry saving the product
     const response = await chrome.runtime.sendMessage({
@@ -577,16 +578,20 @@ async function handlePermissionRequest(domain, productData) {
       data: productData
     });
 
-    if (response && response.success && !response.data.alreadyTracked) {
-      console.log('[Popup] Product saved successfully after permission grant');
-      return true;
-    } else if (response && response.success && response.data.alreadyTracked) {
-      console.log('[Popup] Product already tracked');
-      return true; // Still success
-    } else {
-      console.error('[Popup] Failed to save product after permission grant:', response);
-      return false;
+    console.log('[Popup] Response from retry:', JSON.stringify(response, null, 2));
+
+    if (response && response.success && response.data) {
+      if (!response.data.alreadyTracked) {
+        console.log('[Popup] ✓ Product saved successfully after permission grant:', response.data.product?.productId);
+        return true;
+      } else if (response.data.alreadyTracked) {
+        console.log('[Popup] ✓ Product already tracked:', response.data.product?.productId);
+        return true; // Still success
+      }
     }
+
+    console.error('[Popup] ✗ Failed to save product after permission grant. Response:', response);
+    return false;
 
   } catch (error) {
     console.error('[Popup] Error handling permission request:', error);
