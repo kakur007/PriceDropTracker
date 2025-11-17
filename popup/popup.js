@@ -565,7 +565,7 @@ function setupEventListeners() {
           console.log('[Popup] Requesting permission for:', tab.url);
 
           // IMPORTANT: Requesting permission will close the popup!
-          // We need to save state and continue after the popup reopens
+          // The service worker will automatically detect and track the product after permission is granted
           const granted = await requestPermissionForUrl(tab.url);
 
           if (!granted) {
@@ -576,16 +576,16 @@ function setupEventListeners() {
             return;
           }
 
-          console.log('[Popup] Permission granted! Reloading tab to enable access...');
+          console.log('[Popup] Permission granted! Service worker will auto-detect product...');
 
-          // Reload the tab to ensure the extension can access the page
-          // This is necessary because the popup closes when permission dialog appears
-          await chrome.tabs.reload(tab.id);
+          // The popup will close when permission dialog appears
+          // The service worker's chrome.permissions.onAdded listener will:
+          // 1. Detect the new permission
+          // 2. Check if it matches the active tab
+          // 3. Automatically run product detection
+          // 4. Save the product and show confirmation
 
-          // Show success message and inform user to click again
-          showTemporaryMessage('Permission granted! The page is reloading. Click + again to track the product.', 'success');
-          trackThisPageBtn.innerHTML = '<span>➕</span>';
-          trackThisPageBtn.disabled = false;
+          // No need to do anything else - just let the popup close
           return;
         }
       }

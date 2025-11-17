@@ -458,4 +458,129 @@ async function updateBadge() {
   }
 }
 
+/**
+ * Listen for new permissions being granted
+ * Automatically run product detection when user grants permission for a custom site
+ */
+chrome.permissions.onAdded.addListener(async (permissions) => {
+  console.log('[ServiceWorker] Permissions added:', permissions.origins);
+
+  try {
+    // Get the currently active tab
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+    if (!activeTab || !activeTab.id || !activeTab.url) {
+      console.log('[ServiceWorker] No active tab found after permission grant');
+      return;
+    }
+
+    // Check if the permission matches the active tab's domain
+    const tabHostname = new URL(activeTab.url).hostname;
+    const permissionMatches = permissions.origins.some(origin => {
+      // Convert origin pattern to regex
+      // *://example.com/* or *://*.example.com/*
+      const pattern = origin
+        .replace(/\*/g, '.*')
+        .replace(/\./g, '\\.');
+      const regex = new RegExp(pattern);
+      return regex.test(activeTab.url);
+    });
+
+    if (!permissionMatches) {
+      console.log('[ServiceWorker] Permission granted for different site, ignoring');
+      return;
+    }
+
+    console.log('[ServiceWorker] Permission granted for active tab, auto-detecting product...');
+
+    // Wait a moment for page to be ready after reload (if it was reloaded)
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // Inject and run product detection
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: activeTab.id },
+      func: async () => {
+        try {
+          const detectorUrl = chrome.runtime.getURL('content-scripts/product-detector.js');
+          const { detectProduct } = await import(detectorUrl);
+
+          console.log('[Price Drop Tracker] Auto-detection after permission grant...');
+
+          // Wait for page to be fully loaded
+          await new Promise(resolve => setTimeout(resolve, 1000));
+
+          const productData = await detectProduct();
+
+          if (productData) {
+            console.log('[Price Drop Tracker] Product detected, sending to background...');
+
+            const response = await chrome.runtime.sendMessage({
+              type: 'PRODUCT_DETECTED',
+              data: productData
+            });
+
+            if (response && response.success && !response.data.alreadyTracked) {
+              console.log('[Price Drop Tracker] ✓ Product auto-tracked after permission grant!');
+
+              // Show on-page confirmation
+              const badge = document.createElement('div');
+              badge.style.cssText = `
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 12px 20px;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                font-family: -apple-system, sans-serif;
+                font-size: 14px;
+                font-weight: 500;
+                z-index: 999999;
+                animation: slideIn 0.3s ease;
+              `;
+              badge.innerHTML = `✓ Now tracking: ${productData.price.formatted}`;
+
+              const style = document.createElement('style');
+              style.textContent = `
+                @keyframes slideIn {
+                  from { transform: translateY(100px); opacity: 0; }
+                  to { transform: translateY(0); opacity: 1; }
+                }
+              `;
+              document.head.appendChild(style);
+              document.body.appendChild(badge);
+
+              setTimeout(() => {
+                badge.style.transition = 'opacity 0.3s ease';
+                badge.style.opacity = '0';
+                setTimeout(() => badge.remove(), 300);
+              }, 5000);
+
+              return { success: true };
+            }
+
+            return { success: false, alreadyTracked: response?.data?.alreadyTracked };
+          }
+
+          return { success: false, error: 'No product found' };
+        } catch (error) {
+          console.error('[Price Drop Tracker] Auto-detection error:', error);
+          return { success: false, error: error.message };
+        }
+      }
+    });
+
+    const result = results?.[0]?.result;
+    if (result && result.success) {
+      console.log('[ServiceWorker] ✓ Product auto-tracked successfully after permission grant!');
+    } else {
+      console.log('[ServiceWorker] Auto-detection completed but no product added:', result);
+    }
+
+  } catch (error) {
+    console.error('[ServiceWorker] Error during auto-detection after permission grant:', error);
+  }
+});
+
 console.log('[ServiceWorker] Service worker ready');
