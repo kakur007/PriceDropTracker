@@ -170,8 +170,15 @@ function createProductCard(product) {
   const currency = product.price.currency;
   const locale = product.price.locale || 'en-US';
 
+  // Determine the original/regular price
+  // Priority 1: Use regularPrice from product.price (e.g., from WooCommerce <del> tag)
+  // Priority 2: Fall back to first price in history
   let firstPrice = currentPrice;
-  if (product.priceHistory && product.priceHistory.length > 0) {
+  if (product.price.regularPrice && product.price.regularPrice > currentPrice) {
+    // Product is currently on sale - use the regular price
+    firstPrice = product.price.regularPrice;
+  } else if (product.priceHistory && product.priceHistory.length > 0) {
+    // Use first historical price
     firstPrice = product.priceHistory[0].price;
   }
 
