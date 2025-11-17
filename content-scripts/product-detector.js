@@ -156,6 +156,39 @@ function isNonProductPage() {
 }
 
 /**
+ * Convert relative URL to absolute URL
+ * @param {string} url - URL to convert (may be relative or absolute)
+ * @returns {string|null} - Absolute URL or null if invalid
+ */
+function makeAbsoluteUrl(url) {
+  if (!url) return null;
+
+  try {
+    // If already absolute, return as-is
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+
+    // If protocol-relative (//example.com/image.jpg)
+    if (url.startsWith('//')) {
+      return window.location.protocol + url;
+    }
+
+    // If absolute path (/path/to/image.jpg)
+    if (url.startsWith('/')) {
+      return `${window.location.protocol}//${window.location.host}${url}`;
+    }
+
+    // Relative path (path/to/image.jpg) - construct from current URL
+    const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
+    return new URL(url, baseUrl).href;
+  } catch (error) {
+    console.warn('[Price Drop Tracker] Failed to convert URL to absolute:', url, error);
+    return url; // Return original if conversion fails
+  }
+}
+
+/**
  * Extract product data from Schema.org JSON-LD
  * Highest confidence (0.95) - SEO-critical data
  * @returns {Object|null} Product data or null
@@ -293,13 +326,16 @@ function extractFromSchemaOrg() {
         // Extract image (handle different formats)
         let imageUrl = null;
         if (item.image) {
+          let rawImageUrl = null;
           if (typeof item.image === 'string') {
-            imageUrl = item.image;
+            rawImageUrl = item.image;
           } else if (item.image.url) {
-            imageUrl = item.image.url;
+            rawImageUrl = item.image.url;
           } else if (Array.isArray(item.image) && item.image.length > 0) {
-            imageUrl = typeof item.image[0] === 'string' ? item.image[0] : item.image[0].url;
+            rawImageUrl = typeof item.image[0] === 'string' ? item.image[0] : item.image[0].url;
           }
+          // Convert to absolute URL
+          imageUrl = makeAbsoluteUrl(rawImageUrl);
         }
 
         return {
@@ -336,7 +372,7 @@ function extractFromOpenGraph() {
   const title = document.querySelector('meta[property="og:title"]')?.content;
   const priceAmount = document.querySelector('meta[property="og:price:amount"]')?.content;
   const priceCurrency = document.querySelector('meta[property="og:price:currency"]')?.content;
-  const imageUrl = document.querySelector('meta[property="og:image"]')?.content;
+  const rawImageUrl = document.querySelector('meta[property="og:image"]')?.content;
 
   if (!title || !priceAmount) {
     return null;
@@ -359,7 +395,7 @@ function extractFromOpenGraph() {
   return {
     title,
     price: priceData,
-    imageUrl,
+    imageUrl: makeAbsoluteUrl(rawImageUrl),
     url: window.location.href,
     domain: window.location.hostname,
     sku: null,
@@ -383,7 +419,7 @@ function extractFromMicrodata() {
   const title = productElement.querySelector('[itemprop="name"]')?.textContent?.trim();
   const priceElement = productElement.querySelector('[itemprop="price"]');
   const currency = productElement.querySelector('[itemprop="priceCurrency"]')?.content;
-  const imageUrl = productElement.querySelector('[itemprop="image"]')?.src;
+  const rawImageUrl = productElement.querySelector('[itemprop="image"]')?.src;
 
   if (!title || !priceElement) {
     return null;
@@ -406,7 +442,7 @@ function extractFromMicrodata() {
   return {
     title,
     price: priceData,
-    imageUrl,
+    imageUrl: makeAbsoluteUrl(rawImageUrl),
     url: window.location.href,
     domain: window.location.hostname,
     sku: null,
@@ -808,7 +844,7 @@ function extractFromSelectors() {
   }
 
   // Try to find image
-  const imageUrl =
+  const rawImageUrl =
     document.querySelector('[data-product-image]')?.src ||
     document.querySelector('[itemprop="image"]')?.src ||
     document.querySelector('.product-image img')?.src ||
@@ -816,6 +852,9 @@ function extractFromSelectors() {
     document.querySelector('main img[src]')?.src ||
     document.querySelector('img[alt*="' + title.slice(0, 20) + '"]')?.src ||
     null;
+
+  // Convert to absolute URL
+  const imageUrl = makeAbsoluteUrl(rawImageUrl);
 
   // Calculate confidence score based on signals
   let confidence = 0.30; // Base confidence for selector-based detection
