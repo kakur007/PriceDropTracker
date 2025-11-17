@@ -33,6 +33,28 @@ body {
   border-bottom: 1px solid #e5e7eb;
 }
 
+.title-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logo {
+  flex-shrink: 0;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 .title {
   font-size: 18px;
   font-weight: 600;
@@ -75,6 +97,13 @@ body {
 .icon-btn.primary:hover {
   background: #168a99;
   color: white;
+}
+
+.icon-btn.primary:active,
+.icon-btn.primary:focus {
+  background: #168a99;
+  color: white;
+  outline: none;
 }
 
 .icon-btn svg {
