@@ -53,7 +53,7 @@ export class WooCommerceAdapter extends BaseAdapter {
     }
 
     return null;
-  },
+  }
 
   /**
    * Extracts the product title
