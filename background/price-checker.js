@@ -14,38 +14,54 @@ import { fetchHTML } from '../utils/fetch-helper.js';
 import { StorageManager } from './storage-manager.js';
 
 /**
- * Simple price parser for service worker context
- * Avoids complex dependencies that require DOM/window access
- * @param {string} priceString - The raw text to parse
- * @returns {number|null} The numeric price or null
+ * Ensures the offscreen document is created and ready
+ * @returns {Promise<void>}
  */
-function simpleParsePrice(priceString) {
-  if (!priceString || typeof priceString !== 'string') return null;
+async function setupOffscreenDocument() {
+  // Check if offscreen document already exists
+  const existingContexts = await chrome.runtime.getContexts({
+    contextTypes: ['OFFSCREEN_DOCUMENT']
+  });
 
-  // Remove currency symbols, letters, and whitespace, except for . and ,
-  const numericString = priceString.replace(/[^0-9.,]/g, '').trim();
-
-  if (!numericString) return null;
-
-  // Handle European format (e.g., "1.299,99")
-  if (numericString.includes(',') && numericString.includes('.')) {
-    if (numericString.lastIndexOf(',') > numericString.lastIndexOf('.')) {
-      // Comma is the decimal separator
-      return parseFloat(numericString.replace(/\./g, '').replace(',', '.'));
-    }
+  if (existingContexts.length > 0) {
+    return; // Already exists
   }
 
-  // Handle comma as decimal separator (e.g., "1299,99")
-  if (numericString.includes(',')) {
-    const parts = numericString.split(',');
-    if (parts.length === 2 && parts[1].length <= 2) {
-      return parseFloat(numericString.replace(',', '.'));
-    }
-  }
+  // Create the offscreen document
+  await chrome.offscreen.createDocument({
+    url: 'background/offscreen.html',
+    reasons: ['DOM_PARSER'],
+    justification: 'Parse HTML to extract product prices in service worker context'
+  });
 
-  // Default to parseFloat for US-style or simple numbers
-  const price = parseFloat(numericString.replace(/,/g, ''));
-  return isNaN(price) ? null : price;
+  console.log('[PriceChecker] Offscreen document created');
+}
+
+/**
+ * Parse HTML using the offscreen document
+ * @param {string} html - The HTML string to parse
+ * @returns {Promise<Object>} - Parsed price data
+ */
+async function parseHTMLForPrice(html) {
+  try {
+    // Ensure offscreen document exists
+    await setupOffscreenDocument();
+
+    // Send HTML to offscreen document for parsing
+    const response = await chrome.runtime.sendMessage({
+      type: 'PARSE_HTML',
+      html
+    });
+
+    return response;
+
+  } catch (error) {
+    console.error('[PriceChecker] Error in parseHTMLForPrice:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
 }
 
 /**
@@ -210,75 +226,12 @@ async function checkSingleProduct(productId) {
       timeout: 15000
     });
 
-    // Parse the HTML into a document
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
+    // Parse the HTML using offscreen document
+    console.log(`[PriceChecker] Parsing HTML for price...`);
+    const parseResult = await parseHTMLForPrice(html);
 
-    // Extract price using simple, service-worker-friendly methods
-    let newPrice = null;
-    let detectionMethod = 'none';
-
-    // 1. Try to find price via Schema.org JSON-LD (most reliable)
-    const schemaScripts = doc.querySelectorAll('script[type="application/ld+json"]');
-    for (const script of schemaScripts) {
-      try {
-        const schema = JSON.parse(script.textContent);
-        const items = schema['@graph'] || (Array.isArray(schema) ? schema : [schema]);
-
-        for (const item of items) {
-          if (item['@type'] === 'Product' && item.offers) {
-            const offers = Array.isArray(item.offers) ? item.offers : [item.offers];
-
-            for (const offer of offers) {
-              const priceString = offer.price || offer.lowPrice;
-              if (priceString) {
-                newPrice = simpleParsePrice(String(priceString));
-                if (newPrice !== null) {
-                  detectionMethod = 'schema.org';
-                  break;
-                }
-              }
-            }
-          }
-          if (newPrice !== null) break;
-        }
-      } catch (e) {
-        // Ignore JSON parse errors
-      }
-      if (newPrice !== null) break;
-    }
-
-    // 2. If Schema.org fails, try common meta tags and selectors
-    if (newPrice === null) {
-      const selectors = [
-        { sel: 'meta[property="og:price:amount"]', attr: 'content' },
-        { sel: 'meta[property="product:price:amount"]', attr: 'content' },
-        { sel: 'meta[itemprop="price"]', attr: 'content' },
-        { sel: '.a-price .a-offscreen', attr: 'textContent' }, // Amazon
-        { sel: '.a-price-whole', attr: 'textContent' }, // Amazon
-        { sel: '[data-testid="customer-price"]', attr: 'textContent' }, // Best Buy
-        { sel: '.x-price-primary span', attr: 'textContent' }, // eBay
-        { sel: '#priceblock_ourprice', attr: 'textContent' }, // Amazon (old)
-        { sel: '[itemprop="price"]', attr: 'content' } // Generic microdata
-      ];
-
-      for (const { sel, attr } of selectors) {
-        const element = doc.querySelector(sel);
-        if (element) {
-          const priceText = attr === 'content' ? element.getAttribute('content') : element.textContent;
-          if (priceText) {
-            newPrice = simpleParsePrice(priceText);
-            if (newPrice !== null) {
-              detectionMethod = `selector: ${sel}`;
-              break;
-            }
-          }
-        }
-      }
-    }
-
-    // Check if we found a price
-    if (newPrice === null) {
+    // Check if parsing was successful
+    if (!parseResult.success || parseResult.price === null) {
       console.warn(`[PriceChecker] Could not extract price for ${productId}`);
 
       // Update failed checks counter
@@ -294,9 +247,12 @@ async function checkSingleProduct(productId) {
 
       return {
         status: PriceCheckResult.ERROR,
-        error: 'Could not extract price from page'
+        error: parseResult.error || 'Could not extract price from page'
       };
     }
+
+    const newPrice = parseResult.price;
+    const detectionMethod = parseResult.detectionMethod;
 
     console.log(`[PriceChecker] New price detected: ${newPrice} (via ${detectionMethod})`);
 
