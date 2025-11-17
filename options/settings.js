@@ -7,10 +7,23 @@ let currentSettings = null;
 
 // Initialize settings page
 document.addEventListener('DOMContentLoaded', async () => {
+  // Apply dark mode based on user preference
+  applyTheme();
+
   await loadSettings();
   await loadStorageStats();
   setupEventListeners();
 });
+
+/**
+ * Apply theme (dark/light mode)
+ */
+function applyTheme() {
+  chrome.storage.local.get(['theme'], (result) => {
+    const theme = result.theme || 'light';
+    document.body.setAttribute('data-theme', theme);
+  });
+}
 
 /**
  * Load settings from storage and populate form fields

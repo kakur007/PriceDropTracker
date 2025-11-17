@@ -34,6 +34,8 @@ Automatically track product prices across major e-commerce sites and get notifie
 - **Check Frequency** - Set price checks to run every 3, 6, 12, or 24 hours.
 - **Data Control** - Export your data to JSON, import from backups, or clear everything.
 - **Activity Log** - View recent price check activity and system events.
+- **Dark Mode** - Beautiful dark theme for comfortable night browsing.
+- **Price History Charts** - Interactive graphs showing price trends over time for each product.
 
 ### 🔒 Privacy First
 - **100% Local Storage** - All data stays on YOUR device. No external servers or cloud storage.
@@ -48,7 +50,13 @@ Automatically track product prices across major e-commerce sites and get notifie
 - **Walmart** - Walmart.com
 - **Target** - Target.com
 - **Best Buy** - BestBuy.com
-- More stores coming soon!
+- **Etsy** - Etsy.com
+- **AliExpress** - AliExpress.com
+- **Shopify Stores** - All *.myshopify.com stores
+- **Zalando** - All regional domains (.com, .co.uk, .de, .fr, .it, .es, .nl, .be)
+- **ASOS** - ASOS.com
+- **MediaMarkt** - All regional domains (.com, .de, .nl, .be, .at, .ch)
+- Plus thousands more via generic Schema.org detection!
 
 ## Installation
 
@@ -191,6 +199,12 @@ Notifications respect your settings:
 | **Walmart** | US (walmart.com) | ✅ USD |
 | **Target** | US (target.com) | ✅ USD |
 | **Best Buy** | US (bestbuy.com) | ✅ USD |
+| **Etsy** | Global (etsy.com) | ✅ Automatic |
+| **AliExpress** | Global (aliexpress.com) | ✅ Automatic |
+| **Shopify Stores** | Global (*.myshopify.com) | ✅ Automatic |
+| **Zalando** | EU (.com, .co.uk, .de, .fr, .it, .es, .nl, .be) | ✅ Automatic |
+| **ASOS** | Global (asos.com) | ✅ Automatic |
+| **MediaMarkt** | EU (.com, .de, .nl, .be, .at, .ch) | ✅ Automatic |
 
 ### Supported Currencies
 
@@ -223,11 +237,9 @@ The extension supports 30+ currencies with proper formatting:
 - ✅ Multi-currency portfolio tracking
 
 ### Coming Soon
-- Etsy
-- AliExpress
-- Shopify stores
-- Zalando, ASOS, MediaMarkt
 - More regional stores
+- Product comparison features
+- Price drop predictions
 
 ## Privacy & Permissions
 
@@ -398,7 +410,9 @@ price-drop-tracker/
 ├── options/                          # Settings page (full page)
 │   ├── settings.html                 # Settings form UI
 │   ├── settings.js                   # Settings management logic
-│   └── settings.css                  # Settings page styling
+│   ├── settings.css                  # Settings page styling
+│   ├── price-history.html            # Price history charts page
+│   └── price-history.js              # Price history visualization logic
 │
 ├── onboarding/                       # First-run experience
 │   ├── welcome.html                  # Welcome page for new users
@@ -479,24 +493,27 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - ✅ Activity logging
 - ✅ Storage statistics
 
-### 🚧 Phase 2: Enhanced Features (In Progress)
-- [ ] **Price History Charts** - Visual graphs showing price trends over time
+### ✅ Phase 2: Enhanced Features (COMPLETE)
+- ✅ **Price History Charts** - Visual graphs showing price trends over time
+- ✅ **Dark Mode** - Beautiful dark theme for comfortable night browsing
+- ✅ **More E-commerce Sites**:
+  - ✅ Etsy
+  - ✅ AliExpress
+  - ✅ Shopify stores
+  - ✅ Zalando, ASOS, MediaMarkt
+
+### 🚧 Phase 3: Advanced Features (In Progress)
 - [ ] **Product Comparison** - Side-by-side comparison of similar products
 - [ ] **Price Prediction** - ML-based price drop predictions
 - [ ] **Custom Alerts per Product** - Set different thresholds for different products
 - [ ] **Weekly Summary Reports** - Email digest of price changes
 - [ ] **More E-commerce Sites**:
-  - [ ] Etsy
-  - [ ] AliExpress
-  - [ ] Shopify stores
-  - [ ] Zalando, ASOS, MediaMarkt
   - [ ] Regional stores (country-specific)
 - [ ] **Browser Sync** - Sync data across devices via Chrome sync
-- [ ] **Dark Mode** - Theme toggle for better night browsing
 - [ ] **Wishlist Organization** - Folders and tags for products
 
-### 🔮 Phase 3: Advanced Features (Planned)
-- [ ] **Price Drop Predictions** - AI-powered predictions for best time to buy
+### 🔮 Phase 4: Future Features (Planned)
+- [ ] **AI Price Drop Predictions** - AI-powered predictions for best time to buy
 - [ ] **Product Alternatives** - Suggest similar products with better prices
 - [ ] **Amazon Wishlist Import** - Import existing Amazon wishlists
 - [ ] **CSV/Excel Export** - Export data in spreadsheet format
@@ -636,10 +653,10 @@ We love feature requests! Please:
 
 ## 📊 Project Statistics
 
-- **Lines of Code**: ~3,000+
-- **Files**: 30+
-- **Supported E-commerce Sites**: 5 major retailers (Amazon, eBay, Walmart, Target, Best Buy)
-- **Regional Variants**: 20+ (Amazon: 12, eBay: 8)
+- **Lines of Code**: ~3,500+
+- **Files**: 35+
+- **Supported E-commerce Sites**: 11 major retailers (Amazon, eBay, Walmart, Target, Best Buy, Etsy, AliExpress, Shopify stores, Zalando, ASOS, MediaMarkt)
+- **Regional Variants**: 30+ (Amazon: 12, eBay: 8, Zalando: 8, MediaMarkt: 6)
 - **Supported Currencies**: 30+
 - **Chrome Web Store Rating**: ⭐⭐⭐⭐⭐ (Coming soon!)
 - **Development Time**: 3-4 weeks (following structured guide)

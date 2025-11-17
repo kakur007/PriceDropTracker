@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Price Genius by GoGoNano",
   "version": "1.0.0",
-  "description": "Automatically track product prices and get notified when they drop. Works across Amazon, eBay, Walmart, Etsy, Shopify stores, and thousands more e-commerce sites.",
+  "description": "Automatically track product prices and get notified when they drop. Works across Amazon, eBay, Walmart, Etsy, AliExpress, Shopify stores, Zalando, ASOS, MediaMarkt, and thousands more e-commerce sites.",
   "author": "GoGoNano",
 
   "permissions": [
@@ -49,7 +49,22 @@
     "*://*.lowes.com/*",
     "*://*.wayfair.com/*",
     "*://*.overstock.com/*",
-    "*://*.myshopify.com/*"
+    "*://*.myshopify.com/*",
+    "*://*.zalando.com/*",
+    "*://*.zalando.co.uk/*",
+    "*://*.zalando.de/*",
+    "*://*.zalando.fr/*",
+    "*://*.zalando.it/*",
+    "*://*.zalando.es/*",
+    "*://*.zalando.nl/*",
+    "*://*.zalando.be/*",
+    "*://*.asos.com/*",
+    "*://*.mediamarkt.com/*",
+    "*://*.mediamarkt.de/*",
+    "*://*.mediamarkt.nl/*",
+    "*://*.mediamarkt.be/*",
+    "*://*.mediamarkt.at/*",
+    "*://*.mediamarkt.ch/*"
   ],
 
   "optional_host_permissions": [
@@ -97,7 +112,22 @@
         "*://*.lowes.com/*",
         "*://*.wayfair.com/*",
         "*://*.overstock.com/*",
-        "*://*.myshopify.com/*"
+        "*://*.myshopify.com/*",
+        "*://*.zalando.com/*",
+        "*://*.zalando.co.uk/*",
+        "*://*.zalando.de/*",
+        "*://*.zalando.fr/*",
+        "*://*.zalando.it/*",
+        "*://*.zalando.es/*",
+        "*://*.zalando.nl/*",
+        "*://*.zalando.be/*",
+        "*://*.asos.com/*",
+        "*://*.mediamarkt.com/*",
+        "*://*.mediamarkt.de/*",
+        "*://*.mediamarkt.nl/*",
+        "*://*.mediamarkt.be/*",
+        "*://*.mediamarkt.at/*",
+        "*://*.mediamarkt.ch/*"
       ],
       "js": [
         "content-scripts/main.js"
