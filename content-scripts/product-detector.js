@@ -370,24 +370,3 @@ async function enhanceProductData(data) {
 
   return data;
 }
-
-// Initialize on page load
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initDetection);
-} else {
-  initDetection();
-}
-
-/**
- * Initialize product detection
- */
-async function initDetection() {
-  // Wait a bit for dynamic content to load
-  setTimeout(async () => {
-    const product = await detectProduct();
-    if (product) {
-      // TODO: In Session 4, we'll save this to storage
-      console.log('[Price Drop Tracker] ✓ Product ready for tracking:', product.title);
-    }
-  }, 1000);
-}

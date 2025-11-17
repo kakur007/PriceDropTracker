@@ -57,11 +57,37 @@
         "*://*.bestbuy.com/*"
       ],
       "js": [
-        "content-scripts/product-detector.js",
-        "content-scripts/price-extractor.js"
+        "content-scripts/main.js"
       ],
       "run_at": "document_idle",
       "all_frames": false
+    }
+  ],
+
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "content-scripts/*.js",
+        "utils/*.js"
+      ],
+      "matches": [
+        "*://*.amazon.com/*",
+        "*://*.amazon.co.uk/*",
+        "*://*.amazon.de/*",
+        "*://*.amazon.fr/*",
+        "*://*.amazon.it/*",
+        "*://*.amazon.es/*",
+        "*://*.amazon.ca/*",
+        "*://*.amazon.com.au/*",
+        "*://*.amazon.co.jp/*",
+        "*://*.amazon.in/*",
+        "*://*.ebay.com/*",
+        "*://*.ebay.co.uk/*",
+        "*://*.ebay.de/*",
+        "*://*.walmart.com/*",
+        "*://*.target.com/*",
+        "*://*.bestbuy.com/*"
+      ]
     }
   ],
 
