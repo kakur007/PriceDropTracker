@@ -219,6 +219,7 @@ function extractFromSchemaOrg() {
         // Try each offer until we find a valid one
         let priceData = null;
         let currency = null;
+        let availability = null; // Store availability from the successful offer
 
         for (const offers of offersList) {
           // Handle AggregateOffer (variable products)
@@ -247,6 +248,7 @@ function extractFromSchemaOrg() {
               if (priceData) {
                 // Force the currency to match the detected one
                 priceData.currency = currency;
+                availability = offers.availability || null; // Store availability
                 break;
               }
             }
@@ -274,6 +276,7 @@ function extractFromSchemaOrg() {
               if (priceData) {
                 // Force the currency to match the detected one
                 priceData.currency = currency;
+                availability = offers.availability || null; // Store availability
                 break;
               }
             }
@@ -306,7 +309,7 @@ function extractFromSchemaOrg() {
           url: window.location.href,
           domain: window.location.hostname,
           sku: item.sku || item.gtin || null,
-          availability: offers.availability || null,
+          availability: availability, // Use stored availability instead of undefined 'offers'
           confidence: 0.95,
           detectionMethod: 'schemaOrg'
         };
