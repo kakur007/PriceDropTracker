@@ -81,71 +81,65 @@ export class WooCommerceAdapter extends BaseAdapter {
   }
 
   /**
-   * Extract product price (Version 5 - Score-Based)
-   * This version finds all potential prices, scores them based on reliability,
-   * and returns the highest-scoring valid price. This is the most robust
-   * method for handling complex WooCommerce themes with variations and sales.
-   *
-   * Scoring Logic:
-   *   - Inside <ins> (sale price): +100 (highest priority)
-   *   - Variation price: +80
-   *   - General price: +50
+   * Extract product price (Version 6 - Decisive Scoring)
+   * This version uses a hierarchical scoring system to guarantee that
+   * sale prices are always chosen over range prices or other values.
    *
    * @returns {Object|null} Parsed price data or null
    */
   extractPrice() {
-    console.log('[WooCommerce Adapter] Starting score-based price extraction (v5)...');
+    console.log('[WooCommerce Adapter] Starting decisive score-based price extraction (v6)...');
 
     const summaryArea = this.querySelector('.summary.entry-summary') || this.document;
     const priceCandidates = [];
+    const foundElements = new Set(); // Prevent processing the same element twice
 
-    // Find all elements that look like a price
     const potentialElements = summaryArea.querySelectorAll('.woocommerce-Price-amount, .amount');
-
     console.log(`[WooCommerce Adapter] Found ${potentialElements.length} potential price elements.`);
 
     for (const element of potentialElements) {
-      // *** Run critical checks on each element ***
+      if (foundElements.has(element)) continue;
+      foundElements.add(element);
 
-      // 1. Skip if inside a <del> tag (old price)
-      if (element.closest('del')) {
-        continue;
-      }
-
-      // 2. Skip if in an excluded area (cart, related products, etc.)
-      if (element.closest('.related, .upsells, .cart, header, footer, nav')) {
-        continue;
-      }
+      // --- CRITICAL CHECKS ---
+      if (element.closest('del')) continue;
+      if (element.closest('.related, .upsells, .cart, header, footer, nav')) continue;
 
       const priceText = element.textContent?.trim();
+      if (!priceText || priceText.includes('–') || priceText.includes('-')) continue;
 
-      // 3. Skip if it's a price range
-      if (priceText && (priceText.includes('–') || priceText.includes('-'))) {
-        continue;
-      }
+      const parsed = this.parsePriceWithContext(priceText);
+      if (parsed && parsed.confidence >= 0.70) {
 
-      if (priceText) {
-        const parsed = this.parsePriceWithContext(priceText);
-        if (parsed && parsed.confidence >= 0.70) {
+        // *** NEW HIERARCHICAL SCORING LOGIC ***
+        let score = 0;
 
-          // *** Score the candidate ***
-          let score = parsed.confidence * 50; // Base score
-
-          // Highest score for sale price
-          if (element.closest('ins')) {
-            score += 100;
-          }
-          // High score for selected variation price
-          if (element.closest('.woocommerce-variation-price')) {
-            score += 80;
-          }
-          // Medium score for a standard price paragraph
-          if (element.closest('p.price')) {
-            score += 50;
-          }
-
-          priceCandidates.push({ parsed, score });
+        // TIER 1: Definitive Sale Price (Highest Priority)
+        if (element.closest('ins')) {
+          score = 300;
         }
+        // TIER 2: Selected Variation Price (High Priority)
+        else if (element.closest('.woocommerce-variation-price')) {
+          score = 200;
+        }
+        // TIER 3: Standard Price Paragraph (Base Priority)
+        else if (element.closest('p.price')) {
+          score = 100;
+        }
+        // TIER 4: Generic Price (Lowest Priority)
+        else {
+          score = 50;
+        }
+
+        // Add confidence as a smaller factor to break ties
+        score += parsed.confidence;
+
+        // Penalize very low prices that might be shipping costs
+        if (parsed.numeric > 0 && parsed.numeric < 5) {
+          score -= 20;
+        }
+
+        priceCandidates.push({ parsed, score, element });
       }
     }
 
@@ -154,17 +148,14 @@ export class WooCommerceAdapter extends BaseAdapter {
       return null;
     }
 
-    // Sort candidates by score, descending
     priceCandidates.sort((a, b) => b.score - a.score);
 
     console.log('[WooCommerce Adapter] Price candidates sorted by score:');
     priceCandidates.forEach((c, i) => {
-      console.log(`  ${i+1}. ${c.parsed.numeric} ${c.parsed.currency} (Score: ${c.score.toFixed(2)})`);
+      console.log(`  ${i+1}. ${c.parsed.numeric} ${c.parsed.currency} (Score: ${c.score.toFixed(2)}) --- Element:`, c.element.outerHTML.slice(0, 80));
     });
 
-    // The best candidate is the one with the highest score
     const bestCandidate = priceCandidates[0];
-
     console.log(`[WooCommerce Adapter] ✓ Best price selected: ${bestCandidate.parsed.numeric} ${bestCandidate.parsed.currency}`);
     return bestCandidate.parsed;
   }
