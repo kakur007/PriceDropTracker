@@ -95,40 +95,74 @@ function extractFromSchemaOrg() {
     try {
       const data = JSON.parse(script.textContent);
 
-      // Handle both single object and array
-      const products = Array.isArray(data) ? data : [data];
+      // Collect all potential products from different structures
+      let products = [];
+
+      // Case 1: Direct Product object
+      if (data['@type'] === 'Product' || data['@type'] === 'https://schema.org/Product') {
+        products.push(data);
+      }
+      // Case 2: Direct array of items
+      else if (Array.isArray(data)) {
+        products.push(...data.filter(item =>
+          item['@type'] === 'Product' || item['@type'] === 'https://schema.org/Product'
+        ));
+      }
+      // Case 3: @graph wrapper (common in Walmart, eBay, etc.)
+      else if (data['@graph'] && Array.isArray(data['@graph'])) {
+        products.push(...data['@graph'].filter(item =>
+          item['@type'] === 'Product' || item['@type'] === 'https://schema.org/Product'
+        ));
+      }
+      // Case 4: Single @graph object
+      else if (data['@graph'] && !Array.isArray(data['@graph'])) {
+        if (data['@graph']['@type'] === 'Product' || data['@graph']['@type'] === 'https://schema.org/Product') {
+          products.push(data['@graph']);
+        }
+      }
+
+      console.log(`[Price Drop Tracker] Found ${products.length} Product(s) in this script`);
 
       for (const item of products) {
-        // Check if it's a Product type
-        const itemType = item['@type'];
-        if (itemType !== 'Product' && itemType !== 'https://schema.org/Product') {
-          continue;
-        }
-
-        console.log('[Price Drop Tracker] Found Product in Schema.org:', item);
+        console.log('[Price Drop Tracker] Processing Product:', item);
 
         // Extract offers (could be single object or array)
         const offers = Array.isArray(item.offers) ? item.offers[0] : item.offers;
 
-        if (!offers || !offers.price) {
-          console.log('[Price Drop Tracker] No offers or price in Schema.org data');
+        if (!offers) {
+          console.log('[Price Drop Tracker] No offers in Schema.org data');
           continue;
         }
 
-        console.log('[Price Drop Tracker] Schema.org price:', offers.price, 'Currency:', offers.priceCurrency);
+        // Extract price - handle multiple property names and formats
+        let priceValue = offers.price || offers.lowPrice || offers.highPrice;
+        let currency = offers.priceCurrency || 'USD';
+
+        if (!priceValue) {
+          console.log('[Price Drop Tracker] No price in Schema.org offers');
+          continue;
+        }
+
+        console.log('[Price Drop Tracker] Schema.org price:', priceValue, 'Currency:', currency);
 
         // Parse price using our currency parser
-        const priceString = String(offers.price);
+        // Build a price string that includes currency for better parsing
+        const priceString = typeof priceValue === 'number'
+          ? `${currency} ${priceValue}`
+          : String(priceValue);
+
         const priceData = parsePrice(priceString, {
           domain: window.location.hostname,
           locale: document.documentElement.lang,
-          expectedCurrency: offers.priceCurrency
+          expectedCurrency: currency
         });
 
         if (!priceData) {
-          console.log('[Price Drop Tracker] Failed to parse Schema.org price');
+          console.log('[Price Drop Tracker] Failed to parse Schema.org price:', priceString);
           continue;
         }
+
+        console.log('[Price Drop Tracker] ✓ Successfully parsed price:', priceData.numeric, priceData.currency);
 
         // Extract image (handle different formats)
         let imageUrl = null;
@@ -282,7 +316,7 @@ function extractFromSelectors() {
     return null;
   }
 
-  // Amazon-specific price extraction (more reliable)
+  // Site-specific price extraction (more reliable)
   let priceData = null;
 
   if (window.location.hostname.includes('amazon')) {
@@ -310,6 +344,37 @@ function extractFromSelectors() {
         if (parsed && parsed.confidence >= 0.70) {
           priceData = parsed;
           console.log('[Price Drop Tracker] ✓ Amazon price parsed:', priceData.numeric);
+          break;
+        }
+      }
+    }
+  }
+  else if (window.location.hostname.includes('walmart')) {
+    // Try Walmart-specific selectors in order of reliability
+    const walmartSelectors = [
+      '[itemprop="price"]',                           // Most common Walmart price element
+      '[data-testid="price-wrap"] span[itemprop="price"]',
+      '[class*="price-characteristic"]',              // New Walmart design
+      '[class*="price-group"] [aria-label*="Price"]',
+      '.price-characteristic',
+      'span.price-group span',
+      '[data-automation-id="product-price"]'
+    ];
+
+    for (const selector of walmartSelectors) {
+      const element = document.querySelector(selector);
+      if (element) {
+        const priceText = element.getAttribute('content') || element.textContent?.trim();
+        console.log(`[Price Drop Tracker] Trying Walmart selector "${selector}": "${priceText}"`);
+
+        const parsed = parsePrice(priceText, {
+          domain: window.location.hostname,
+          locale: document.documentElement.lang
+        });
+
+        if (parsed && parsed.confidence >= 0.70) {
+          priceData = parsed;
+          console.log('[Price Drop Tracker] ✓ Walmart price parsed:', priceData.numeric);
           break;
         }
       }
