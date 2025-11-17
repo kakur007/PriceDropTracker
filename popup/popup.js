@@ -356,6 +356,9 @@ function setupEventListeners() {
                 }, 5000);
 
                 return { success: true, product: productData };
+              } else if (response && response.data && response.data.needsPermission) {
+                // Need to request permission - return to popup for handling
+                return { needsPermission: true, domain: response.data.domain, productData: response.data.productData };
               } else {
                 return { success: false, error: 'Already tracking this product' };
               }
@@ -377,6 +380,17 @@ function setupEventListeners() {
         // Reload products to show the newly tracked item
         await loadProducts();
         showTemporaryMessage('Product tracked successfully!', 'success');
+      } else if (result && result.needsPermission) {
+        // Need to request permission
+        const permissionGranted = await handlePermissionRequest(result.domain, result.productData);
+
+        if (permissionGranted) {
+          // Permission granted, retry tracking
+          await loadProducts();
+          showTemporaryMessage('Permission granted! Product is now being tracked.', 'success');
+        } else {
+          showTemporaryMessage(`Permission denied for ${result.domain}. Cannot track this product.`, 'error');
+        }
       } else {
         const errorMsg = result && result.error ? result.error : 'Unable to detect product';
         showTemporaryMessage(errorMsg, 'error');
@@ -525,6 +539,58 @@ function showError(message) {
       <p>${escapeHtml(message)}</p>
     </div>
   `;
+}
+
+/**
+ * Handle permission request for a new domain
+ * @param {string} domain - Domain name to request permission for
+ * @param {Object} productData - Product data to save after permission is granted
+ * @returns {Promise<boolean>} - True if permission granted and product saved
+ */
+async function handlePermissionRequest(domain, productData) {
+  try {
+    // Show confirmation dialog
+    const userConfirmed = confirm(
+      `Price Drop Tracker needs permission to access ${domain} to track prices.\n\n` +
+      `Click OK to grant permission, or Cancel to skip this product.`
+    );
+
+    if (!userConfirmed) {
+      console.log('[Popup] User declined permission request for:', domain);
+      return false;
+    }
+
+    // Import permission manager
+    const { requestPermissionForUrl } = await import('../utils/permission-manager.js');
+
+    // Request permission (this must be called from user gesture)
+    const granted = await requestPermissionForUrl(productData.url);
+
+    if (!granted) {
+      console.log('[Popup] Permission denied by browser for:', domain);
+      return false;
+    }
+
+    console.log('[Popup] Permission granted for:', domain);
+
+    // Now retry saving the product
+    const response = await chrome.runtime.sendMessage({
+      type: 'PRODUCT_DETECTED',
+      data: productData
+    });
+
+    if (response && response.success) {
+      console.log('[Popup] Product saved successfully after permission grant');
+      return true;
+    } else {
+      console.error('[Popup] Failed to save product after permission grant:', response);
+      return false;
+    }
+
+  } catch (error) {
+    console.error('[Popup] Error handling permission request:', error);
+    return false;
+  }
 }
 
 /**

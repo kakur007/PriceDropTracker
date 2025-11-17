@@ -12,6 +12,7 @@
 
 import { fetchHTML } from '../utils/fetch-helper.js';
 import { StorageManager } from './storage-manager.js';
+import { isUrlSupportedOrPermitted } from '../utils/domain-validator.js';
 
 /**
  * Ensures the offscreen document is created and ready
@@ -230,6 +231,25 @@ async function checkSingleProduct(productId) {
       return {
         status: PriceCheckResult.NOT_FOUND,
         error: 'Product not found in storage'
+      };
+    }
+
+    // Check if domain is supported or has permission
+    const hasPermission = await isUrlSupportedOrPermitted(product.url);
+    if (!hasPermission) {
+      console.warn(`[PriceChecker] No permission for domain, skipping: ${product.url}`);
+
+      // Mark product as stale (no permission)
+      product.tracking = product.tracking || {};
+      product.tracking.failedChecks = (product.tracking.failedChecks || 0) + 1;
+      product.tracking.lastChecked = Date.now();
+      product.tracking.status = 'no_permission';
+
+      await StorageManager.saveProduct(product);
+
+      return {
+        status: PriceCheckResult.ERROR,
+        error: 'No permission for this domain (grant permission in extension settings)'
       };
     }
 
