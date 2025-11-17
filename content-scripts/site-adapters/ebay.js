@@ -44,7 +44,9 @@ export class EbayAdapter extends BaseAdapter {
    * @returns {string} Currency code
    */
   getExpectedCurrency() {
-    return EbayAdapter.CURRENCY_BY_DOMAIN[this.domain] || 'USD';
+    // Strip 'www.' prefix if present for lookup
+    const lookupDomain = this.domain.replace(/^www\./, '');
+    return EbayAdapter.CURRENCY_BY_DOMAIN[lookupDomain] || 'USD';
   }
 
   /**

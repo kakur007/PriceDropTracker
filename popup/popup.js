@@ -201,9 +201,9 @@ function createProductCard(product) {
   return `
     <div class="product-card ${isStale ? 'stale' : ''}" data-product-id="${product.productId}">
       <div class="product-header">
-        ${product.image ?
+        ${product.imageUrl ?
           `<img class="product-image"
-                src="${product.image}"
+                src="${product.imageUrl}"
                 onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
                 loading="lazy"
                 alt="${escapeHtml(product.title)}">
