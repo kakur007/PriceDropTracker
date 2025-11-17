@@ -67,19 +67,12 @@ body {
 }
 
 .icon-btn.primary {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #10b981;
   color: white;
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
 }
 
 .icon-btn.primary:hover {
-  background: linear-gradient(135deg, #5568d3 0%, #6a4190 100%);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-  transform: translateY(-1px);
-}
-
-.icon-btn.primary:active {
-  transform: scale(0.95) translateY(0);
+  background: #059669;
 }
 
 /* Stats Bar */

@@ -168,39 +168,88 @@ function extractFromSchemaOrg() {
       for (const item of products) {
         console.log('[Price Drop Tracker] Processing Product:', item);
 
-        // Extract offers (could be single object or array)
-        const offers = Array.isArray(item.offers) ? item.offers[0] : item.offers;
+        // Extract offers - handle multiple structures
+        let offersList = [];
 
-        if (!offers) {
+        if (item.offers) {
+          if (Array.isArray(item.offers)) {
+            offersList = item.offers;
+          } else {
+            offersList = [item.offers];
+          }
+        }
+
+        if (offersList.length === 0) {
           console.log('[Price Drop Tracker] No offers in Schema.org data');
           continue;
         }
 
-        // Extract price - handle multiple property names and formats
-        let priceValue = offers.price || offers.lowPrice || offers.highPrice;
-        let currency = offers.priceCurrency || 'USD';
+        // Try each offer until we find a valid one
+        let priceData = null;
+        let currency = null;
 
-        if (!priceValue) {
-          console.log('[Price Drop Tracker] No price in Schema.org offers');
-          continue;
+        for (const offers of offersList) {
+          // Handle AggregateOffer (variable products)
+          if (offers['@type'] === 'AggregateOffer' || offers['@type'] === 'https://schema.org/AggregateOffer') {
+            console.log('[Price Drop Tracker] Found AggregateOffer (variable product)');
+
+            // Use lowPrice for variable products
+            const priceValue = offers.lowPrice || offers.price || offers.highPrice;
+            currency = offers.priceCurrency || 'EUR';
+
+            if (priceValue) {
+              console.log('[Price Drop Tracker] Variable product price:', priceValue, 'Currency:', currency);
+
+              // Include currency symbol in the price string for better detection
+              const currencySymbol = currency === 'EUR' ? '€' : currency === 'USD' ? '$' : currency === 'GBP' ? '£' : '';
+              const priceString = currencySymbol
+                ? `${currencySymbol}${priceValue}`
+                : `${priceValue} ${currency}`;
+
+              priceData = parsePrice(priceString, {
+                domain: window.location.hostname,
+                locale: document.documentElement.lang,
+                expectedCurrency: currency
+              });
+
+              if (priceData) {
+                // Force the currency to match the detected one
+                priceData.currency = currency;
+                break;
+              }
+            }
+          }
+          // Handle regular Offer
+          else {
+            const priceValue = offers.price || offers.lowPrice || offers.highPrice;
+            currency = offers.priceCurrency || 'EUR';
+
+            if (priceValue) {
+              console.log('[Price Drop Tracker] Schema.org price:', priceValue, 'Currency:', currency);
+
+              // Include currency symbol in the price string
+              const currencySymbol = currency === 'EUR' ? '€' : currency === 'USD' ? '$' : currency === 'GBP' ? '£' : '';
+              const priceString = currencySymbol
+                ? `${currencySymbol}${priceValue}`
+                : `${priceValue} ${currency}`;
+
+              priceData = parsePrice(priceString, {
+                domain: window.location.hostname,
+                locale: document.documentElement.lang,
+                expectedCurrency: currency
+              });
+
+              if (priceData) {
+                // Force the currency to match the detected one
+                priceData.currency = currency;
+                break;
+              }
+            }
+          }
         }
 
-        console.log('[Price Drop Tracker] Schema.org price:', priceValue, 'Currency:', currency);
-
-        // Parse price using our currency parser
-        // Build a price string that includes currency for better parsing
-        const priceString = typeof priceValue === 'number'
-          ? `${currency} ${priceValue}`
-          : String(priceValue);
-
-        const priceData = parsePrice(priceString, {
-          domain: window.location.hostname,
-          locale: document.documentElement.lang,
-          expectedCurrency: currency
-        });
-
         if (!priceData) {
-          console.log('[Price Drop Tracker] Failed to parse Schema.org price:', priceString);
+          console.log('[Price Drop Tracker] Failed to parse any offers');
           continue;
         }
 
