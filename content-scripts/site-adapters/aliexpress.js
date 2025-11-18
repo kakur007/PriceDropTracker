@@ -10,13 +10,13 @@ import { BaseAdapter } from './base-adapter.js';
 export class AliExpressAdapter extends BaseAdapter {
   /**
    * Get expected currency for AliExpress
-   * AliExpress shows prices in USD by default but can show in many currencies
+   * AliExpress shows prices in many currencies based on user location
    * @returns {string|null}
    */
   getExpectedCurrency() {
     // AliExpress shows prices in multiple currencies based on user location
-    // Default is usually USD, but let the parser detect it from the page
-    return 'USD';
+    // (USD, EUR, GBP, etc.) - let the parser auto-detect from the page
+    return null;
   }
 
   /**

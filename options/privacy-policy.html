@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy - Price Genius</title>
+  <link rel="stylesheet" href="settings.css">
+  <style>
+    .nav-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+      border-bottom: 2px solid #e5e7eb;
+    }
+
+    .nav-tab {
+      padding: 12px 24px;
+      background: none;
+      border: none;
+      border-bottom: 3px solid transparent;
+      color: #6b7280;
+      font-size: 15px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-decoration: none;
+    }
+
+    .nav-tab:hover {
+      color: #2563eb;
+      border-bottom-color: #93c5fd;
+    }
+
+    .nav-tab.active {
+      color: #2563eb;
+      border-bottom-color: #2563eb;
+    }
+
+    .privacy-content {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 24px;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    .privacy-content h2 {
+      color: #1f2937;
+      font-size: 20px;
+      margin-top: 32px;
+      margin-bottom: 12px;
+      font-weight: 600;
+    }
+
+    .privacy-content h2:first-of-type {
+      margin-top: 0;
+    }
+
+    .privacy-content p {
+      color: #4b5563;
+      line-height: 1.6;
+      margin-bottom: 16px;
+    }
+
+    .privacy-content ul {
+      color: #4b5563;
+      line-height: 1.8;
+      margin-bottom: 16px;
+      padding-left: 24px;
+    }
+
+    .privacy-content li {
+      margin-bottom: 8px;
+    }
+
+    .privacy-content strong {
+      color: #1f2937;
+      font-weight: 600;
+    }
+
+    .highlight-box {
+      background: #f0fdf4;
+      border-left: 4px solid #10b981;
+      padding: 16px;
+      margin: 24px 0;
+      border-radius: 4px;
+    }
+
+    .highlight-box p {
+      margin: 0;
+      color: #065f46;
+    }
+
+    /* Dark mode */
+    body[data-theme="dark"] .nav-tabs {
+      border-bottom-color: #374151;
+    }
+
+    body[data-theme="dark"] .nav-tab {
+      color: #9ca3af;
+    }
+
+    body[data-theme="dark"] .nav-tab:hover {
+      color: #60a5fa;
+      border-bottom-color: #3b82f6;
+    }
+
+    body[data-theme="dark"] .nav-tab.active {
+      color: #60a5fa;
+      border-bottom-color: #3b82f6;
+    }
+
+    body[data-theme="dark"] .privacy-content {
+      background: #1f2937;
+    }
+
+    body[data-theme="dark"] .privacy-content h2 {
+      color: #f9fafb;
+    }
+
+    body[data-theme="dark"] .privacy-content p,
+    body[data-theme="dark"] .privacy-content ul,
+    body[data-theme="dark"] .privacy-content li {
+      color: #d1d5db;
+    }
+
+    body[data-theme="dark"] .privacy-content strong {
+      color: #f9fafb;
+    }
+
+    body[data-theme="dark"] .highlight-box {
+      background: #064e3b;
+      border-left-color: #10b981;
+    }
+
+    body[data-theme="dark"] .highlight-box p {
+      color: #a7f3d0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>Privacy Policy</h1>
+      <p class="subtitle">How Price Genius protects your privacy</p>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <div class="nav-tabs">
+      <a href="settings.html" class="nav-tab">Settings</a>
+      <a href="price-history.html" class="nav-tab">Price History</a>
+      <a href="privacy-policy.html" class="nav-tab active">Privacy Policy</a>
+    </div>
+
+    <div class="privacy-content">
+      <div class="highlight-box">
+        <p><strong>TL;DR:</strong> Price Genius is 100% privacy-focused. All your data stays on YOUR device. We don't collect, transmit, or sell any of your information. Ever.</p>
+      </div>
+
+      <h2>Our Privacy Commitment</h2>
+      <p>Price Genius by GoGoNano is built with privacy as our top priority. Unlike many browser extensions, we don't collect, transmit, or sell your data. This privacy policy explains exactly how the extension works and what data is stored.</p>
+
+      <h2>What Data We Store (Locally Only)</h2>
+      <p>All data is stored locally on your device using Chrome's local storage API. We store:</p>
+      <ul>
+        <li><strong>Product Information:</strong> URLs, titles, prices, and images of products you visit</li>
+        <li><strong>Price History:</strong> Historical price data for tracked products</li>
+        <li><strong>Settings:</strong> Your preferences for notifications, check frequency, and tracking duration</li>
+        <li><strong>Extension State:</strong> Internal flags for tracking which products are being monitored</li>
+      </ul>
+
+      <h2>What We DON'T Collect</h2>
+      <ul>
+        <li>We don't track your browsing history</li>
+        <li>We don't collect personal information (name, email, address, etc.)</li>
+        <li>We don't transmit any data to external servers</li>
+        <li>We don't use analytics or tracking scripts</li>
+        <li>We don't sell or share your data with third parties</li>
+        <li>We don't access non-shopping websites</li>
+      </ul>
+
+      <h2>How Price Checking Works</h2>
+      <p>When the extension checks prices:</p>
+      <ul>
+        <li>It makes direct requests to product pages (Amazon, eBay, Walmart, etc.) on your behalf</li>
+        <li>These requests appear as if you visited the page yourself</li>
+        <li>The extension extracts only the current price from the page</li>
+        <li>No data is sent to GoGoNano or any third-party servers</li>
+        <li>Price data is stored only on your local device</li>
+      </ul>
+
+      <h2>Permissions Explained</h2>
+      <p>The extension requires certain permissions to function. Here's why we need each one:</p>
+      <ul>
+        <li><strong>Access to e-commerce sites:</strong> To detect products and check prices on supported stores</li>
+        <li><strong>Storage:</strong> To save tracked products and price history on your device</li>
+        <li><strong>Notifications:</strong> To alert you when prices drop</li>
+        <li><strong>Alarms:</strong> To schedule automatic price checks every few hours</li>
+        <li><strong>Tabs:</strong> To detect when you're viewing product pages</li>
+      </ul>
+
+      <h2>Data Retention</h2>
+      <p>You have full control over your data:</p>
+      <ul>
+        <li>Products are automatically removed after your chosen tracking duration (7-60 days)</li>
+        <li>You can manually delete individual products at any time</li>
+        <li>You can clear all data instantly from the Settings page</li>
+        <li>Uninstalling the extension removes all stored data from your device</li>
+      </ul>
+
+      <h2>Third-Party Services</h2>
+      <p>Price Genius does not use any third-party services, analytics, or tracking tools. The extension operates entirely on your device.</p>
+
+      <h2>Children's Privacy</h2>
+      <p>Price Genius does not knowingly collect any information from anyone, including children under 13. Since we don't collect any data at all, there is no risk to children's privacy.</p>
+
+      <h2>Changes to This Policy</h2>
+      <p>If we make changes to this privacy policy, we will update this page and notify users through the extension. The current version is always available in the extension settings.</p>
+
+      <h2>Open Source</h2>
+      <p>Price Genius is open source. You can review the code on GitHub to verify our privacy claims and see exactly how the extension works.</p>
+
+      <h2>Contact Us</h2>
+      <p>If you have questions about this privacy policy or how Price Genius works, please contact us at:</p>
+      <ul>
+        <li>Email: support@gogonano.com</li>
+        <li>Website: <a href="https://gogonano.com" target="_blank">gogonano.com</a></li>
+      </ul>
+
+      <p style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #e5e7eb; color: #9ca3af; font-size: 14px;">
+        Last updated: November 18, 2025<br>
+        Version: 1.0.0
+      </p>
+    </div>
+  </div>
+
+  <script type="module" src="settings.js"></script>
+</body>
+</html>

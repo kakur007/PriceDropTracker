@@ -10,6 +10,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   applyTheme();
 
   await loadProducts();
+
+  // Add search handler
+  const searchInput = document.getElementById('productSearch');
+  if (searchInput) {
+    searchInput.addEventListener('input', handleSearch);
+  }
 });
 
 /**
@@ -45,18 +51,172 @@ async function loadProducts() {
     // Hide empty state
     emptyStateEl.style.display = 'none';
 
-    // Render product list
-    productListEl.innerHTML = '';
-    productIds.forEach(productId => {
-      const product = products[productId];
-      const productItem = createProductItem(productId, product);
-      productListEl.appendChild(productItem);
-    });
+    // Group products by domain
+    const groupedProducts = groupProductsByDomain(products);
 
-    debug('[Price History]', `Loaded ${productIds.length} products`);
+    // Render grouped product list
+    renderGroupedProducts(groupedProducts);
+
+    debug('[Price History]', `Loaded ${productIds.length} products from ${Object.keys(groupedProducts).length} stores`);
   } catch (error) {
     debugError('[Price History] Error loading products:', error);
   }
+}
+
+/**
+ * Group products by domain/store
+ */
+function groupProductsByDomain(products) {
+  const grouped = {};
+
+  Object.entries(products).forEach(([productId, product]) => {
+    const domain = product.domain || 'unknown';
+
+    if (!grouped[domain]) {
+      grouped[domain] = [];
+    }
+
+    grouped[domain].push({ id: productId, ...product });
+  });
+
+  return grouped;
+}
+
+/**
+ * Get friendly store name from domain
+ */
+function getStoreName(domain) {
+  const cleanDomain = domain.replace(/^www\./, '').toLowerCase();
+
+  if (cleanDomain.includes('amazon')) return 'Amazon';
+  if (cleanDomain.includes('ebay')) return 'eBay';
+  if (cleanDomain.includes('walmart')) return 'Walmart';
+  if (cleanDomain.includes('target')) return 'Target';
+  if (cleanDomain.includes('bestbuy')) return 'Best Buy';
+  if (cleanDomain.includes('etsy')) return 'Etsy';
+  if (cleanDomain.includes('aliexpress')) return 'AliExpress';
+  if (cleanDomain.includes('zalando')) return 'Zalando';
+  if (cleanDomain.includes('asos')) return 'ASOS';
+  if (cleanDomain.includes('newegg')) return 'Newegg';
+  if (cleanDomain.includes('costco')) return 'Costco';
+  if (cleanDomain.includes('homedepot')) return 'Home Depot';
+  if (cleanDomain.includes('lowes')) return "Lowe's";
+  if (cleanDomain.includes('wayfair')) return 'Wayfair';
+  if (cleanDomain.includes('overstock')) return 'Overstock';
+  if (cleanDomain.includes('mediamarkt')) return 'MediaMarkt';
+
+  // Fallback: capitalize first part of domain
+  const parts = cleanDomain.split('.');
+  return parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+}
+
+/**
+ * Render grouped products
+ */
+function renderGroupedProducts(groupedProducts) {
+  const productListEl = document.getElementById('productList');
+  productListEl.innerHTML = '';
+
+  // Sort domains alphabetically by store name
+  const sortedDomains = Object.keys(groupedProducts).sort((a, b) => {
+    return getStoreName(a).localeCompare(getStoreName(b));
+  });
+
+  sortedDomains.forEach(domain => {
+    const products = groupedProducts[domain];
+    const storeGroup = createStoreGroup(domain, products);
+    productListEl.appendChild(storeGroup);
+  });
+}
+
+/**
+ * Create a store group with products
+ */
+function createStoreGroup(domain, products) {
+  const group = document.createElement('div');
+  group.className = 'store-group';
+  group.dataset.domain = domain;
+
+  // Store header
+  const header = document.createElement('div');
+  header.className = 'store-group-header';
+
+  const storeName = getStoreName(domain);
+  const nameSpan = document.createElement('span');
+  nameSpan.textContent = storeName;
+
+  const count = document.createElement('span');
+  count.className = 'store-group-count';
+  count.textContent = products.length;
+
+  header.appendChild(nameSpan);
+  header.appendChild(count);
+
+  // Toggle collapse on header click
+  header.addEventListener('click', (e) => {
+    if (e.target === header || e.target === nameSpan || e.target === count) {
+      items.classList.toggle('collapsed');
+    }
+  });
+
+  // Store items container
+  const items = document.createElement('div');
+  items.className = 'store-group-items';
+
+  products.forEach(product => {
+    const productItem = createProductItem(product.id, product);
+    items.appendChild(productItem);
+  });
+
+  group.appendChild(header);
+  group.appendChild(items);
+
+  return group;
+}
+
+/**
+ * Handle search input
+ */
+function handleSearch(event) {
+  const query = event.target.value.toLowerCase().trim();
+
+  const storeGroups = document.querySelectorAll('.store-group');
+
+  storeGroups.forEach(group => {
+    const domain = group.dataset.domain;
+    const storeName = getStoreName(domain).toLowerCase();
+    const items = group.querySelectorAll('.product-item');
+
+    let visibleCount = 0;
+
+    items.forEach(item => {
+      const title = item.querySelector('.product-item-title').textContent.toLowerCase();
+      const itemDomain = item.querySelector('.product-item-domain')?.textContent.toLowerCase() || '';
+
+      // Match against title, domain, or store name
+      const matches = !query ||
+                     title.includes(query) ||
+                     itemDomain.includes(query) ||
+                     storeName.includes(query);
+
+      if (matches) {
+        item.style.display = 'flex';
+        visibleCount++;
+      } else {
+        item.style.display = 'none';
+      }
+    });
+
+    // Hide/show entire group based on visibility
+    if (visibleCount === 0) {
+      group.style.display = 'none';
+    } else {
+      group.style.display = 'block';
+      // Update count
+      const countEl = group.querySelector('.store-group-count');
+      countEl.textContent = visibleCount;
+    }
+  });
 }
 
 /**
@@ -82,15 +242,27 @@ function createProductItem(productId, product) {
   const content = document.createElement('div');
   content.className = 'product-item-content';
 
+  // Product info (title + domain)
+  const info = document.createElement('div');
+  info.className = 'product-item-info';
+
   const title = document.createElement('div');
   title.className = 'product-item-title';
   title.textContent = product.title || 'Unknown Product';
 
+  const domain = document.createElement('div');
+  domain.className = 'product-item-domain';
+  domain.textContent = product.domain || '';
+
+  info.appendChild(title);
+  info.appendChild(domain);
+
+  // Product price
   const price = document.createElement('div');
   price.className = 'product-item-price';
   price.textContent = product.price?.formatted || 'N/A';
 
-  content.appendChild(title);
+  content.appendChild(info);
   content.appendChild(price);
 
   div.appendChild(img);
