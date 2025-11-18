@@ -44,12 +44,23 @@ body {
 .hero h1 {
   font-size: 36px;
   font-weight: 700;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
+  color: white;
+}
+
+.company-name {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.85);
+  margin: 0 0 16px 0;
+  font-weight: 400;
+  letter-spacing: 0.3px;
 }
 
 .tagline {
   font-size: 18px;
+  color: white;
   opacity: 0.95;
+  margin: 0;
 }
 
 .content {
