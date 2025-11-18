@@ -1,5 +1,7 @@
 // Price Drop Tracker - Storage Manager
-// Handles all data persistence using Chrome Storage API
+// Handles all data persistence using Browser Storage API
+
+import browser from '../utils/browser-polyfill.js';
 
 /**
  * Default settings for the extension
@@ -42,7 +44,7 @@ const DEFAULT_SETTINGS = {
 export async function saveProduct(productData) {
   try {
     // Get existing products
-    const result = await chrome.storage.local.get(['products', 'metadata']);
+    const result = await browser.storage.local.get(['products', 'metadata']);
     const products = result.products || {};
     const metadata = result.metadata || { totalProducts: 0, lastCleanup: Date.now(), storageUsed: 0 };
 
@@ -149,7 +151,7 @@ export async function saveProduct(productData) {
     }
 
     // Save back to storage
-    await chrome.storage.local.set({ products, metadata });
+    await browser.storage.local.set({ products, metadata });
 
     console.log(`[Storage] Saved product: ${productId}`);
     return productId;
@@ -167,7 +169,7 @@ export async function saveProduct(productData) {
  */
 export async function getProduct(productId) {
   try {
-    const result = await chrome.storage.local.get('products');
+    const result = await browser.storage.local.get('products');
     const products = result.products || {};
     return products[productId] || null;
   } catch (error) {
@@ -182,7 +184,7 @@ export async function getProduct(productId) {
  */
 export async function getAllProducts() {
   try {
-    const result = await chrome.storage.local.get('products');
+    const result = await browser.storage.local.get('products');
     return result.products || {};
   } catch (error) {
     console.error('[Storage] Error getting all products:', error);
@@ -197,7 +199,7 @@ export async function getAllProducts() {
  */
 export async function deleteProduct(productId) {
   try {
-    const result = await chrome.storage.local.get(['products', 'metadata']);
+    const result = await browser.storage.local.get(['products', 'metadata']);
     const products = result.products || {};
     const metadata = result.metadata || {};
 
@@ -205,7 +207,7 @@ export async function deleteProduct(productId) {
       delete products[productId];
       metadata.totalProducts = Math.max(0, (metadata.totalProducts || 0) - 1);
 
-      await chrome.storage.local.set({ products, metadata });
+      await browser.storage.local.set({ products, metadata });
       console.log(`[Storage] Deleted product: ${productId}`);
       return true;
     }
@@ -251,7 +253,7 @@ export async function updateProductPrice(productId, newPriceData) {
     // Save
     const products = await getAllProducts();
     products[productId] = product;
-    await chrome.storage.local.set({ products });
+    await browser.storage.local.set({ products });
 
     return product;
   } catch (error) {
@@ -304,7 +306,7 @@ export async function cleanupOldProducts() {
       lastCleanup: now,
       storageUsed: 0 // Will be calculated if needed
     };
-    await chrome.storage.local.set({ metadata });
+    await browser.storage.local.set({ metadata });
 
     console.log(`[Storage] Cleaned up ${deletedCount} old products`);
     return deletedCount;
@@ -321,7 +323,7 @@ export async function cleanupOldProducts() {
  */
 export async function getSettings() {
   try {
-    const result = await chrome.storage.local.get('settings');
+    const result = await browser.storage.local.get('settings');
     return result.settings || DEFAULT_SETTINGS;
   } catch (error) {
     console.error('[Storage] Error getting settings:', error);
@@ -355,7 +357,7 @@ export async function updateSettings(newSettings) {
       throw new Error('Invalid check interval');
     }
 
-    await chrome.storage.local.set({ settings: updated });
+    await browser.storage.local.set({ settings: updated });
     console.log('[Storage] Settings updated');
     return updated;
 
@@ -371,7 +373,7 @@ export async function updateSettings(newSettings) {
  */
 export async function getStorageStats() {
   try {
-    const result = await chrome.storage.local.get(null); // Get all data
+    const result = await browser.storage.local.get(null); // Get all data
     const products = result.products || {};
     const productIds = Object.keys(products);
 
@@ -432,7 +434,7 @@ export async function importData(jsonString) {
     }
 
     // Import
-    await chrome.storage.local.set(data);
+    await browser.storage.local.set(data);
     console.log('[Storage] Data imported successfully');
     return true;
 
@@ -448,7 +450,7 @@ export async function importData(jsonString) {
  */
 export async function clearAllData() {
   try {
-    await chrome.storage.local.clear();
+    await browser.storage.local.clear();
     console.log('[Storage] All data cleared');
     return true;
   } catch (error) {
@@ -466,7 +468,7 @@ export async function initializeSettings() {
   const settings = await getSettings();
   // getSettings already returns defaults if settings don't exist
   // Just save them to ensure they're persisted
-  await chrome.storage.local.set({ settings });
+  await browser.storage.local.set({ settings });
   console.log('[Storage] Settings initialized with defaults');
 }
 

@@ -5,6 +5,8 @@
  * not just the predefined list in manifest.json
  */
 
+import browser from './browser-polyfill.js';
+
 /**
  * Check if we have permission to access a URL
  * @param {string} url - URL to check
@@ -22,7 +24,7 @@ export async function hasPermissionForUrl(url) {
       `*://*.${domain}/*` // Include subdomains
     ];
 
-    const hasPermission = await chrome.permissions.contains({
+    const hasPermission = await browser.permissions.contains({
       origins: patterns
     });
 
@@ -46,7 +48,7 @@ export async function hasPermissionForDomain(domain) {
       `*://*.${domain}/*` // Include subdomains
     ];
 
-    const hasPermission = await chrome.permissions.contains({
+    const hasPermission = await browser.permissions.contains({
       origins: patterns
     });
 
@@ -77,7 +79,7 @@ export async function requestPermissionForUrl(url) {
 
     console.log('[PermissionManager] Requesting permission for:', patterns);
 
-    const granted = await chrome.permissions.request({
+    const granted = await browser.permissions.request({
       origins: patterns
     });
 
@@ -100,7 +102,7 @@ export async function requestPermissionForUrl(url) {
  */
 export async function getGrantedPermissions() {
   try {
-    const permissions = await chrome.permissions.getAll();
+    const permissions = await browser.permissions.getAll();
     return permissions.origins || [];
   } catch (error) {
     console.error('[PermissionManager] Error getting permissions:', error);
@@ -123,7 +125,7 @@ export async function removePermissionForUrl(url) {
       `*://*.${domain}/*`
     ];
 
-    const removed = await chrome.permissions.remove({
+    const removed = await browser.permissions.remove({
       origins: patterns
     });
 
@@ -197,12 +199,12 @@ export function extractDomain(url) {
 }
 
 // Listen for permission changes
-if (typeof chrome !== 'undefined' && chrome.permissions) {
-  chrome.permissions.onAdded.addListener((permissions) => {
+if (browser && browser.permissions) {
+  browser.permissions.onAdded.addListener((permissions) => {
     console.log('[PermissionManager] Permissions added:', permissions.origins);
   });
 
-  chrome.permissions.onRemoved.addListener((permissions) => {
+  browser.permissions.onRemoved.addListener((permissions) => {
     console.log('[PermissionManager] Permissions removed:', permissions.origins);
   });
 }

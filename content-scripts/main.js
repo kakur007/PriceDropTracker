@@ -1,3 +1,5 @@
+import browser from '../utils/browser-polyfill.js';
+
 /**
  * Main Content Script Entry Point
  * This script is injected into product pages and coordinates product detection
@@ -7,7 +9,7 @@
 (async function() {
   try {
     // Dynamically import the product detector module
-    const { detectProduct } = await import(chrome.runtime.getURL('content-scripts/product-detector.js'));
+    const { detectProduct } = await import(browser.runtime.getURL('content-scripts/product-detector.js'));
 
     console.log('[Price Drop Tracker] Extension initialized on', window.location.hostname);
 
@@ -23,7 +25,7 @@
 
           // Send product to background script for storage
           try {
-            const response = await chrome.runtime.sendMessage({
+            const response = await browser.runtime.sendMessage({
               type: 'PRODUCT_DETECTED',
               data: product
             });

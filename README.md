@@ -60,21 +60,46 @@ Automatically track product prices across major e-commerce sites and get notifie
 
 ## Installation
 
-### From Chrome Web Store (Coming Soon)
+### Chrome Web Store (Coming Soon)
 1. Visit [Chrome Web Store](#) (link will be added after submission)
 2. Click "Add to Chrome"
 3. Start browsing - that's it!
 
+### Firefox Add-ons (Coming Soon)
+1. Visit [Firefox Add-ons](https://addons.mozilla.org) (link will be added after approval)
+2. Click "Add to Firefox"
+3. Approve permissions
+4. Start browsing!
+
+**Note:** Firefox requires version 109+ for full Manifest V3 support.
+
 ### Manual Installation (For Development)
+
+#### Chrome/Edge/Brave
 1. Download or clone this repository:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/price-drop-tracker.git
+   git clone https://github.com/kakur007/PriceDropTracker.git
+   cd PriceDropTracker
    ```
 2. Open Chrome and navigate to `chrome://extensions/`
 3. Enable "Developer mode" (toggle in top-right corner)
 4. Click "Load unpacked"
-5. Select the `price-drop-tracker` directory
+5. Select the `PriceDropTracker` directory
 6. The extension icon will appear in your toolbar
+
+#### Firefox
+1. Download or clone this repository:
+   ```bash
+   git clone https://github.com/kakur007/PriceDropTracker.git
+   cd PriceDropTracker
+   ```
+2. Open Firefox and navigate to `about:debugging#/runtime/this-firefox`
+3. Click "Load Temporary Add-on..."
+4. Navigate to the repository and select `manifest-firefox.json`
+5. The extension will load (temporary until Firefox restart)
+6. For persistent installation, build and install the signed XPI
+
+**For detailed Firefox setup:** See [FIREFOX_GUIDE.md](FIREFOX_GUIDE.md)
 
 ## 🚀 How It Works
 
@@ -266,28 +291,58 @@ We take your privacy seriously. This extension is designed to be **100% privacy-
 ## Development Setup
 
 ### Prerequisites
-- Google Chrome (version 88 or higher)
-- Node.js (optional, for testing)
-- Git
+- **Chrome** 88+ or **Firefox** 109+ (for testing)
+- **Node.js** 14+ (optional, for build scripts)
+- **Git** (for version control)
+- **Bash** (for build scripts)
 
 ### Installation Steps
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/price-drop-tracker.git
-   cd price-drop-tracker
+   git clone https://github.com/kakur007/PriceDropTracker.git
+   cd PriceDropTracker
    ```
 
-2. Load the extension in Chrome:
+2. **For Chrome Development:**
    - Open `chrome://extensions/`
    - Enable "Developer mode"
    - Click "Load unpacked"
    - Select the project directory
+   - Uses `manifest.json` automatically
 
-3. Test the extension:
+3. **For Firefox Development:**
+   - Open `about:debugging#/runtime/this-firefox`
+   - Click "Load Temporary Add-on..."
+   - Select `manifest-firefox.json` from project directory
+   - Extension loads temporarily
+
+4. Test the extension:
    - Visit any product page on Amazon, eBay, Walmart, Target, or Best Buy
    - Check the extension popup to see tracked products
-   - Open Chrome DevTools Console to see debug logs
+   - Open Browser DevTools Console to see debug logs
+
+### Building for Production
+
+The extension uses a **single codebase** for both Chrome and Firefox:
+
+```bash
+# Build for Chrome Web Store
+npm run build:chrome
+
+# Build for Firefox Add-ons
+npm run build:firefox
+
+# Build both
+npm run build
+```
+
+**Output:**
+- `dist/chrome/` - Chrome version (ready to upload)
+- `dist/firefox/` - Firefox version (ready to upload)
+- `dist/*.zip` - Packaged extensions
+
+**Note:** No transpilation, minification, or obfuscation. All code is vanilla JavaScript ES6+.
 
 ### Testing Instructions
 
@@ -322,11 +377,12 @@ We take your privacy seriously. This extension is designed to be **100% privacy-
 - **Permissions**: Minimal required permissions only
 
 ### Browser Compatibility
-- ✅ Chrome 88+
-- ✅ Microsoft Edge 88+
-- ✅ Brave Browser
+- ✅ Chrome 88+ (Chromium)
+- ✅ Microsoft Edge 88+ (Chromium)
+- ✅ Brave Browser (Chromium)
 - ✅ Opera (Chromium-based)
-- ❌ Firefox (different extension API - not yet supported)
+- ✅ Firefox 109+ (Manifest V3)
+- ✅ Firefox Developer Edition
 - ❌ Safari (different extension API - not yet supported)
 
 ### Data Storage Format

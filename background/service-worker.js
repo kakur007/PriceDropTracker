@@ -9,6 +9,7 @@
  * - Settings management
  */
 
+import browser from '../utils/browser-polyfill.js';
 import { StorageManager } from './storage-manager.js';
 import { checkAllProducts, checkSingleProduct, PriceCheckResult } from './price-checker.js';
 import { showBatchPriceDropNotifications, showInfoNotification } from '../utils/notification-manager.js';
@@ -39,7 +40,7 @@ console.log('[ServiceWorker] Price Drop Tracker: Service worker initializing...'
  * Extension installation handler
  * Sets up default settings and alarms on first install
  */
-chrome.runtime.onInstalled.addListener(async (details) => {
+browser.runtime.onInstalled.addListener(async (details) => {
   console.log('[ServiceWorker] Extension installed/updated:', details.reason);
 
   try {
@@ -47,7 +48,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
       console.log('[ServiceWorker] First time installation - setting up defaults');
 
       // Open welcome page on first install
-      chrome.tabs.create({ url: chrome.runtime.getURL('onboarding/welcome.html') });
+      browser.tabs.create({ url: browser.runtime.getURL('onboarding/welcome.html') });
 
       // Initialize default settings
       await StorageManager.initializeSettings();
@@ -75,7 +76,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
  * Browser startup handler
  * Ensures alarms are active when browser starts
  */
-chrome.runtime.onStartup.addListener(async () => {
+browser.runtime.onStartup.addListener(async () => {
   console.log('[ServiceWorker] Browser started, service worker active');
 
   try {
@@ -103,7 +104,7 @@ async function setupAlarms() {
     const settings = await StorageManager.getSettings();
 
     // Clear existing alarms
-    await chrome.alarms.clearAll();
+    await browser.alarms.clearAll();
 
     // Set up price check alarm
     if (settings.tracking.enabled) {
@@ -111,7 +112,7 @@ async function setupAlarms() {
 
       console.log(`[ServiceWorker] Creating price check alarm: every ${checkIntervalMinutes} minutes`);
 
-      chrome.alarms.create(ALARMS.PRICE_CHECK, {
+      browser.alarms.create(ALARMS.PRICE_CHECK, {
         delayInMinutes: 1, // First check in 1 minute
         periodInMinutes: checkIntervalMinutes
       });
@@ -122,7 +123,7 @@ async function setupAlarms() {
     // Set up daily cleanup alarm (runs at 3 AM)
     console.log('[ServiceWorker] Creating daily cleanup alarm');
 
-    chrome.alarms.create(ALARMS.DAILY_CLEANUP, {
+    browser.alarms.create(ALARMS.DAILY_CLEANUP, {
       when: getNextCleanupTime(),
       periodInMinutes: 24 * 60 // 24 hours
     });
@@ -156,7 +157,7 @@ function getNextCleanupTime() {
  * Alarm listener
  * Handles periodic tasks
  */
-chrome.alarms.onAlarm.addListener(async (alarm) => {
+browser.alarms.onAlarm.addListener(async (alarm) => {
   console.log(`[ServiceWorker] Alarm triggered: ${alarm.name}`);
 
   try {
@@ -281,7 +282,7 @@ async function notifyPriceDrops(checkDetails) {
  * Message listener
  * Handles messages from content scripts and popup
  */
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('[ServiceWorker] Message received:', message.type, sender.tab?.url);
 
   // Ignore messages meant for offscreen document (PARSE_HTML)
@@ -447,10 +448,10 @@ async function updateBadge() {
     const count = allProducts.length;
 
     if (count > 0) {
-      await chrome.action.setBadgeText({ text: count.toString() });
-      await chrome.action.setBadgeBackgroundColor({ color: '#4CAF50' });
+      await browser.action.setBadgeText({ text: count.toString() });
+      await browser.action.setBadgeBackgroundColor({ color: '#4CAF50' });
     } else {
-      await chrome.action.setBadgeText({ text: '' });
+      await browser.action.setBadgeText({ text: '' });
     }
 
   } catch (error) {
@@ -462,12 +463,12 @@ async function updateBadge() {
  * Listen for new permissions being granted
  * Automatically run product detection when user grants permission for a custom site
  */
-chrome.permissions.onAdded.addListener(async (permissions) => {
+browser.permissions.onAdded.addListener(async (permissions) => {
   console.log('[ServiceWorker] Permissions added:', permissions.origins);
 
   try {
     // Get the currently active tab
-    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const [activeTab] = await browser.tabs.query({ active: true, currentWindow: true });
 
     if (!activeTab || !activeTab.id || !activeTab.url) {
       console.log('[ServiceWorker] No active tab found after permission grant');
@@ -497,11 +498,11 @@ chrome.permissions.onAdded.addListener(async (permissions) => {
     await new Promise(resolve => setTimeout(resolve, 1500));
 
     // Inject and run product detection
-    const results = await chrome.scripting.executeScript({
+    const results = await browser.scripting.executeScript({
       target: { tabId: activeTab.id },
       func: async () => {
         try {
-          const detectorUrl = chrome.runtime.getURL('content-scripts/product-detector.js');
+          const detectorUrl = browser.runtime.getURL('content-scripts/product-detector.js');
           const { detectProduct } = await import(detectorUrl);
 
           console.log('[Price Drop Tracker] Auto-detection after permission grant...');
@@ -514,7 +515,7 @@ chrome.permissions.onAdded.addListener(async (permissions) => {
           if (productData) {
             console.log('[Price Drop Tracker] Product detected, sending to background...');
 
-            const response = await chrome.runtime.sendMessage({
+            const response = await browser.runtime.sendMessage({
               type: 'PRODUCT_DETECTED',
               data: productData
             });

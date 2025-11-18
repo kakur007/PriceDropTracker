@@ -1,3 +1,5 @@
+import browser from '../utils/browser-polyfill.js';
+
 /**
  * Product Detector - Core Detection Logic
  * Multi-layer product page detection with fallback strategies
@@ -952,7 +954,7 @@ async function detectAndSave() {
 
     if (productData) {
       // Check if already tracking
-      const response = await chrome.runtime.sendMessage({
+      const response = await browser.runtime.sendMessage({
         type: 'PRODUCT_DETECTED',
         data: productData
       });

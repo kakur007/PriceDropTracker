@@ -3,6 +3,7 @@
  * Displays tracked products with price information and controls
  */
 
+import browser from '../utils/browser-polyfill.js';
 import { debug, debugError, debugWarn } from '../utils/debug.js';
 
 let allProducts = {};
@@ -20,7 +21,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  */
 async function initializeTheme() {
   try {
-    const result = await chrome.storage.local.get(['theme']);
+    const result = await browser.storage.local.get(['theme']);
     const theme = result.theme || 'light';
     applyTheme(theme);
   } catch (error) {
@@ -64,7 +65,7 @@ async function toggleTheme() {
 
   // Save preference
   try {
-    await chrome.storage.local.set({ theme: newTheme });
+    await browser.storage.local.set({ theme: newTheme });
     debug('[Popup]', `Theme switched to ${newTheme}`);
   } catch (error) {
     debugError('[Popup] Error saving theme:', error);
@@ -79,7 +80,7 @@ async function loadProducts() {
     showLoading();
 
     // Get products via message to background script
-    const response = await chrome.runtime.sendMessage({
+    const response = await browser.runtime.sendMessage({
       type: 'GET_ALL_PRODUCTS'
     });
 
@@ -444,12 +445,12 @@ async function executeProductDetection(tabId) {
   try {
     debug('[Popup]', 'Executing script on tab:', tabId);
 
-    const results = await chrome.scripting.executeScript({
+    const results = await browser.scripting.executeScript({
       target: { tabId: tabId },
       func: async () => {
         try {
           // Dynamically import the detector module
-          const detectorUrl = chrome.runtime.getURL('content-scripts/product-detector.js');
+          const detectorUrl = browser.runtime.getURL('content-scripts/product-detector.js');
           const { detectProduct } = await import(detectorUrl);
 
           console.log('[Price Drop Tracker] Manual detection started...');
@@ -464,7 +465,7 @@ async function executeProductDetection(tabId) {
             console.log('[Price Drop Tracker] Product detected, sending to background...');
 
             // Send to background for storage
-            const response = await chrome.runtime.sendMessage({
+            const response = await browser.runtime.sendMessage({
               type: 'PRODUCT_DETECTED',
               data: productData
             });
@@ -566,7 +567,7 @@ function setupEventListeners() {
   trackThisPageBtn.addEventListener('click', async () => {
     try {
       // Get current tab
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
 
       if (!tab || !tab.id || !tab.url) {
         showTemporaryMessage('Unable to access current tab', 'error');
@@ -666,7 +667,7 @@ function setupEventListeners() {
 
     try {
       // Send message to background to force check all products
-      const response = await chrome.runtime.sendMessage({
+      const response = await browser.runtime.sendMessage({
         type: 'FORCE_CHECK_ALL',
         data: { batchSize: 5 }
       });
@@ -697,7 +698,7 @@ function setupEventListeners() {
 
   // Settings button
   document.getElementById('settingsBtn').addEventListener('click', () => {
-    chrome.runtime.openOptionsPage();
+    browser.runtime.openOptionsPage();
   });
 }
 
@@ -707,7 +708,7 @@ function setupEventListeners() {
 function openProduct(productId) {
   const product = allProducts[productId];
   if (product && product.url) {
-    chrome.tabs.create({ url: product.url });
+    browser.tabs.create({ url: product.url });
   }
 }
 
@@ -721,7 +722,7 @@ async function handleRefreshSingleProduct(productId, buttonElement) {
     buttonElement.disabled = true;
 
     // Request price check for this specific product
-    const response = await chrome.runtime.sendMessage({
+    const response = await browser.runtime.sendMessage({
       type: 'REFRESH_SINGLE_PRODUCT',
       data: { productId }
     });
@@ -759,7 +760,7 @@ async function handleDeleteProduct(productId) {
   }
 
   try {
-    const response = await chrome.runtime.sendMessage({
+    const response = await browser.runtime.sendMessage({
       type: 'DELETE_PRODUCT',
       data: { productId }
     });
