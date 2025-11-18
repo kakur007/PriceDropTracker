@@ -128,7 +128,7 @@ function isNonProductPage() {
 
     // Search and browsing
     '/search', '/results', '/category', '/categories', '/browse', '/collections',
-    '/shop', '/all-products', '/catalog', '/listing',
+    '/shop', '/all-products', '/catalog',
 
     // Support and info pages
     '/help', '/support', '/contact', '/about', '/faq', '/returns', '/shipping',
@@ -143,6 +143,13 @@ function isNonProductPage() {
 
   // Check URL patterns
   if (nonProductPatterns.some(pattern => url.includes(pattern))) {
+    return true;
+  }
+
+  // Special case: Allow Etsy listings (/listing/NUMBERS is a product page)
+  // Block only /listing or /listings without product IDs
+  if ((pathname.includes('/listing/') || pathname.includes('/listings/')) &&
+      !/\/listings?\/\d+/.test(pathname)) {
     return true;
   }
 

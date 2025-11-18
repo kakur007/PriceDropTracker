@@ -33,6 +33,14 @@ body {
   margin-bottom: 20px;
 }
 
+.hero-icon {
+  width: 96px;
+  height: 96px;
+  margin: 0 auto 20px;
+  display: block;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.15));
+}
+
 .hero h1 {
   font-size: 36px;
   font-weight: 700;
@@ -49,20 +57,21 @@ body {
 }
 
 .feature {
-  margin-bottom: 32px;
-  padding: 24px;
+  margin-bottom: 24px;
+  padding: 20px 24px;
   background: #f9fafb;
   border-radius: 12px;
   border-left: 4px solid #1eadbd;
+  transition: transform 0.2s, box-shadow 0.2s;
 }
 
-.feature-icon {
-  font-size: 32px;
-  margin-bottom: 12px;
+.feature:hover {
+  transform: translateX(4px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
 .feature h2 {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 600;
   color: #1f2937;
   margin-bottom: 8px;
