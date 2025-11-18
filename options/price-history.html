@@ -151,11 +151,14 @@
       display: flex;
       align-items: center;
       gap: 12px;
+      overflow: hidden;
     }
 
     .product-item-info {
       flex: 1;
       min-width: 0;
+      max-width: calc(100% - 80px);
+      overflow: hidden;
     }
 
     .product-item-title {
@@ -166,11 +169,15 @@
       text-overflow: ellipsis;
       white-space: nowrap;
       margin-bottom: 2px;
+      max-width: 100%;
     }
 
     .product-item-domain {
       font-size: 11px;
       color: #9ca3af;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .product-item-price {
@@ -178,7 +185,9 @@
       color: #059669;
       font-weight: 600;
       flex-shrink: 0;
-      margin-top: 2px;
+      white-space: nowrap;
+      min-width: 60px;
+      text-align: right;
     }
 
     .chart-container {
