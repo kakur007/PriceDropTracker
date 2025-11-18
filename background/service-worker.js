@@ -447,11 +447,19 @@ async function updateBadge() {
     const allProducts = await StorageManager.getAllProducts();
     const count = allProducts.length;
 
+    // Firefox MV2 uses browserAction, MV3 uses action
+    const badgeAPI = browser.action || browser.browserAction;
+
+    if (!badgeAPI) {
+      console.warn('[ServiceWorker] No badge API available');
+      return;
+    }
+
     if (count > 0) {
-      await browser.action.setBadgeText({ text: count.toString() });
-      await browser.action.setBadgeBackgroundColor({ color: '#4CAF50' });
+      await badgeAPI.setBadgeText({ text: count.toString() });
+      await badgeAPI.setBadgeBackgroundColor({ color: '#4CAF50' });
     } else {
-      await browser.action.setBadgeText({ text: '' });
+      await badgeAPI.setBadgeText({ text: '' });
     }
 
   } catch (error) {
