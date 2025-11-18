@@ -452,7 +452,7 @@ price-drop-tracker/
 We welcome contributions! Here's how you can help:
 
 ### Reporting Bugs
-1. Check if the issue already exists in [Issues](https://github.com/kakur007/price-drop-tracker/issues)
+1. Check if the issue already exists in [Issues](https://github.com/kakur007/PriceDropTracker/issues)
 2. Create a new issue with:
    - Clear description of the problem
    - Steps to reproduce
