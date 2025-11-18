@@ -86,8 +86,7 @@
   ],
 
   "background": {
-    "scripts": ["background/service-worker.js"],
-    "type": "module"
+    "page": "background/background.html"
   },
 
   "content_scripts": [
