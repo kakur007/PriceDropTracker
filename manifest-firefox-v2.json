@@ -22,7 +22,7 @@
   ],
 
   "background": {
-    "page": "background/background.html"
+    "scripts": ["background/background-wrapper.js"]
   },
 
   "content_scripts": [
