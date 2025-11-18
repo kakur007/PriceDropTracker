@@ -1,9 +1,16 @@
 {
-  "manifest_version": 3,
+  "manifest_version": 2,
   "name": "Price Genius by GoGoNano",
   "version": "1.0.0",
   "description": "Automatically track product prices and get notified when they drop. Works across Amazon, eBay, Walmart, Etsy, AliExpress, Shopify stores, Zalando, ASOS, MediaMarkt, and thousands more e-commerce sites.",
   "author": "GoGoNano OÜ",
+
+  "applications": {
+    "gecko": {
+      "id": "price-genius@gogonano.com",
+      "strict_min_version": "78.0"
+    }
+  },
 
   "permissions": [
     "storage",
@@ -11,77 +18,11 @@
     "notifications",
     "tabs",
     "activeTab",
-    "scripting",
-    "offscreen"
-  ],
-
-  "host_permissions": [
-    "*://*.amazon.com/*",
-    "*://*.amazon.co.uk/*",
-    "*://*.amazon.de/*",
-    "*://*.amazon.fr/*",
-    "*://*.amazon.it/*",
-    "*://*.amazon.es/*",
-    "*://*.amazon.ca/*",
-    "*://*.amazon.com.au/*",
-    "*://*.amazon.co.jp/*",
-    "*://*.amazon.in/*",
-    "*://*.amazon.com.mx/*",
-    "*://*.amazon.com.br/*",
-    "*://*.amazon.nl/*",
-    "*://*.amazon.se/*",
-    "*://*.ebay.com/*",
-    "*://*.ebay.co.uk/*",
-    "*://*.ebay.de/*",
-    "*://*.ebay.fr/*",
-    "*://*.ebay.it/*",
-    "*://*.ebay.es/*",
-    "*://*.ebay.ca/*",
-    "*://*.ebay.com.au/*",
-    "*://*.walmart.com/*",
-    "*://*.target.com/*",
-    "*://*.bestbuy.com/*",
-    "*://*.etsy.com/*",
-    "*://*.aliexpress.com/*",
-    "*://*.newegg.com/*",
-    "*://*.costco.com/*",
-    "*://*.homedepot.com/*",
-    "*://*.lowes.com/*",
-    "*://*.wayfair.com/*",
-    "*://*.overstock.com/*",
-    "*://*.myshopify.com/*",
-    "*://*.zalando.com/*",
-    "*://*.zalando.co.uk/*",
-    "*://*.zalando.de/*",
-    "*://*.zalando.fr/*",
-    "*://*.zalando.it/*",
-    "*://*.zalando.es/*",
-    "*://*.zalando.nl/*",
-    "*://*.zalando.be/*",
-    "*://*.zalando.ee/*",
-    "*://*.zalando.fi/*",
-    "*://*.zalando.se/*",
-    "*://*.zalando.dk/*",
-    "*://*.zalando.no/*",
-    "*://*.zalando.pl/*",
-    "*://*.zalando.at/*",
-    "*://*.zalando.ch/*",
-    "*://*.asos.com/*",
-    "*://*.mediamarkt.com/*",
-    "*://*.mediamarkt.de/*",
-    "*://*.mediamarkt.nl/*",
-    "*://*.mediamarkt.be/*",
-    "*://*.mediamarkt.at/*",
-    "*://*.mediamarkt.ch/*"
-  ],
-
-  "optional_host_permissions": [
     "<all_urls>"
   ],
 
   "background": {
-    "service_worker": "background/service-worker.js",
-    "type": "module"
+    "scripts": ["background/background-wrapper.js"]
   },
 
   "content_scripts": [
@@ -129,6 +70,14 @@
         "*://*.zalando.es/*",
         "*://*.zalando.nl/*",
         "*://*.zalando.be/*",
+        "*://*.zalando.ee/*",
+        "*://*.zalando.fi/*",
+        "*://*.zalando.se/*",
+        "*://*.zalando.dk/*",
+        "*://*.zalando.no/*",
+        "*://*.zalando.pl/*",
+        "*://*.zalando.at/*",
+        "*://*.zalando.ch/*",
         "*://*.asos.com/*",
         "*://*.mediamarkt.com/*",
         "*://*.mediamarkt.de/*",
@@ -146,17 +95,12 @@
   ],
 
   "web_accessible_resources": [
-    {
-      "resources": [
-        "content-scripts/*.js",
-        "content-scripts/site-adapters/*.js",
-        "utils/*.js"
-      ],
-      "matches": ["<all_urls>"]
-    }
+    "content-scripts/*.js",
+    "content-scripts/site-adapters/*.js",
+    "utils/*.js"
   ],
 
-  "action": {
+  "browser_action": {
     "default_popup": "popup/popup.html",
     "default_icon": {
       "16": "assets/icons/icon-16.png",
@@ -173,13 +117,10 @@
     "128": "assets/icons/icon-128.png"
   },
 
-  "options_page": "options/settings.html",
   "options_ui": {
     "page": "options/settings.html",
     "open_in_tab": true
   },
 
-  "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'"
-  }
+  "content_security_policy": "script-src 'self'; object-src 'self'"
 }
