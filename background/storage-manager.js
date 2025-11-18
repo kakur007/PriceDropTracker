@@ -338,6 +338,11 @@ export async function getSettings() {
  */
 export async function updateSettings(newSettings) {
   try {
+    if (!newSettings || typeof newSettings !== 'object') {
+      console.error('[Storage] Invalid settings provided:', newSettings);
+      throw new Error('Invalid settings object');
+    }
+
     const currentSettings = await getSettings();
 
     // Deep merge - only merge properties that exist in newSettings

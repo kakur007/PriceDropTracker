@@ -69,4 +69,45 @@ export function getBrowserName() {
   return 'Unknown';
 }
 
+/**
+ * Cross-browser script execution
+ * Handles differences between Manifest V3 (scripting API) and V2 (tabs API)
+ *
+ * @param {Object} options - Execution options
+ * @param {Object} options.target - Target tab {tabId: number}
+ * @param {Function} options.func - Function to execute (MV3) or files to inject (MV2)
+ * @param {Array<string>} options.files - Files to inject (MV2 only)
+ * @returns {Promise<Array>} Execution results
+ */
+export async function executeScript(options) {
+  const { target, func, files } = options;
+
+  // Manifest V3: Use scripting API (Chrome, newer Firefox)
+  if (browserAPI.scripting && browserAPI.scripting.executeScript) {
+    console.log('[BrowserPolyfill] Using Manifest V3 scripting API');
+    return await browserAPI.scripting.executeScript({
+      target: target,
+      func: func
+    });
+  }
+
+  // Manifest V2: Use tabs API (Firefox, older browsers)
+  if (browserAPI.tabs && browserAPI.tabs.executeScript) {
+    console.log('[BrowserPolyfill] Using Manifest V2 tabs API');
+
+    // Convert function to code string for tabs.executeScript
+    const code = func ? `(${func.toString()})()` : undefined;
+
+    const result = await browserAPI.tabs.executeScript(target.tabId, {
+      code: code,
+      file: files ? files[0] : undefined
+    });
+
+    // Wrap result to match scripting API format
+    return result ? [{ result: result[0] }] : [];
+  }
+
+  throw new Error('No script execution API available');
+}
+
 console.log(`[BrowserPolyfill] Initialized for ${getBrowserName()}`);
