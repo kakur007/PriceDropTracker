@@ -224,8 +224,9 @@
       <h2>Contact Us</h2>
       <p>If you have questions about this privacy policy or how Price Genius works, please contact us at:</p>
       <ul>
-        <li>Email: support@gogonano.com</li>
-        <li>Website: <a href="https://gogonano.com" target="_blank">gogonano.com</a></li>
+        <li>Company: GoGoNano OÜ</li>
+        <li>Website: <a href="https://www.gogonano.com" target="_blank">www.gogonano.com</a></li>
+        <li>Contact: <a href="https://www.gogonano.com/contact-us/?lang=en" target="_blank">Contact Us</a></li>
       </ul>
 
       <p style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #e5e7eb; color: #9ca3af; font-size: 14px;">
@@ -235,6 +236,12 @@
     </div>
   </div>
 
-  <script type="module" src="settings.js"></script>
+  <script>
+    // Apply dark mode theme
+    chrome.storage.local.get(['theme'], (result) => {
+      const theme = result.theme || 'light';
+      document.body.setAttribute('data-theme', theme);
+    });
+  </script>
 </body>
 </html>
