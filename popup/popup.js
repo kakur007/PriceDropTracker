@@ -5,6 +5,8 @@
 
 import browser, { executeScript } from '../utils/browser-polyfill.js';
 import { debug, debugError, debugWarn } from '../utils/debug.js';
+import { isUrlSupported } from '../utils/domain-validator.js';
+import { hasPermissionForUrl, requestPermissionForUrl } from '../utils/permission-manager.js';
 
 let allProducts = {};
 let currentFilter = 'all';
@@ -566,65 +568,53 @@ function setupEventListeners() {
   const trackThisPageBtn = document.getElementById('trackThisPageBtn');
   trackThisPageBtn.addEventListener('click', async () => {
     try {
+      // Show loading state
+      trackThisPageBtn.disabled = true;
+      trackThisPageBtn.innerHTML = '<span>⏳</span>';
+
       // Get current tab
       const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
 
       if (!tab || !tab.id || !tab.url) {
         showTemporaryMessage('Unable to access current tab', 'error');
+        trackThisPageBtn.innerHTML = '<span>➕</span>';
+        trackThisPageBtn.disabled = false;
         return;
       }
 
-      // Show loading state
-      trackThisPageBtn.disabled = true;
-      trackThisPageBtn.innerHTML = '<span>⏳</span>';
-
-      // CRITICAL: Check and request permissions FIRST, before any async work
-      // This must happen immediately in the user gesture handler
-      const { isUrlSupported } = await import('../utils/domain-validator.js');
-      const { hasPermissionForUrl, requestPermissionForUrl } = await import('../utils/permission-manager.js');
-
+      // Check if this is a default supported site (synchronously)
       const isDefaultSupported = isUrlSupported(tab.url);
-      debug('[Popup]', 'Is default supported:', isDefaultSupported);
+      debug('[Popup]', 'Is default supported:', isDefaultSupported, 'URL:', tab.url);
 
-      // If not in default list, check if we have permission
-      let justGrantedPermission = false;
+      // If not in default list, request permission immediately
+      // CRITICAL: This must happen early in the click handler for Firefox
+      // Firefox requires permissions.request() to be called directly from user gesture
       if (!isDefaultSupported) {
-        const hasPermission = await hasPermissionForUrl(tab.url);
-        debug('[Popup]', 'Has permission:', hasPermission);
+        debug('[Popup]', 'Requesting permission for custom site:', tab.url);
 
-        if (!hasPermission) {
-          // Request permission RIGHT NOW while still in user gesture
-          debug('[Popup]', 'Requesting permission for:', tab.url);
+        // Request permission - this will return true if already granted
+        // IMPORTANT: In Firefox, requesting permission may close the popup!
+        // The service worker will automatically detect and track the product after permission is granted
+        const granted = await requestPermissionForUrl(tab.url);
 
-          // IMPORTANT: Requesting permission will close the popup!
-          // The service worker will automatically detect and track the product after permission is granted
-          const granted = await requestPermissionForUrl(tab.url);
-
-          if (!granted) {
-            debug('[Popup]', 'Permission denied by user');
-            showTemporaryMessage('Permission denied. Cannot track products on this site.', 'error');
-            trackThisPageBtn.innerHTML = '<span>➕</span>';
-            trackThisPageBtn.disabled = false;
-            return;
-          }
-
-          debug('[Popup]', 'Permission granted! Service worker will auto-detect product...');
-
-          // The popup will close when permission dialog appears
-          // The service worker's chrome.permissions.onAdded listener will:
-          // 1. Detect the new permission
-          // 2. Check if it matches the active tab
-          // 3. Automatically run product detection
-          // 4. Save the product and show confirmation
-
-          // No need to do anything else - just let the popup close
+        if (!granted) {
+          debug('[Popup]', 'Permission denied by user');
+          showTemporaryMessage('Permission denied. Cannot track products on this site.', 'error');
+          trackThisPageBtn.innerHTML = '<span>➕</span>';
+          trackThisPageBtn.disabled = false;
           return;
         }
+
+        debug('[Popup]', 'Permission granted for:', tab.url);
+
+        // If the popup is still open (didn't close from permission dialog),
+        // the service worker's permissions.onAdded listener will handle auto-detection
+        // But we can also proceed with manual detection here as a fallback
       }
 
-      // Now that we have permission, execute product detection
+      // Execute product detection (we have permission at this point)
       let result = await executeProductDetection(tab.id);
-      debug('[Popup]', 'First execution result:', result);
+      debug('[Popup]', 'Detection result:', result);
 
       if (result && result.success) {
         // Reload products to show the newly tracked item
