@@ -17,46 +17,81 @@ import { StorageManager } from './storage-manager.js';
 import { isUrlSupportedOrPermitted } from '../utils/domain-validator.js';
 
 /**
- * Ensures the offscreen document is created and ready
+ * Ensures the offscreen document is created and ready (Manifest V3 only)
  * @returns {Promise<void>}
  */
 async function setupOffscreenDocument() {
-  // Check if offscreen document already exists
-  const existingContexts = await browser.runtime.getContexts({
-    contextTypes: ['OFFSCREEN_DOCUMENT']
-  });
-
-  if (existingContexts.length > 0) {
-    return; // Already exists
+  // Offscreen API only available in Manifest V3
+  if (!browser.runtime.getContexts || !browser.offscreen) {
+    console.log('[PriceChecker] Offscreen API not available (using fallback parser)');
+    return;
   }
 
-  // Create the offscreen document
-  await browser.offscreen.createDocument({
-    url: 'background/offscreen.html',
-    reasons: ['DOM_PARSER'],
-    justification: 'Parse HTML to extract product prices in service worker context'
-  });
+  try {
+    // Check if offscreen document already exists
+    const existingContexts = await browser.runtime.getContexts({
+      contextTypes: ['OFFSCREEN_DOCUMENT']
+    });
 
-  console.log('[PriceChecker] Offscreen document created');
+    if (existingContexts.length > 0) {
+      return; // Already exists
+    }
+
+    // Create the offscreen document
+    await browser.offscreen.createDocument({
+      url: 'background/offscreen.html',
+      reasons: ['DOM_PARSER'],
+      justification: 'Parse HTML to extract product prices in service worker context'
+    });
+
+    console.log('[PriceChecker] Offscreen document created');
+  } catch (error) {
+    console.warn('[PriceChecker] Could not create offscreen document:', error);
+  }
 }
 
 /**
- * Parse HTML using the offscreen document
+ * Parse HTML using the offscreen document or fallback parser
  * @param {string} html - The HTML string to parse
  * @returns {Promise<Object>} - Parsed price data
  */
 async function parseHTMLForPrice(html) {
   try {
-    // Ensure offscreen document exists
-    await setupOffscreenDocument();
+    // Try offscreen document first (Manifest V3)
+    if (browser.offscreen && browser.runtime.getContexts) {
+      await setupOffscreenDocument();
 
-    // Send HTML to offscreen document for parsing
-    const response = await browser.runtime.sendMessage({
-      type: 'PARSE_HTML',
-      html
-    });
+      // Send HTML to offscreen document for parsing
+      const response = await browser.runtime.sendMessage({
+        type: 'PARSE_HTML',
+        html
+      });
 
-    return response;
+      return response;
+    }
+
+    // Fallback for Manifest V2 (Firefox) - Use DOMParser directly
+    // Background pages have access to DOM APIs
+    console.log('[PriceChecker] Using DOMParser fallback (Manifest V2)');
+
+    if (typeof DOMParser !== 'undefined') {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+
+      return {
+        success: true,
+        document: doc,
+        // Make document serializable for the response
+        html: html
+      };
+    }
+
+    // If no parser available, return raw HTML
+    console.warn('[PriceChecker] No HTML parser available');
+    return {
+      success: true,
+      html: html
+    };
 
   } catch (error) {
     console.error('[PriceChecker] Error in parseHTMLForPrice:', error);

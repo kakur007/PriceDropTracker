@@ -235,7 +235,7 @@ async function handleSettingChange(e) {
     if (settingId === 'checkInterval') {
       browser.runtime.sendMessage({
         type: 'UPDATE_SETTINGS',
-        settings: newSettings
+        data: { settings: newSettings }
       });
     }
 
