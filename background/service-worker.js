@@ -9,7 +9,7 @@
  * - Settings management
  */
 
-import browser from '../utils/browser-polyfill.js';
+import browser, { executeScript } from '../utils/browser-polyfill.js';
 import { StorageManager } from './storage-manager.js';
 import { checkAllProducts, checkSingleProduct, PriceCheckResult } from './price-checker.js';
 import { showBatchPriceDropNotifications, showInfoNotification } from '../utils/notification-manager.js';
@@ -498,7 +498,7 @@ browser.permissions.onAdded.addListener(async (permissions) => {
     await new Promise(resolve => setTimeout(resolve, 1500));
 
     // Inject and run product detection
-    const results = await browser.scripting.executeScript({
+    const results = await executeScript({
       target: { tabId: activeTab.id },
       func: async () => {
         try {

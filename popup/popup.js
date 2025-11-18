@@ -3,7 +3,7 @@
  * Displays tracked products with price information and controls
  */
 
-import browser from '../utils/browser-polyfill.js';
+import browser, { executeScript } from '../utils/browser-polyfill.js';
 import { debug, debugError, debugWarn } from '../utils/debug.js';
 
 let allProducts = {};
@@ -445,7 +445,7 @@ async function executeProductDetection(tabId) {
   try {
     debug('[Popup]', 'Executing script on tab:', tabId);
 
-    const results = await browser.scripting.executeScript({
+    const results = await executeScript({
       target: { tabId: tabId },
       func: async () => {
         try {
