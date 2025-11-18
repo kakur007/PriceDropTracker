@@ -452,7 +452,7 @@ price-drop-tracker/
 We welcome contributions! Here's how you can help:
 
 ### Reporting Bugs
-1. Check if the issue already exists in [Issues](https://github.com/YOUR_USERNAME/price-drop-tracker/issues)
+1. Check if the issue already exists in [Issues](https://github.com/kakur007/price-drop-tracker/issues)
 2. Create a new issue with:
    - Clear description of the problem
    - Steps to reproduce
@@ -618,8 +618,8 @@ A: Absolutely! See the Contributing section above.
 ## 📞 Support
 
 ### Get Help
-- **Developer**: [GoGoNano](https://gogonano.com)
-- **Email Support**: Visit [GoGoNano Support](https://gogonano.com/support)
+- **Developer**: [GoGoNano](https://www.gogonano.com)
+- **Email Support**: Visit [GoGoNano Support](https://www.gogonano.com/support)
 - **Bug Reports**: [GitHub Issues](https://github.com/kakur007/PriceDropTracker/issues)
 - **Feature Requests**: [GitHub Discussions](https://github.com/kakur007/PriceDropTracker/discussions)
 - **Documentation**: This README + inline help in extension
@@ -647,7 +647,7 @@ We love feature requests! Please:
 ## Acknowledgments
 
 - Built with [Chrome Extension Manifest V3](https://developer.chrome.com/docs/extensions/mv3/intro/)
-- Developed by [GoGoNano](https://gogonano.com)
+- Developed by [GoGoNano](https://www.gogonano.com)
 - Inspired by the need for a privacy-focused price tracker
 - Thanks to all contributors and testers
 
@@ -755,11 +755,11 @@ Open source with clean code, comprehensive comments, and modular architecture. E
 
 ---
 
-**Developed with ❤️ by [GoGoNano](https://gogonano.com)**
+**Developed with ❤️ by [GoGoNano](https://www.gogonano.com)**
 
 If you find this extension useful, please consider:
 - ⭐ **Star this repository** - Helps others discover the project
-- 🐛 **Report bugs** - Help improve the extension at [GoGoNano Support](https://gogonano.com/support)
+- 🐛 **Report bugs** - Help improve the extension at [GoGoNano Support](https://www.gogonano.com/contact-us/?lang=en)
 - 💡 **Suggest features** - Share your ideas in GitHub Discussions
 - 🤝 **Contribute code** - Pull requests are welcome
 - 📢 **Share with friends** - Help others save money too
