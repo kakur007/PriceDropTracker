@@ -521,58 +521,7 @@ chrome.permissions.onAdded.addListener(async (permissions) => {
 
             if (response && response.success && !response.data.alreadyTracked) {
               console.log('[Price Drop Tracker] ✓ Product auto-tracked after permission grant!');
-
-              // Show on-page confirmation with brand colors
-              const badge = document.createElement('div');
-              badge.style.cssText = `
-                position: fixed;
-                bottom: 20px;
-                right: 20px;
-                background: #1eadbd;
-                color: white;
-                padding: 14px 22px;
-                border-radius: 10px;
-                box-shadow: 0 6px 20px rgba(30, 173, 189, 0.3);
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-                font-size: 15px;
-                font-weight: 600;
-                z-index: 999999;
-                animation: slideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-                display: flex;
-                align-items: center;
-                gap: 10px;
-              `;
-              badge.innerHTML = `
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <circle cx="10" cy="10" r="10" fill="white" fill-opacity="0.2"/>
-                  <path d="M6 10L9 13L14 7" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                <span>Now tracking: ${productData.price.formatted}</span>
-              `;
-
-              const style = document.createElement('style');
-              style.textContent = `
-                @keyframes slideIn {
-                  from {
-                    transform: translateY(100px);
-                    opacity: 0;
-                  }
-                  to {
-                    transform: translateY(0);
-                    opacity: 1;
-                  }
-                }
-              `;
-              document.head.appendChild(style);
-              document.body.appendChild(badge);
-
-              setTimeout(() => {
-                badge.style.transition = 'all 0.3s ease';
-                badge.style.opacity = '0';
-                badge.style.transform = 'translateY(20px)';
-                setTimeout(() => badge.remove(), 300);
-              }, 5000);
-
+              // Badge is now handled by product-detector.js to prevent duplicates
               return { success: true };
             }
 
