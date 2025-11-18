@@ -1,3 +1,5 @@
+import browser from '../utils/browser-polyfill.js';
+
 /**
  * Offscreen Document - DOM Parsing for Service Worker
  *
@@ -128,7 +130,7 @@ function parseHTMLForPrice(html) {
 }
 
 // Listen for messages from the service worker
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('[Offscreen] Received message:', message.type);
 
   if (message.type === 'PARSE_HTML') {

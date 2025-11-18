@@ -1,3 +1,5 @@
+import browser from '../utils/browser-polyfill.js';
+
 import { getSettings, updateSettings, getStorageStats, exportData, importData, clearAllData } from '../background/storage-manager.js';
 import { debounce } from '../utils/debounce.js';
 import { showSuccess, showError, showWarning } from '../utils/toast.js';
@@ -19,7 +21,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  * Apply theme (dark/light mode)
  */
 function applyTheme() {
-  chrome.storage.local.get(['theme'], (result) => {
+  browser.storage.local.get(['theme'], (result) => {
     const theme = result.theme || 'light';
     document.body.setAttribute('data-theme', theme);
   });
@@ -96,7 +98,7 @@ function setupEventListeners() {
     btn.disabled = true;
     btn.setAttribute('aria-busy', 'true');
 
-    chrome.runtime.sendMessage({ type: 'CHECK_NOW' }, (response) => {
+    browser.runtime.sendMessage({ type: 'CHECK_NOW' }, (response) => {
       btn.textContent = 'Check All Prices Now';
       btn.disabled = false;
       btn.setAttribute('aria-busy', 'false');
@@ -193,7 +195,7 @@ function setupEventListeners() {
   // Give feedback link
   document.getElementById('giveFeedbackLink').addEventListener('click', (e) => {
     e.preventDefault();
-    chrome.tabs.create({ url: 'https://github.com/yourusername/price-drop-tracker/issues' });
+    browser.tabs.create({ url: 'https://github.com/yourusername/price-drop-tracker/issues' });
   });
 }
 
@@ -231,7 +233,7 @@ async function handleSettingChange(e) {
 
     // If check interval changed, notify service worker to reschedule
     if (settingId === 'checkInterval') {
-      chrome.runtime.sendMessage({
+      browser.runtime.sendMessage({
         type: 'UPDATE_SETTINGS',
         settings: newSettings
       });

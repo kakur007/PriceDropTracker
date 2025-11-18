@@ -1,3 +1,5 @@
+import browser from '../utils/browser-polyfill.js';
+
 import { debug, debugError } from '../utils/debug.js';
 
 let allProducts = {};
@@ -22,7 +24,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  * Apply theme (dark/light mode)
  */
 function applyTheme() {
-  chrome.storage.local.get(['theme'], (result) => {
+  browser.storage.local.get(['theme'], (result) => {
     const theme = result.theme || 'light';
     document.body.setAttribute('data-theme', theme);
   });
@@ -33,7 +35,7 @@ function applyTheme() {
  */
 async function loadProducts() {
   try {
-    const result = await chrome.storage.local.get(['products']);
+    const result = await browser.storage.local.get(['products']);
     const products = result.products || {};
 
     allProducts = products;

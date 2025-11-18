@@ -9,6 +9,7 @@
  * - Settings integration (respect user preferences)
  */
 
+import browser from './browser-polyfill.js';
 import { StorageManager } from '../background/storage-manager.js';
 
 /**
@@ -71,9 +72,9 @@ Now: ${formatPrice(newPrice, product.currency, product.locale)}
 Save: ${formatPrice(parseFloat(dropAmount), product.currency, product.locale)} (${dropPercentage.toFixed(0)}% off)`;
 
     // Create the notification
-    const notificationId = await chrome.notifications.create(product.id, {
+    const notificationId = await browser.notifications.create(product.id, {
       type: 'basic',
-      iconUrl: chrome.runtime.getURL('assets/icons/icon-128.png'),
+      iconUrl: browser.runtime.getURL('assets/icons/icon-128.png'),
       title,
       message,
       priority: 2,
@@ -88,7 +89,7 @@ Save: ${formatPrice(parseFloat(dropAmount), product.currency, product.locale)} (
 
     // Auto-clear after 10 seconds
     setTimeout(() => {
-      chrome.notifications.clear(notificationId).catch(err => {
+      browser.notifications.clear(notificationId).catch(err => {
         console.warn('[Notifications] Error clearing notification:', err);
       });
     }, 10000);
@@ -158,7 +159,7 @@ export async function showBatchPriceDropNotifications(priceDrops) {
 
     await chrome.notifications.create('batch-price-drops', {
       type: 'basic',
-      iconUrl: chrome.runtime.getURL('assets/icons/icon-128.png'),
+      iconUrl: browser.runtime.getURL('assets/icons/icon-128.png'),
       title,
       message,
       priority: 2,
@@ -196,9 +197,9 @@ export async function showInfoNotification(title, message, options = {}) {
       return null;
     }
 
-    const notificationId = await chrome.notifications.create({
+    const notificationId = await browser.notifications.create({
       type: 'basic',
-      iconUrl: chrome.runtime.getURL('assets/icons/icon-128.png'),
+      iconUrl: browser.runtime.getURL('assets/icons/icon-128.png'),
       title,
       message,
       priority: options.priority || 0,
@@ -210,7 +211,7 @@ export async function showInfoNotification(title, message, options = {}) {
     // Auto-clear after duration if specified
     if (options.duration) {
       setTimeout(() => {
-        chrome.notifications.clear(notificationId).catch(err => {
+        browser.notifications.clear(notificationId).catch(err => {
           console.warn('[Notifications] Error clearing notification:', err);
         });
       }, options.duration);
@@ -232,9 +233,9 @@ export async function showInfoNotification(title, message, options = {}) {
  */
 export async function showErrorNotification(message) {
   try {
-    const notificationId = await chrome.notifications.create({
+    const notificationId = await browser.notifications.create({
       type: 'basic',
-      iconUrl: chrome.runtime.getURL('assets/icons/icon-128.png'),
+      iconUrl: browser.runtime.getURL('assets/icons/icon-128.png'),
       title: '⚠️ Price Drop Tracker Error',
       message,
       priority: 1,
@@ -245,7 +246,7 @@ export async function showErrorNotification(message) {
 
     // Auto-clear after 8 seconds
     setTimeout(() => {
-      chrome.notifications.clear(notificationId).catch(err => {
+      browser.notifications.clear(notificationId).catch(err => {
         console.warn('[Notifications] Error clearing notification:', err);
       });
     }, 8000);

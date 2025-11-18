@@ -1,0 +1,41 @@
+{
+  "name": "price-genius",
+  "version": "1.0.0",
+  "description": "Automatically track product prices and get notified when they drop - Chrome & Firefox Extension",
+  "private": true,
+  "scripts": {
+    "build": "bash scripts/build-all.sh",
+    "build:chrome": "bash scripts/build-chrome.sh",
+    "build:firefox": "bash scripts/build-firefox.sh",
+    "test": "echo 'No automated tests configured yet'",
+    "lint": "echo 'No linter configured yet'"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kakur007/PriceDropTracker.git"
+  },
+  "keywords": [
+    "price-tracker",
+    "price-drop",
+    "price-monitoring",
+    "shopping",
+    "deals",
+    "e-commerce",
+    "amazon",
+    "ebay",
+    "walmart",
+    "browser-extension",
+    "chrome-extension",
+    "firefox-addon"
+  ],
+  "author": "GoGoNano OÜ",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/kakur007/PriceDropTracker/issues"
+  },
+  "homepage": "https://github.com/kakur007/PriceDropTracker#readme",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "devDependencies": {}
+}

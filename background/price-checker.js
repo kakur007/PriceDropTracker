@@ -1,3 +1,5 @@
+import browser from '../utils/browser-polyfill.js';
+
 /**
  * Price Checker - Background price checking orchestration
  *
@@ -20,7 +22,7 @@ import { isUrlSupportedOrPermitted } from '../utils/domain-validator.js';
  */
 async function setupOffscreenDocument() {
   // Check if offscreen document already exists
-  const existingContexts = await chrome.runtime.getContexts({
+  const existingContexts = await browser.runtime.getContexts({
     contextTypes: ['OFFSCREEN_DOCUMENT']
   });
 
@@ -29,7 +31,7 @@ async function setupOffscreenDocument() {
   }
 
   // Create the offscreen document
-  await chrome.offscreen.createDocument({
+  await browser.offscreen.createDocument({
     url: 'background/offscreen.html',
     reasons: ['DOM_PARSER'],
     justification: 'Parse HTML to extract product prices in service worker context'
@@ -49,7 +51,7 @@ async function parseHTMLForPrice(html) {
     await setupOffscreenDocument();
 
     // Send HTML to offscreen document for parsing
-    const response = await chrome.runtime.sendMessage({
+    const response = await browser.runtime.sendMessage({
       type: 'PARSE_HTML',
       html
     });
