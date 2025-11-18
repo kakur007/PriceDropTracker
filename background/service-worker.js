@@ -472,19 +472,30 @@ async function updateBadge() {
  * Automatically run product detection when user grants permission for a custom site
  */
 browser.permissions.onAdded.addListener(async (permissions) => {
-  console.log('[ServiceWorker] Permissions added:', permissions.origins);
+  console.log('=================================================');
+  console.log('[ServiceWorker] 🔔 PERMISSIONS ADDED EVENT FIRED');
+  console.log('[ServiceWorker] New permissions granted:', permissions.origins);
+  console.log('=================================================');
 
   try {
     // Get the currently active tab
     const [activeTab] = await browser.tabs.query({ active: true, currentWindow: true });
 
+    console.log('[ServiceWorker] Active tab info:', {
+      id: activeTab?.id,
+      url: activeTab?.url,
+      title: activeTab?.title
+    });
+
     if (!activeTab || !activeTab.id || !activeTab.url) {
-      console.log('[ServiceWorker] No active tab found after permission grant');
+      console.log('[ServiceWorker] ❌ No active tab found after permission grant');
       return;
     }
 
     // Check if the permission matches the active tab's domain
     const tabHostname = new URL(activeTab.url).hostname;
+    console.log('[ServiceWorker] Checking if permission matches active tab hostname:', tabHostname);
+
     const permissionMatches = permissions.origins.some(origin => {
       // Convert origin pattern to regex
       // *://example.com/* or *://*.example.com/*
@@ -492,68 +503,92 @@ browser.permissions.onAdded.addListener(async (permissions) => {
         .replace(/\*/g, '.*')
         .replace(/\./g, '\\.');
       const regex = new RegExp(pattern);
-      return regex.test(activeTab.url);
+      const matches = regex.test(activeTab.url);
+      console.log(`[ServiceWorker] Testing pattern "${origin}" against "${activeTab.url}": ${matches}`);
+      return matches;
     });
 
     if (!permissionMatches) {
-      console.log('[ServiceWorker] Permission granted for different site, ignoring');
+      console.log('[ServiceWorker] ❌ Permission granted for different site, ignoring automatic tracking');
       return;
     }
 
-    console.log('[ServiceWorker] Permission granted for active tab, auto-detecting product...');
+    console.log('[ServiceWorker] ✓ Permission granted for active tab, starting auto-detection...');
 
     // Wait a moment for page to be ready after reload (if it was reloaded)
+    console.log('[ServiceWorker] Waiting 1.5s for page to be ready...');
     await new Promise(resolve => setTimeout(resolve, 1500));
 
     // Inject and run product detection
+    console.log('[ServiceWorker] Injecting product detection script into tab:', activeTab.id);
     const results = await executeScript({
       target: { tabId: activeTab.id },
       func: async () => {
         try {
+          console.log('[Price Drop Tracker] 🚀 Starting auto-detection after permission grant...');
           const detectorUrl = browser.runtime.getURL('content-scripts/product-detector.js');
+          console.log('[Price Drop Tracker] Loading detector module from:', detectorUrl);
           const { detectProduct } = await import(detectorUrl);
 
-          console.log('[Price Drop Tracker] Auto-detection after permission grant...');
-
+          console.log('[Price Drop Tracker] Detector module loaded, waiting 1s for page readiness...');
           // Wait for page to be fully loaded
           await new Promise(resolve => setTimeout(resolve, 1000));
 
+          console.log('[Price Drop Tracker] Running product detection...');
           const productData = await detectProduct();
 
           if (productData) {
-            console.log('[Price Drop Tracker] Product detected, sending to background...');
+            console.log('[Price Drop Tracker] ✅ Product detected:', productData.title);
+            console.log('[Price Drop Tracker] Product ID:', productData.productId);
+            console.log('[Price Drop Tracker] Price:', productData.price.formatted);
+            console.log('[Price Drop Tracker] Sending to background for storage...');
 
             const response = await browser.runtime.sendMessage({
               type: 'PRODUCT_DETECTED',
               data: productData
             });
 
+            console.log('[Price Drop Tracker] Background response:', response);
+
             if (response && response.success && !response.data.alreadyTracked) {
-              console.log('[Price Drop Tracker] ✓ Product auto-tracked after permission grant!');
-              // Badge is now handled by product-detector.js to prevent duplicates
+              console.log('[Price Drop Tracker] ✓ Product auto-tracked successfully!');
               return { success: true };
+            } else if (response && response.success && response.data.alreadyTracked) {
+              console.log('[Price Drop Tracker] ℹ️ Product was already being tracked');
+              return { success: false, alreadyTracked: true };
             }
 
             return { success: false, alreadyTracked: response?.data?.alreadyTracked };
+          } else {
+            console.log('[Price Drop Tracker] ⚠️ No product detected on this page');
+            return { success: false, error: 'No product found' };
           }
-
-          return { success: false, error: 'No product found' };
         } catch (error) {
-          console.error('[Price Drop Tracker] Auto-detection error:', error);
+          console.error('[Price Drop Tracker] ❌ Auto-detection error:', error);
+          console.error('[Price Drop Tracker] Error stack:', error.stack);
           return { success: false, error: error.message };
         }
       }
     });
 
+    console.log('[ServiceWorker] Script execution completed, results:', results);
+
     const result = results?.[0]?.result;
     if (result && result.success) {
-      console.log('[ServiceWorker] ✓ Product auto-tracked successfully after permission grant!');
+      console.log('[ServiceWorker] ✅ Product auto-tracked successfully after permission grant!');
+      console.log('=================================================');
+    } else if (result && result.alreadyTracked) {
+      console.log('[ServiceWorker] ℹ️ Product was already being tracked');
+      console.log('=================================================');
     } else {
-      console.log('[ServiceWorker] Auto-detection completed but no product added:', result);
+      console.log('[ServiceWorker] ⚠️ Auto-detection completed but no product added:', result);
+      console.log('=================================================');
     }
 
   } catch (error) {
-    console.error('[ServiceWorker] Error during auto-detection after permission grant:', error);
+    console.error('[ServiceWorker] ❌ Error during auto-detection after permission grant:', error);
+    console.error('[ServiceWorker] Error stack:', error.stack);
+    console.log('=================================================');
   }
 });
 
