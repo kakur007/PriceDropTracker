@@ -10,11 +10,23 @@ import { hasPermissionForUrl, requestPermissionForUrl } from '../utils/permissio
 
 let allProducts = {};
 let currentFilter = 'all';
+let currentTab = null; // Store current tab for permission requests
 
 // Initialize popup
 document.addEventListener('DOMContentLoaded', async () => {
   await initializeTheme();
   await loadProducts();
+
+  // Get current tab ONCE when popup opens (before any user interaction)
+  // This allows us to use it synchronously in click handlers for Firefox
+  try {
+    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+    currentTab = tab;
+    debug('[Popup]', 'Current tab cached:', currentTab?.url);
+  } catch (error) {
+    debugError('[Popup]', 'Error getting current tab:', error);
+  }
+
   setupEventListeners();
 });
 
@@ -568,33 +580,35 @@ function setupEventListeners() {
   const trackThisPageBtn = document.getElementById('trackThisPageBtn');
   trackThisPageBtn.addEventListener('click', async () => {
     try {
-      // Show loading state
-      trackThisPageBtn.disabled = true;
-      trackThisPageBtn.innerHTML = '<span>⏳</span>';
-
-      // Get current tab
-      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+      // Use cached tab from popup initialization (no await needed!)
+      // CRITICAL: Firefox requires permissions.request() to be called synchronously
+      // from the user input handler, so we cannot await anything before it
+      const tab = currentTab;
 
       if (!tab || !tab.id || !tab.url) {
         showTemporaryMessage('Unable to access current tab', 'error');
-        trackThisPageBtn.innerHTML = '<span>➕</span>';
-        trackThisPageBtn.disabled = false;
         return;
       }
 
-      // Check if this is a default supported site (synchronously)
+      // Show loading state (after validation but before any async ops)
+      trackThisPageBtn.disabled = true;
+      trackThisPageBtn.innerHTML = '<span>⏳</span>';
+
+      debug('[Popup]', 'Track button clicked for URL:', tab.url);
+
+      // Check if this is a default supported site (synchronously - no await!)
       const isDefaultSupported = isUrlSupported(tab.url);
-      debug('[Popup]', 'Is default supported:', isDefaultSupported, 'URL:', tab.url);
+      debug('[Popup]', 'Is default supported:', isDefaultSupported);
 
       // If not in default list, request permission immediately
-      // CRITICAL: This must happen early in the click handler for Firefox
+      // CRITICAL: No await operations before this point!
       // Firefox requires permissions.request() to be called directly from user gesture
       if (!isDefaultSupported) {
         debug('[Popup]', 'Requesting permission for custom site:', tab.url);
 
+        // THIS IS THE FIRST AWAIT - directly calling permission request
         // Request permission - this will return true if already granted
         // IMPORTANT: In Firefox, requesting permission may close the popup!
-        // The service worker will automatically detect and track the product after permission is granted
         const granted = await requestPermissionForUrl(tab.url);
 
         if (!granted) {
