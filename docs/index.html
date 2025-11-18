@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Price Genius - Documentation</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 600px;
+      background: white;
+      padding: 60px 40px;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      text-align: center;
+    }
+
+    .logo {
+      width: 80px;
+      height: 80px;
+      margin: 0 auto 24px;
+      background: linear-gradient(135deg, #1eadbd 0%, #17a2b8 100%);
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 40px;
+      box-shadow: 0 4px 12px rgba(30, 173, 189, 0.3);
+    }
+
+    h1 {
+      color: #1f2937;
+      font-size: 36px;
+      margin-bottom: 12px;
+      font-weight: 700;
+    }
+
+    .tagline {
+      color: #6b7280;
+      font-size: 18px;
+      margin-bottom: 40px;
+    }
+
+    .company {
+      color: #1eadbd;
+      font-weight: 600;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 32px;
+    }
+
+    .links {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .btn {
+      display: inline-block;
+      padding: 16px 32px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 16px;
+      transition: all 0.3s ease;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #1eadbd 0%, #17a2b8 100%);
+      color: white;
+      box-shadow: 0 4px 12px rgba(30, 173, 189, 0.3);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(30, 173, 189, 0.4);
+    }
+
+    .btn-secondary {
+      background: #f3f4f6;
+      color: #4b5563;
+    }
+
+    .btn-secondary:hover {
+      background: #e5e7eb;
+      transform: translateY(-2px);
+    }
+
+    .features {
+      margin: 40px 0;
+      padding: 32px 0;
+      border-top: 1px solid #e5e7eb;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .feature {
+      margin: 16px 0;
+      color: #4b5563;
+      font-size: 15px;
+    }
+
+    .feature::before {
+      content: "✓";
+      color: #10b981;
+      font-weight: bold;
+      margin-right: 8px;
+    }
+
+    footer {
+      margin-top: 32px;
+      color: #9ca3af;
+      font-size: 14px;
+    }
+
+    footer a {
+      color: #1eadbd;
+      text-decoration: none;
+    }
+
+    footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">💰</div>
+    <h1>Price Genius</h1>
+    <p class="tagline">Never Miss a Price Drop Again</p>
+    <p class="company">By GoGoNano OÜ</p>
+
+    <div class="features">
+      <div class="feature">100% Privacy-Focused - All Data Stays on Your Device</div>
+      <div class="feature">Track Prices on Amazon, eBay, Walmart & More</div>
+      <div class="feature">Get Notified When Prices Drop</div>
+      <div class="feature">Open Source & Transparent</div>
+    </div>
+
+    <div class="links">
+      <a href="privacy-policy.html" class="btn btn-primary">Privacy Policy</a>
+      <a href="https://github.com/kakur007/PriceDropTracker" class="btn btn-secondary">View on GitHub</a>
+    </div>
+
+    <footer>
+      <p>Built with ❤️ by <a href="https://www.gogonano.com" target="_blank">GoGoNano OÜ</a></p>
+    </footer>
+  </div>
+</body>
+</html>
