@@ -27,6 +27,13 @@ export async function detectProduct() {
     const adapter = getAdapter(document, window.location.href);
     if (adapter) {
       console.log('[Price Drop Tracker] Using site-specific adapter');
+
+      // Check if this is actually a product page (if adapter has detectProduct method)
+      if (adapter.detectProduct && !adapter.detectProduct()) {
+        console.log('[Price Drop Tracker] Adapter detected this is not a product page');
+        return null;
+      }
+
       const title = adapter.extractTitle();
       const price = adapter.extractPrice();
       const imageUrl = adapter.extractImage();
@@ -46,6 +53,8 @@ export async function detectProduct() {
         };
         console.log('[Price Drop Tracker] Product detected via adapter (confidence: 0.90)');
         return await enhanceProductData(productData);
+      } else {
+        console.log('[Price Drop Tracker] Adapter could not extract required data (title or price missing)');
       }
     }
   } catch (error) {
