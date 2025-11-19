@@ -115,9 +115,15 @@ export class EbayAdapter extends BaseAdapter {
     for (const selector of selectors) {
       const element = this.querySelector(selector);
       if (element) {
-        let text = element.textContent || element.getAttribute('content');
+        // Prefer content/value attributes over textContent (more reliable)
+        let text = element.getAttribute('content') ||
+                   element.getAttribute('value') ||
+                   element.textContent;
 
         if (text) {
+          // Clean up whitespace (eBay sometimes has weird spacing)
+          text = text.replace(/\s+/g, ' ').trim();
+
           // Filter out conversion/approximate prices (eBay shows these on regional sites)
           // For example: "AU $25.00 Approximately US $16.50"
           // We want the first price (AU $25.00), not the conversion (US $16.50)
