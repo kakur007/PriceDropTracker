@@ -477,13 +477,19 @@ async function executeProductDetection(tabId) {
   try {
     debug('[Popup]', 'Executing script on tab:', tabId);
 
+    // Calculate detector URL in popup context where browser polyfill exists
+    const detectorUrl = browser.runtime.getURL('content-scripts/product-detector.js');
+
     const results = await executeScript({
       target: { tabId: tabId },
-      func: async () => {
+      func: async (scriptUrl) => {
+        // Define API wrapper for Chrome/Firefox compatibility
+        // In injected functions, we don't have access to browser polyfill
+        const api = window.chrome || window.browser;
+
         try {
           // Dynamically import the detector module
-          const detectorUrl = browser.runtime.getURL('content-scripts/product-detector.js');
-          const { detectProduct } = await import(detectorUrl);
+          const { detectProduct } = await import(scriptUrl);
 
           console.log('[Price Drop Tracker] Manual detection started...');
 
@@ -496,10 +502,18 @@ async function executeProductDetection(tabId) {
           if (productData) {
             console.log('[Price Drop Tracker] Product detected, sending to background...');
 
-            // Send to background for storage
-            const response = await browser.runtime.sendMessage({
-              type: 'PRODUCT_DETECTED',
-              data: productData
+            // Send to background for storage using callback-style for Chrome compatibility
+            const response = await new Promise((resolve, reject) => {
+              api.runtime.sendMessage({
+                type: 'PRODUCT_DETECTED',
+                data: productData
+              }, response => {
+                if (api.runtime.lastError) {
+                  reject(api.runtime.lastError);
+                } else {
+                  resolve(response);
+                }
+              });
             });
 
             console.log('[Price Drop Tracker] Background response:', response);
@@ -572,7 +586,8 @@ async function executeProductDetection(tabId) {
           console.error('[Price Drop Tracker] Detection error:', error);
           return { success: false, error: error.message };
         }
-      }
+      },
+      args: [detectorUrl]
     });
 
     debug('[Popup]', 'Script execution results:', results);

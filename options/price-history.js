@@ -2,10 +2,6 @@ import browser from '../utils/browser-polyfill.js';
 
 import { debug, debugError } from '../utils/debug.js';
 
-// Chart.js is loaded via UMD script tag and attached to window
-// Reference it here for use in module scope
-const Chart = window.Chart;
-
 let allProducts = {};
 let selectedProductId = null;
 let currentChart = null;
@@ -383,8 +379,9 @@ async function renderChart(product) {
   }
 
   // Create new chart
+  // Chart.js is loaded via script tag and attached to window
   const ctx = document.getElementById('priceChart').getContext('2d');
-  currentChart = new Chart(ctx, {
+  currentChart = new window.Chart(ctx, {
     type: 'line',
     data: {
       labels: labels,
