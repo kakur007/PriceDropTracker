@@ -43,6 +43,17 @@ const DEFAULT_SETTINGS = {
  */
 export async function saveProduct(productData) {
   try {
+    // Extract and separate image thumbnail if present
+    let imageThumbnail = null;
+    if (productData.imageThumbnail) {
+      imageThumbnail = productData.imageThumbnail;
+      delete productData.imageThumbnail; // Remove from main product object
+    }
+    // Also remove imageUrl if it somehow still exists
+    if (productData.imageUrl) {
+      delete productData.imageUrl;
+    }
+
     // Get existing products
     const result = await browser.storage.local.get(['products', 'metadata']);
     const products = result.products || {};
@@ -59,25 +70,10 @@ export async function saveProduct(productData) {
       if (existing.price.numeric !== productData.price.numeric) {
         existing.priceHistory = existing.priceHistory || [];
         const now = Date.now();
-        const lastHistoryPrice = existing.priceHistory[existing.priceHistory.length - 1]?.price;
 
-        // If the new price has a regularPrice (product is on sale) and that regularPrice
-        // is different from the last recorded price, add it to history first.
-        // This handles variation changes where the new variation also has a discount.
-        if (productData.price.regularPrice &&
-            productData.price.regularPrice > productData.price.numeric &&
-            productData.price.regularPrice !== lastHistoryPrice) {
-
-          existing.priceHistory.push({
-            price: productData.price.regularPrice,
-            currency: productData.price.currency,
-            timestamp: now - 1000, // 1 second earlier
-            checkMethod: productData.detectionMethod,
-            note: 'regular_price_for_variation'
-          });
-        }
-
-        // Add the current price
+        // Add ONLY the actual current price change
+        // Do NOT add fake historical entries with backdated timestamps
+        // The regularPrice is already stored in the price object itself
         existing.priceHistory.push({
           price: productData.price.numeric,
           currency: productData.price.currency,
@@ -105,29 +101,16 @@ export async function saveProduct(productData) {
       }
 
       // Create new product entry
-      // Initialize price history - if product has a regularPrice (pre-discount),
-      // add that first so we track the full price drop
-      const priceHistory = [];
+      // Initialize price history with only the ACTUAL current price
+      // The regularPrice (if any) is already stored in productData.price.regularPrice
+      // We should NOT create fake historical entries with backdated timestamps
       const now = Date.now();
-
-      if (productData.price.regularPrice && productData.price.regularPrice > productData.price.numeric) {
-        // Add the regular/original price first
-        priceHistory.push({
-          price: productData.price.regularPrice,
-          currency: productData.price.currency,
-          timestamp: now - 1000, // 1 second earlier to maintain chronological order
-          checkMethod: productData.detectionMethod,
-          note: 'original_price'
-        });
-      }
-
-      // Add the current price
-      priceHistory.push({
+      const priceHistory = [{
         price: productData.price.numeric,
         currency: productData.price.currency,
         timestamp: now,
         checkMethod: productData.detectionMethod
-      });
+      }];
 
       products[productId] = {
         ...productData,
@@ -152,6 +135,13 @@ export async function saveProduct(productData) {
 
     // Save back to storage
     await browser.storage.local.set({ products, metadata });
+
+    // Save image thumbnail separately to keep product data lean
+    if (imageThumbnail) {
+      const imageKey = `img_${productId}`;
+      await browser.storage.local.set({ [imageKey]: imageThumbnail });
+      console.log(`[Storage] Saved thumbnail for product: ${productId}`);
+    }
 
     console.log(`[Storage] Saved product: ${productId}`);
     return productId;
@@ -208,7 +198,12 @@ export async function deleteProduct(productId) {
       metadata.totalProducts = Math.max(0, (metadata.totalProducts || 0) - 1);
 
       await browser.storage.local.set({ products, metadata });
-      console.log(`[Storage] Deleted product: ${productId}`);
+
+      // Also delete associated image thumbnail
+      const imageKey = `img_${productId}`;
+      await browser.storage.local.remove(imageKey);
+
+      console.log(`[Storage] Deleted product and thumbnail: ${productId}`);
       return true;
     }
 

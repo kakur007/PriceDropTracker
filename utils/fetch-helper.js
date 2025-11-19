@@ -194,12 +194,16 @@ async function fetchWithRetry(url, options = {}) {
  * @throws {Error} - If fetch fails or response is not OK
  */
 async function fetchHTML(url, options = {}) {
+  // Note: User-Agent is intentionally NOT set here
+  // Browsers automatically include their native User-Agent which is:
+  // 1. More legitimate (not spoofed)
+  // 2. Consistent with the browser's actual identity
+  // 3. Less likely to be flagged as suspicious by anti-bot systems
   const response = await fetchWithRetry(url, {
     ...options,
     headers: {
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       'Accept-Language': 'en-US,en;q=0.9',
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       ...options.headers
     }
   });
@@ -259,6 +263,60 @@ async function isUrlAccessible(url, options = {}) {
   }
 }
 
+/**
+ * Download an image and convert it to a data URL
+ * This caches images locally to prevent privacy leaks
+ *
+ * @param {string} imageUrl - URL of the image to download
+ * @param {Object} options - Fetch options
+ * @returns {Promise<string|null>} - Data URL or null if failed
+ */
+async function downloadImageAsDataURL(imageUrl, options = {}) {
+  if (!imageUrl || imageUrl.startsWith('data:')) {
+    return imageUrl; // Already a data URL
+  }
+
+  try {
+    console.log(`[FetchHelper] Downloading image for local caching: ${imageUrl}`);
+
+    const response = await fetchWithRetry(imageUrl, {
+      ...options,
+      maxRetries: 2,
+      timeout: 8000,
+      useRateLimiter: true
+    });
+
+    if (!response.ok) {
+      console.warn(`[FetchHelper] Failed to download image: ${response.status}`);
+      return null;
+    }
+
+    // Get the image as a blob
+    const blob = await response.blob();
+
+    // Limit image size to 100KB to avoid storage bloat
+    if (blob.size > 100 * 1024) {
+      console.warn(`[FetchHelper] Image too large (${(blob.size / 1024).toFixed(1)}KB), skipping cache`);
+      return null;
+    }
+
+    // Convert blob to data URL
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = () => {
+        console.error('[FetchHelper] Error reading image blob');
+        reject(new Error('Failed to convert image to data URL'));
+      };
+      reader.readAsDataURL(blob);
+    });
+
+  } catch (error) {
+    console.warn(`[FetchHelper] Error downloading image: ${error.message}`);
+    return null;
+  }
+}
+
 // Global rate limiter instance (10 requests/minute)
 // Shared across all fetch operations unless overridden
 const globalRateLimiter = new RateLimiter(10, 60000);
@@ -270,5 +328,6 @@ export {
   fetchHTML,
   fetchJSON,
   isUrlAccessible,
+  downloadImageAsDataURL,
   globalRateLimiter
 };

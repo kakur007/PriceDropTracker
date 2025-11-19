@@ -285,13 +285,29 @@ function displayProducts(products, filter) {
       await handleDeleteProduct(productId);
     });
 
-    // Handle image loading errors
+    // Load image from separate storage (lazy loading for performance)
     const img = card.querySelector('.product-image[data-fallback]');
     if (img) {
+      const imageKey = `img_${productId}`;
+      browser.storage.local.get(imageKey).then(result => {
+        if (result[imageKey]) {
+          img.src = result[imageKey];
+          img.style.display = 'block';
+          const placeholder = document.getElementById(`placeholder-${productId}`);
+          if (placeholder) {
+            placeholder.style.display = 'none';
+          }
+        }
+      }).catch(error => {
+        console.error('[Popup] Error loading image:', error);
+        // Keep placeholder visible on error
+      });
+
+      // Handle image loading errors
       img.addEventListener('error', function() {
         this.style.display = 'none';
-        const placeholder = this.nextElementSibling;
-        if (placeholder && placeholder.classList.contains('product-image-placeholder')) {
+        const placeholder = document.getElementById(`placeholder-${productId}`);
+        if (placeholder) {
           placeholder.style.display = 'flex';
         }
       });
@@ -365,13 +381,15 @@ function createProductCard(product) {
   return `
     <div class="product-card ${isStale ? 'stale' : ''}" data-product-id="${product.productId}">
       <div class="product-header">
-        ${product.imageUrl ?
+        ${product.hasImage ?
           `<img class="product-image"
-                src="${escapeHtml(product.imageUrl)}"
+                id="img-${product.productId}"
+                src=""
                 loading="lazy"
                 alt="${escapeHtml(product.title)}"
+                style="display:none;"
                 data-fallback="true">
-           <div class="product-image-placeholder" style="display:none;">📦</div>`
+           <div class="product-image-placeholder" id="placeholder-${product.productId}">📦</div>`
           : '<div class="product-image-placeholder">📦</div>'}
         <div class="product-info">
           <div class="product-title">${escapeHtml(product.title)}</div>

@@ -9,6 +9,7 @@ import browser from '../utils/browser-polyfill.js';
 import { parsePrice } from '../utils/currency-parser.js';
 import { generateProductId } from '../utils/product-hasher.js';
 import { getAdapter } from './site-adapters/adapter-factory.js';
+import { createOptimizedThumbnail } from '../utils/image-helper.js';
 
 /**
  * Main product detection function
@@ -911,13 +912,31 @@ async function enhanceProductData(data) {
   // Add timestamps
   data.detectedAt = Date.now();
 
-  // CRITICAL: Store image URL, NOT base64 data
-  // Storing base64 images wastes ~8KB per product (800KB for 100 products!)
-  // Instead, store the URL and let the popup load images on-demand
-  if (data.imageUrl && data.imageUrl.startsWith('data:')) {
-    // If somehow we got base64, remove it
-    console.warn('[Price Drop Tracker] Removing base64 image data to save storage');
-    data.imageUrl = null;
+  // PRIVACY FIX: Create optimized thumbnail and store separately
+  // This prevents privacy leaks AND storage bloat by:
+  // 1. Not loading images from retailer servers (privacy)
+  // 2. Compressing images to ~5KB thumbnails (storage efficiency)
+  // 3. Storing images separately from product data (performance)
+  if (data.imageUrl && !data.imageUrl.startsWith('data:')) {
+    console.log('[Price Drop Tracker] Creating optimized thumbnail...');
+    try {
+      const thumbnail = await createOptimizedThumbnail(data.imageUrl, 80, 80);
+      if (thumbnail) {
+        data.imageThumbnail = thumbnail; // Temp field to be stored separately
+        data.hasImage = true;
+        console.log(`[Price Drop Tracker] Thumbnail created (${(thumbnail.length / 1024).toFixed(1)}KB)`);
+      } else {
+        console.warn('[Price Drop Tracker] Thumbnail creation failed, will use placeholder');
+        data.hasImage = false;
+      }
+    } catch (error) {
+      console.error('[Price Drop Tracker] Error creating thumbnail:', error);
+      data.hasImage = false;
+    }
+    // Remove the original URL to prevent privacy leaks
+    delete data.imageUrl;
+  } else {
+    data.hasImage = false;
   }
 
   // Validate and clean title
