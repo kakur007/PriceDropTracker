@@ -87,7 +87,16 @@ function parseHTMLForPrice(html, contextData = {}) {
       for (const { sel, attr } of selectors) {
         const element = doc.querySelector(sel);
         if (element) {
-          const priceText = attr === 'content' ? element.getAttribute('content') : element.textContent;
+          // Get price text based on specified attribute
+          let priceText;
+          if (attr === 'content') {
+            // For microdata content attributes, try textContent first
+            // because some sites (eBay) put prices in cents in content attribute
+            priceText = element.textContent || element.getAttribute('content');
+          } else {
+            priceText = element.textContent;
+          }
+
           if (priceText) {
             newPrice = parseNumericPrice(priceText, contextData);
             if (newPrice !== null) {
