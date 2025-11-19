@@ -81,6 +81,7 @@ export class ZalandoAdapter extends BaseAdapter {
    * @returns {string|null}
    */
   extractTitle() {
+    console.log('[Zalando] Extracting title...');
     const selectors = [
       'h1[class*="title"]',
       'h1[class*="product"]',
@@ -98,6 +99,7 @@ export class ZalandoAdapter extends BaseAdapter {
       if (element) {
         const text = element.textContent.trim();
         if (text && text.length > 0) {
+          console.log(`[Zalando] Found title via ${selector}:`, text.substring(0, 50));
           return text;
         }
       }
@@ -107,9 +109,12 @@ export class ZalandoAdapter extends BaseAdapter {
     const brand = this.querySelector('[data-testid="pdp-product-brand-name"]');
     const name = this.querySelector('[data-testid="pdp-product-name"]');
     if (brand && name) {
-      return `${brand.textContent.trim()} ${name.textContent.trim()}`;
+      const combined = `${brand.textContent.trim()} ${name.textContent.trim()}`;
+      console.log('[Zalando] Found title via brand+name:', combined.substring(0, 50));
+      return combined;
     }
 
+    console.warn('[Zalando] No title found');
     return null;
   }
 
@@ -118,6 +123,7 @@ export class ZalandoAdapter extends BaseAdapter {
    * @returns {Object|null}
    */
   extractPrice() {
+    console.log('[Zalando] Extracting price...');
     const selectors = [
       '[data-testid="price"]',
       '[class*="price"][class*="current"]',
@@ -130,6 +136,7 @@ export class ZalandoAdapter extends BaseAdapter {
 
     for (const selector of selectors) {
       const elements = this.querySelectorAll(selector);
+      console.log(`[Zalando] Checking selector ${selector}: found ${elements.length} elements`);
 
       for (const element of elements) {
         // Skip if this looks like an original/strikethrough price
@@ -139,6 +146,7 @@ export class ZalandoAdapter extends BaseAdapter {
 
         if (classes.match(/original|strike|was|old/i) ||
             parentClasses.match(/original|strike|was|old/i)) {
+          console.log('[Zalando] Skipping strikethrough price');
           continue;
         }
 
@@ -156,14 +164,17 @@ export class ZalandoAdapter extends BaseAdapter {
         }
 
         if (text) {
+          console.log('[Zalando] Found price text:', text.substring(0, 30));
           const parsed = this.parsePriceWithContext(text);
           if (parsed && parsed.confidence >= 0.70) {
+            console.log('[Zalando] Successfully parsed price:', parsed);
             return this.validateCurrency(parsed);
           }
         }
       }
     }
 
+    console.warn('[Zalando] No price found');
     return null;
   }
 
