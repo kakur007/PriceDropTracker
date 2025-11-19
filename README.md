@@ -36,6 +36,7 @@ Automatically track product prices across major e-commerce sites and get notifie
 - **Activity Log** - View recent price check activity and system events.
 - **Dark Mode** - Beautiful dark theme for comfortable night browsing.
 - **Price History Charts** - Interactive graphs showing price trends over time for each product.
+- **Debug Mode** - Advanced logging for developers (disabled by default for production).
 
 ### 🔒 Privacy First
 - **100% Local Storage** - All data stays on YOUR device. No external servers or cloud storage.
@@ -99,7 +100,7 @@ Automatically track product prices across major e-commerce sites and get notifie
 5. The extension will load (temporary until Firefox restart)
 6. For persistent installation, build and install the signed XPI
 
-**For detailed Firefox setup:** See [FIREFOX_GUIDE.md](FIREFOX_GUIDE.md)
+**For detailed Firefox setup:** See [FIREFOX_GUIDE.md](docs/FIREFOX_GUIDE.md)
 
 ## 🚀 How It Works
 
@@ -807,7 +808,7 @@ Open source with clean code, comprehensive comments, and modular architecture. E
 - **FAQ**: See "Frequently Asked Questions" section above
 - **API Documentation**: See code comments in source files
 - **Testing Guide**: See `tests/manual-test-checklist.md`
-- **Build Guide**: See `PROJECT_BUILD_GUIDE_PART1.md` and `PROJECT_BUILD_GUIDE_PART2.md`
+- **Build Guide**: See `BUILD_INSTRUCTIONS.md` and comprehensive guides in `docs/` folder
 
 ---
 
