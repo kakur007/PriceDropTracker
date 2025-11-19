@@ -267,6 +267,8 @@ async function parseHTMLForPrice(html, contextData = {}) {
  * @returns {Object} - Parse result
  */
 function extractPriceFromRawHTML(html, contextData) {
+  console.log('[PriceChecker] Attempting regex-based price extraction...');
+
   // Try to find Schema.org JSON-LD in raw HTML
   const jsonLdRegex = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/gi;
   let match;
@@ -284,6 +286,7 @@ function extractPriceFromRawHTML(html, contextData) {
             if (priceString) {
               const price = parseNumericPrice(String(priceString), contextData);
               if (price !== null) {
+                console.log('[PriceChecker] ✓ Extracted price via regex:schema.org:', price);
                 return {
                   success: true,
                   price: price,
@@ -299,6 +302,65 @@ function extractPriceFromRawHTML(html, contextData) {
     }
   }
 
+  // Try to extract from meta tags
+  const metaPatterns = [
+    /<meta[^>]*property="og:price:amount"[^>]*content="([^"]+)"[^>]*>/i,
+    /<meta[^>]*content="([^"]+)"[^>]*property="og:price:amount"[^>]*>/i,
+    /<meta[^>]*property="product:price:amount"[^>]*content="([^"]+)"[^>]*>/i,
+    /<meta[^>]*content="([^"]+)"[^>]*property="product:price:amount"[^>]*>/i,
+    /<meta[^>]*itemprop="price"[^>]*content="([^"]+)"[^>]*>/i,
+    /<meta[^>]*content="([^"]+)"[^>]*itemprop="price"[^>]*>/i
+  ];
+
+  for (const pattern of metaPatterns) {
+    const metaMatch = html.match(pattern);
+    if (metaMatch && metaMatch[1]) {
+      const price = parseNumericPrice(metaMatch[1], contextData);
+      if (price !== null) {
+        console.log('[PriceChecker] ✓ Extracted price via regex:meta tag:', price);
+        return {
+          success: true,
+          price: price,
+          detectionMethod: 'regex:meta'
+        };
+      }
+    }
+  }
+
+  // Try to extract from common price element patterns (text content only, not attributes)
+  const priceElementPatterns = [
+    // Amazon offscreen
+    /<span class="a-offscreen">([^<]+)<\/span>/i,
+    // eBay primary price (look for actual text, not data attributes)
+    /<span[^>]*class="[^"]*x-price-primary[^"]*"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>/i,
+    // Target
+    /<span[^>]*data-test="product-price"[^>]*>([^<]+)<\/span>/i,
+    // Zalando
+    /<[^>]*data-testid="price"[^>]*>([^<]+)<\//i,
+    // Generic price class
+    /<[^>]*class="[^"]*price[^"]*"[^>]*>([^<]+)</i
+  ];
+
+  for (const pattern of priceElementPatterns) {
+    const elementMatch = html.match(pattern);
+    if (elementMatch && elementMatch[1]) {
+      // Extract just the text content, remove HTML entities
+      const text = elementMatch[1].replace(/&[a-z]+;/gi, '').trim();
+      if (text) {
+        const price = parseNumericPrice(text, contextData);
+        if (price !== null) {
+          console.log('[PriceChecker] ✓ Extracted price via regex:element:', price);
+          return {
+            success: true,
+            price: price,
+            detectionMethod: 'regex:element'
+          };
+        }
+      }
+    }
+  }
+
+  console.warn('[PriceChecker] ❌ Regex extraction failed - no price found');
   return {
     success: false,
     error: 'Could not parse HTML - no parser available and regex extraction failed'

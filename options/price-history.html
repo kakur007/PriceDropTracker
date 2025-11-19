@@ -441,16 +441,6 @@
 
   <!-- Load Chart.js before the module script to ensure it's available -->
   <script src="../lib/chart.umd.min.js"></script>
-  <script>
-    // Wait for Chart.js to fully load before loading the module
-    window.addEventListener('load', function() {
-      if (!window.Chart) {
-        console.error('[PriceHistory] Chart.js failed to load!');
-      } else {
-        console.log('[PriceHistory] Chart.js loaded successfully, version:', Chart.version);
-      }
-    });
-  </script>
   <script type="module" src="price-history.js"></script>
 </body>
 </html>
