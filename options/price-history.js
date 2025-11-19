@@ -322,7 +322,7 @@ function selectProduct(productId) {
 /**
  * Render price history chart
  */
-function renderChart(product) {
+async function renderChart(product) {
   const priceHistory = product.priceHistory || [];
 
   if (priceHistory.length === 0) {

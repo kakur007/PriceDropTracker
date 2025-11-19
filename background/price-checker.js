@@ -171,23 +171,33 @@ async function setupOffscreenDocument() {
  */
 async function parseHTMLForPrice(html, contextData = {}) {
   try {
-    // Try offscreen document first (Manifest V3)
-    if (browser.offscreen && browser.runtime.getContexts) {
-      await setupOffscreenDocument();
+    // Try offscreen document first (Manifest V3 Chrome)
+    if (browser.offscreen) {
+      try {
+        await setupOffscreenDocument();
 
-      // Send HTML to offscreen document for parsing with context
-      const response = await browser.runtime.sendMessage({
-        type: 'PARSE_HTML',
-        html,
-        contextData
-      });
+        // Send HTML to offscreen document for parsing with context
+        const response = await browser.runtime.sendMessage({
+          type: 'PARSE_HTML',
+          html,
+          contextData
+        });
 
-      return response;
+        if (response && response.success !== false) {
+          console.log('[PriceChecker] Successfully parsed via offscreen document');
+          return response;
+        } else {
+          console.warn('[PriceChecker] Offscreen parsing failed:', response?.error);
+        }
+      } catch (offscreenError) {
+        console.warn('[PriceChecker] Offscreen document error:', offscreenError.message);
+        // Fall through to DOMParser fallback
+      }
     }
 
     // Fallback for Manifest V2 (Firefox) - Use DOMParser directly
     // Background pages have access to DOM APIs
-    console.log('[PriceChecker] Using DOMParser fallback (Manifest V2)');
+    console.log('[PriceChecker] Using DOMParser fallback (Manifest V2 or offscreen failed)');
 
     if (typeof DOMParser !== 'undefined') {
       const parser = new DOMParser();
@@ -197,12 +207,9 @@ async function parseHTMLForPrice(html, contextData = {}) {
       return extractPriceFromDocument(doc, contextData);
     }
 
-    // If no parser available, return raw HTML
-    console.warn('[PriceChecker] No HTML parser available');
-    return {
-      success: true,
-      html: html
-    };
+    // If no parser available, try to extract from raw HTML using regex as last resort
+    console.warn('[PriceChecker] No HTML parser available - using regex extraction');
+    return extractPriceFromRawHTML(html, contextData);
 
   } catch (error) {
     console.error('[PriceChecker] Error in parseHTMLForPrice:', error);
@@ -211,6 +218,51 @@ async function parseHTMLForPrice(html, contextData = {}) {
       error: error.message
     };
   }
+}
+
+/**
+ * Extract price from raw HTML using regex (last resort fallback)
+ * @param {string} html - Raw HTML
+ * @param {Object} contextData - Context data
+ * @returns {Object} - Parse result
+ */
+function extractPriceFromRawHTML(html, contextData) {
+  // Try to find Schema.org JSON-LD in raw HTML
+  const jsonLdRegex = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/gi;
+  let match;
+
+  while ((match = jsonLdRegex.exec(html)) !== null) {
+    try {
+      const schema = JSON.parse(match[1]);
+      const items = schema['@graph'] || (Array.isArray(schema) ? schema : [schema]);
+
+      for (const item of items) {
+        if (item['@type'] === 'Product' && item.offers) {
+          const offers = Array.isArray(item.offers) ? item.offers : [item.offers];
+          for (const offer of offers) {
+            const priceString = offer.price || offer.lowPrice;
+            if (priceString) {
+              const price = parseNumericPrice(String(priceString), contextData);
+              if (price !== null) {
+                return {
+                  success: true,
+                  price: price,
+                  detectionMethod: 'regex:schema.org'
+                };
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // Ignore JSON parse errors
+    }
+  }
+
+  return {
+    success: false,
+    error: 'Could not parse HTML - no parser available and regex extraction failed'
+  };
 }
 
 /**

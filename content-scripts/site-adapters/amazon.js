@@ -109,7 +109,6 @@ export class AmazonAdapter extends BaseAdapter {
       '.a-price[data-a-color="price"] .a-offscreen',  // Main price (hidden for screen readers)
       '#priceblock_ourprice',                         // Our price
       '#priceblock_dealprice',                        // Deal price
-      '.a-price-whole',                               // Whole price component
       '[data-a-strike="true"] + .a-offscreen',       // Sale price (after strikethrough)
       '.priceToPay .a-offscreen',                     // Price to pay
       '#corePrice_feature_div .a-offscreen',          // Core price feature
@@ -129,6 +128,22 @@ export class AmazonAdapter extends BaseAdapter {
             return this.validateCurrency(parsed);
           }
         }
+      }
+    }
+
+    // Special fallback: Try combining .a-price-whole and .a-price-fraction
+    // This handles cases where a-offscreen is not available
+    const priceWhole = this.querySelector('.a-price-whole');
+    const priceFraction = this.querySelector('.a-price-fraction');
+    if (priceWhole) {
+      let combinedPrice = priceWhole.textContent.trim();
+      if (priceFraction) {
+        // Combine whole and fraction (e.g., "19" + "99" = "19.99")
+        combinedPrice = combinedPrice + '.' + priceFraction.textContent.trim();
+      }
+      const parsed = this.parsePriceWithContext(combinedPrice);
+      if (parsed && parsed.confidence >= 0.70) {
+        return this.validateCurrency(parsed);
       }
     }
 
