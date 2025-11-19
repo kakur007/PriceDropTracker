@@ -375,6 +375,16 @@ async function renderChart(product) {
 
   if (!window.Chart) {
     console.error('[PriceHistory] Cannot render chart - Chart.js not available after timeout');
+    // Show error message to user
+    const chartWrapper = document.querySelector('.chart-wrapper');
+    if (chartWrapper) {
+      chartWrapper.innerHTML = `
+        <div style="text-align: center; padding: 64px 24px; color: #dc2626;">
+          <p style="font-size: 18px; font-weight: 600; margin-bottom: 8px;">⚠️ Chart Library Failed to Load</p>
+          <p style="color: #6b7280;">Please refresh the page or check your internet connection.</p>
+        </div>
+      `;
+    }
     return;
   }
 

@@ -82,11 +82,34 @@ function extractPriceFromDocument(doc, contextData = {}) {
       { sel: 'meta[property="og:price:amount"]', attr: 'content' },
       { sel: 'meta[property="product:price:amount"]', attr: 'content' },
       { sel: 'meta[itemprop="price"]', attr: 'content' },
-      { sel: '.a-price .a-offscreen', attr: 'textContent' }, // Amazon (best option)
-      { sel: '[data-testid="customer-price"]', attr: 'textContent' }, // Best Buy
-      { sel: '.x-price-primary span', attr: 'textContent' }, // eBay
-      { sel: '#priceblock_ourprice', attr: 'textContent' }, // Amazon (old)
-      { sel: '[itemprop="price"]', attr: 'content' } // Generic microdata
+
+      // Amazon
+      { sel: '.a-price .a-offscreen', attr: 'textContent' },
+      { sel: '.a-price-whole', attr: 'textContent' }, // Will be combined with fraction
+      { sel: '#priceblock_ourprice', attr: 'textContent' },
+
+      // eBay - IMPORTANT: Use textContent, not content attribute (which has price in cents)
+      { sel: '.x-price-primary [itemprop="price"]', attr: 'textContent' },
+      { sel: '.x-price-primary span', attr: 'textContent' },
+      { sel: '#prcIsum', attr: 'textContent' },
+      { sel: '#mm-saleDscPrc', attr: 'textContent' },
+
+      // Target
+      { sel: '[data-test="product-price"]', attr: 'textContent' },
+      { sel: '[data-test="product-price-current"]', attr: 'textContent' },
+      { sel: '.h-text-orangeDark', attr: 'textContent' },
+
+      // Zalando
+      { sel: '[data-testid="price"]', attr: 'textContent' },
+      { sel: '[class*="price"][class*="current"]', attr: 'textContent' },
+      { sel: '[class*="currentPrice"]', attr: 'textContent' },
+
+      // Best Buy
+      { sel: '[data-testid="customer-price"]', attr: 'textContent' },
+
+      // Generic fallbacks
+      { sel: '[itemprop="price"]', attr: 'content' },
+      { sel: '.price', attr: 'textContent' }
     ];
 
     for (const { sel, attr } of selectors) {
@@ -185,6 +208,9 @@ async function parseHTMLForPrice(html, contextData = {}) {
       try {
         await setupOffscreenDocument();
 
+        // Add small delay to ensure offscreen document is fully initialized
+        await new Promise(resolve => setTimeout(resolve, 50));
+
         // Send HTML to offscreen document for parsing with context
         const response = await browser.runtime.sendMessage({
           type: 'PARSE_HTML',
@@ -192,11 +218,16 @@ async function parseHTMLForPrice(html, contextData = {}) {
           contextData
         });
 
-        if (response && response.success !== false) {
-          console.log('[PriceChecker] Successfully parsed via offscreen document');
-          return response;
+        // Check if we got a valid response (not undefined and has expected structure)
+        if (response && typeof response === 'object' && 'success' in response) {
+          if (response.success) {
+            console.log('[PriceChecker] Successfully parsed via offscreen document');
+            return response;
+          } else {
+            console.warn('[PriceChecker] Offscreen parsing failed:', response.error);
+          }
         } else {
-          console.warn('[PriceChecker] Offscreen parsing failed:', response?.error);
+          console.warn('[PriceChecker] Offscreen document did not respond or returned invalid response');
         }
       } catch (offscreenError) {
         console.warn('[PriceChecker] Offscreen document error:', offscreenError.message);
