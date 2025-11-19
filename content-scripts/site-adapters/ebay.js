@@ -96,6 +96,8 @@ export class EbayAdapter extends BaseAdapter {
   /**
    * Extracts the current price
    * eBay shows different prices for auctions vs Buy It Now
+   * Also shows conversion rates (e.g., "Approximately US $X" on AU site)
+   * We need to find the PRIMARY price, not the conversion
    * @returns {Object|null} Parsed price object or null
    */
   extractPrice() {
@@ -108,16 +110,36 @@ export class EbayAdapter extends BaseAdapter {
       '.display-price'                         // Display price class
     ];
 
+    const expectedCurrency = this.getExpectedCurrency();
+
     for (const selector of selectors) {
       const element = this.querySelector(selector);
       if (element) {
-        const text = element.textContent || element.getAttribute('content');
+        let text = element.textContent || element.getAttribute('content');
 
         if (text) {
+          // Filter out conversion/approximate prices (eBay shows these on regional sites)
+          // For example: "AU $25.00 Approximately US $16.50"
+          // We want the first price (AU $25.00), not the conversion (US $16.50)
+          if (text.toLowerCase().includes('approximately')) {
+            // Split on "approximately" and take the first part
+            const parts = text.split(/approximately/i);
+            if (parts.length > 1) {
+              text = parts[0].trim();
+            }
+          }
+
           const parsed = this.parsePriceWithContext(text);
 
           if (parsed && parsed.confidence >= 0.70) {
-            return this.validateCurrency(parsed);
+            // Validate that it matches expected currency for this domain
+            const validated = this.validateCurrency(parsed);
+
+            // Only accept if currency matches expected (or close enough)
+            // This prevents picking up conversion rates
+            if (!expectedCurrency || parsed.currency === expectedCurrency || validated.confidence >= 0.70) {
+              return validated;
+            }
           }
         }
       }

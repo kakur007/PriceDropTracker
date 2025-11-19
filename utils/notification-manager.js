@@ -7,10 +7,12 @@
  * - Notification grouping for multiple drops
  * - Click handling to open product pages
  * - Settings integration (respect user preferences)
+ * - Cross-browser compatibility (Chrome & Firefox)
  */
 
 import browser from './browser-polyfill.js';
 import { StorageManager } from '../background/storage-manager.js';
+import { isFirefox } from './browser-polyfill.js';
 
 /**
  * Notification cooldown tracking
@@ -72,15 +74,22 @@ Now: ${formatPrice(newPrice, product.currency, product.locale)}
 Save: ${formatPrice(parseFloat(dropAmount), product.currency, product.locale)} (${dropPercentage.toFixed(0)}% off)`;
 
     // Create the notification
-    const notificationId = await browser.notifications.create(product.id, {
+    // Firefox doesn't support requireInteraction and silent properties
+    const notificationOptions = {
       type: 'basic',
       iconUrl: browser.runtime.getURL('assets/icons/icon-128.png'),
       title,
       message,
-      priority: 2,
-      requireInteraction: false,
-      silent: false
-    });
+      priority: 2
+    };
+
+    // Add Chrome-specific properties only on Chrome
+    if (!isFirefox()) {
+      notificationOptions.requireInteraction = false;
+      notificationOptions.silent = false;
+    }
+
+    const notificationId = await browser.notifications.create(product.id, notificationOptions);
 
     console.log(`[Notifications] Created notification: ${notificationId} for product: ${product.title}`);
 
@@ -157,14 +166,21 @@ export async function showBatchPriceDropNotifications(priceDrops) {
       message += `\n+${priceDrops.length - 3} more deals!`;
     }
 
-    await chrome.notifications.create('batch-price-drops', {
+    // Firefox doesn't support requireInteraction property
+    const batchOptions = {
       type: 'basic',
       iconUrl: browser.runtime.getURL('assets/icons/icon-128.png'),
       title,
       message,
-      priority: 2,
-      requireInteraction: false
-    });
+      priority: 2
+    };
+
+    // Add Chrome-specific properties only on Chrome
+    if (!isFirefox()) {
+      batchOptions.requireInteraction = false;
+    }
+
+    await browser.notifications.create('batch-price-drops', batchOptions);
 
     console.log('[Notifications] Created batch notification');
 
@@ -197,14 +213,21 @@ export async function showInfoNotification(title, message, options = {}) {
       return null;
     }
 
-    const notificationId = await browser.notifications.create({
+    // Firefox doesn't support silent property
+    const infoOptions = {
       type: 'basic',
       iconUrl: browser.runtime.getURL('assets/icons/icon-128.png'),
       title,
       message,
-      priority: options.priority || 0,
-      silent: options.silent !== undefined ? options.silent : true
-    });
+      priority: options.priority || 0
+    };
+
+    // Add Chrome-specific properties only on Chrome
+    if (!isFirefox()) {
+      infoOptions.silent = options.silent !== undefined ? options.silent : true;
+    }
+
+    const notificationId = await browser.notifications.create(infoOptions);
 
     console.log(`[Notifications] Created info notification: ${title}`);
 
@@ -233,14 +256,21 @@ export async function showInfoNotification(title, message, options = {}) {
  */
 export async function showErrorNotification(message) {
   try {
-    const notificationId = await browser.notifications.create({
+    // Firefox doesn't support silent property
+    const errorOptions = {
       type: 'basic',
       iconUrl: browser.runtime.getURL('assets/icons/icon-128.png'),
       title: '⚠️ Price Drop Tracker Error',
       message,
-      priority: 1,
-      silent: false
-    });
+      priority: 1
+    };
+
+    // Add Chrome-specific properties only on Chrome
+    if (!isFirefox()) {
+      errorOptions.silent = false;
+    }
+
+    const notificationId = await browser.notifications.create(errorOptions);
 
     console.log(`[Notifications] Created error notification: ${message}`);
 
