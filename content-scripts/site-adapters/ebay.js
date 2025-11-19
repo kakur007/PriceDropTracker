@@ -115,39 +115,41 @@ export class EbayAdapter extends BaseAdapter {
     for (const selector of selectors) {
       const element = this.querySelector(selector);
       if (element) {
-        // IMPORTANT: Prefer textContent over content attribute
-        // eBay's content attribute often contains price in cents (e.g., "1495" instead of "14.95")
-        // textContent has the properly formatted human-readable price
-        let text = element.textContent ||
-                   element.getAttribute('value') ||
-                   element.getAttribute('content');
+        // CRITICAL FIX: NEVER use content attribute for eBay
+        // eBay's content attribute contains price in cents (e.g., "3000" for $30.00)
+        // This causes $30 to become $3000 in Firefox when textContent is empty
+        // ONLY use textContent or value attribute
+        let text = element.textContent || element.getAttribute('value');
 
-        if (text) {
-          // Clean up whitespace (eBay sometimes has weird spacing)
-          text = text.replace(/\s+/g, ' ').trim();
+        // Skip this element if no text content (don't fall back to content attribute!)
+        if (!text || text.trim() === '') {
+          continue;
+        }
 
-          // Filter out conversion/approximate prices (eBay shows these on regional sites)
-          // For example: "AU $25.00 Approximately US $16.50"
-          // We want the first price (AU $25.00), not the conversion (US $16.50)
-          if (text.toLowerCase().includes('approximately')) {
-            // Split on "approximately" and take the first part
-            const parts = text.split(/approximately/i);
-            if (parts.length > 1) {
-              text = parts[0].trim();
-            }
+        // Clean up whitespace (eBay sometimes has weird spacing)
+        text = text.replace(/\s+/g, ' ').trim();
+
+        // Filter out conversion/approximate prices (eBay shows these on regional sites)
+        // For example: "AU $25.00 Approximately US $16.50"
+        // We want the first price (AU $25.00), not the conversion (US $16.50)
+        if (text.toLowerCase().includes('approximately')) {
+          // Split on "approximately" and take the first part
+          const parts = text.split(/approximately/i);
+          if (parts.length > 1) {
+            text = parts[0].trim();
           }
+        }
 
-          const parsed = this.parsePriceWithContext(text);
+        const parsed = this.parsePriceWithContext(text);
 
-          if (parsed && parsed.confidence >= 0.70) {
-            // Validate that it matches expected currency for this domain
-            const validated = this.validateCurrency(parsed);
+        if (parsed && parsed.confidence >= 0.70) {
+          // Validate that it matches expected currency for this domain
+          const validated = this.validateCurrency(parsed);
 
-            // Only accept if currency matches expected (or close enough)
-            // This prevents picking up conversion rates
-            if (!expectedCurrency || parsed.currency === expectedCurrency || validated.confidence >= 0.70) {
-              return validated;
-            }
+          // Only accept if currency matches expected (or close enough)
+          // This prevents picking up conversion rates
+          if (!expectedCurrency || parsed.currency === expectedCurrency || validated.confidence >= 0.70) {
+            return validated;
           }
         }
       }

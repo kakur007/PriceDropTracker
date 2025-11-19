@@ -6,6 +6,13 @@ let allProducts = {};
 let selectedProductId = null;
 let currentChart = null;
 
+// Check Chart.js availability on load
+if (!window.Chart) {
+  console.error('[PriceHistory] Chart.js not loaded at script initialization!');
+} else {
+  console.log('[PriceHistory] Chart.js loaded successfully, version:', window.Chart.version);
+}
+
 // Initialize page
 document.addEventListener('DOMContentLoaded', async () => {
   // Apply dark mode based on user preference
