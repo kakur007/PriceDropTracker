@@ -3,32 +3,22 @@
 
 import { BaseAdapter } from './base-adapter.js';
 
-/**
- * BooztletAdapter - Extracts product information from Booztlet product pages
- *
- * Booztlet specifics:
- * - Estonian locale and specific URL patterns
- * - Product IDs at end of URL in format /ID1/ID2
- * - Brand and product name are separate elements
- * - Price in discount containers
- */
 export class BooztletAdapter extends BaseAdapter {
   detectProduct() {
     return this.url.includes('booztlet.com') && (
-      this.url.includes('/ee/et/') || // Estonian locale
-      /\/\d+\/\d+$/.test(this.url)    // ID pattern at end of URL
+      this.url.includes('/ee/et/') ||
+      /\/\d+\/\d+$/.test(this.url)
     );
   }
 
   extractProductId() {
     // URL format: .../product-name_ID1/ID2
-    // ID2 is usually the variant/specific product ID
     const matches = this.url.match(/\/(\d+)$/);
     return matches ? matches[1] : null;
   }
 
   extractTitle() {
-    // Look for the brand and name structure
+    // Booztlet often separates Brand and Name
     const brand = this.querySelector('.brand-name');
     const name = this.querySelector('.product-name');
 
@@ -42,32 +32,69 @@ export class BooztletAdapter extends BaseAdapter {
   }
 
   extractPrice() {
-    // Booztlet has specific price containers
-    // Priority: Current price (often red/discounted)
+    // 1. Define selectors for the wrapper that holds the price
     const selectors = [
-      '.price-container .price.current-price', // Specific discount price
-      '.price-container .price',               // Standard price
-      '[class*="product-price"]',
+      '.price-container',
+      '.product-price',
       '.product-information .price'
     ];
 
     for (const selector of selectors) {
-      const el = this.querySelector(selector);
-      if (el) {
-        const text = el.textContent.trim();
+      const element = this.querySelector(selector);
+      if (element) {
+        // 2. CLONE the element to manipulate it without affecting the page
+        const clone = element.cloneNode(true);
+
+        // 3. REMOVE "noise" elements from the clone
+        // Remove original/strikethrough prices
+        const oldPrices = clone.querySelectorAll('.price-original, .original-price, .prev-price, span[style*="line-through"]');
+        oldPrices.forEach(el => el.remove());
+
+        // Remove discount badges (e.g., "-20%")
+        const discounts = clone.querySelectorAll('.discount-tag, .percentage, .sale-label');
+        discounts.forEach(el => el.remove());
+
+        // 4. Extract text from what's left
+        let text = clone.textContent.trim();
+
+        // 5. Regex Cleanup: Booztlet sometimes puts the currency *between* numbers or has weird spacing
+        // Look for the first valid price pattern (e.g., "27.99")
+        // Matches: digits, dot/comma, digits
+        const priceMatch = text.match(/(\d+[.,]\d+)/);
+        if (priceMatch) {
+          text = priceMatch[0];
+        }
+
+        // 6. Parse
         const parsed = this.parsePriceWithContext(text);
-        if (parsed) return this.validateCurrency(parsed);
+        if (parsed && parsed.confidence >= 0.70) {
+          return this.validateCurrency(parsed);
+        }
       }
     }
+
+    // Fallback: Look for specific "current price" classes directly
+    const directPrice = this.querySelector('.current-price, .price.campaign');
+    if (directPrice) {
+        return this.parsePriceWithContext(directPrice.textContent.trim());
+    }
+
     return null;
   }
 
   extractImage() {
-    // Main image is often in a gallery or specific container
-    const img = this.querySelector('.primary-image img') ||
-                this.querySelector('.product-image img') ||
-                this.querySelector('img[itemprop="image"]');
+    // Try to find the main product image
+    const selectors = [
+      '.primary-image img',
+      '.product-image img',
+      '.image-gallery img',
+      'img[itemprop="image"]'
+    ];
 
-    return img ? img.src : null;
+    for (const sel of selectors) {
+        const img = this.querySelector(sel);
+        if (img && img.src) return img.src;
+    }
+    return null;
   }
 }
