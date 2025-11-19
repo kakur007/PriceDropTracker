@@ -1,4 +1,5 @@
 import browser from '../utils/browser-polyfill.js';
+import { parsePrice } from '../utils/currency-parser.js';
 
 /**
  * Offscreen Document - DOM Parsing for Service Worker
@@ -8,45 +9,30 @@ import browser from '../utils/browser-polyfill.js';
  */
 
 /**
- * Simple price parser
+ * Parse price string with context using robust currency parser
  * @param {string} priceString - The raw text to parse
+ * @param {Object} contextData - Context information (domain, locale, currency)
  * @returns {number|null} The numeric price or null
  */
-function simpleParsePrice(priceString) {
+function parseNumericPrice(priceString, contextData = {}) {
   if (!priceString || typeof priceString !== 'string') return null;
 
-  // Remove currency symbols, letters, and whitespace, except for . and ,
-  const numericString = priceString.replace(/[^0-9.,]/g, '').trim();
-
-  if (!numericString) return null;
-
-  // Handle European format (e.g., "1.299,99")
-  if (numericString.includes(',') && numericString.includes('.')) {
-    if (numericString.lastIndexOf(',') > numericString.lastIndexOf('.')) {
-      // Comma is the decimal separator
-      return parseFloat(numericString.replace(/\./g, '').replace(',', '.'));
-    }
+  try {
+    const parsed = parsePrice(priceString, contextData);
+    return parsed ? parsed.numeric : null;
+  } catch (error) {
+    console.warn('[Offscreen] Error parsing price with currency-parser:', error);
+    return null;
   }
-
-  // Handle comma as decimal separator (e.g., "1299,99")
-  if (numericString.includes(',')) {
-    const parts = numericString.split(',');
-    if (parts.length === 2 && parts[1].length <= 2) {
-      return parseFloat(numericString.replace(',', '.'));
-    }
-  }
-
-  // Default to parseFloat for US-style or simple numbers
-  const price = parseFloat(numericString.replace(/,/g, ''));
-  return isNaN(price) ? null : price;
 }
 
 /**
  * Parse HTML and extract price information
  * @param {string} html - The HTML string to parse
+ * @param {Object} contextData - Context information (domain, locale, currency)
  * @returns {Object} - Extracted price data
  */
-function parseHTMLForPrice(html) {
+function parseHTMLForPrice(html, contextData = {}) {
   try {
     // Parse the HTML into a document
     const parser = new DOMParser();
@@ -69,7 +55,7 @@ function parseHTMLForPrice(html) {
             for (const offer of offers) {
               const priceString = offer.price || offer.lowPrice;
               if (priceString) {
-                newPrice = simpleParsePrice(String(priceString));
+                newPrice = parseNumericPrice(String(priceString), contextData);
                 if (newPrice !== null) {
                   detectionMethod = 'schema.org';
                   break;
@@ -104,7 +90,7 @@ function parseHTMLForPrice(html) {
         if (element) {
           const priceText = attr === 'content' ? element.getAttribute('content') : element.textContent;
           if (priceText) {
-            newPrice = simpleParsePrice(priceText);
+            newPrice = parseNumericPrice(priceText, contextData);
             if (newPrice !== null) {
               detectionMethod = `selector: ${sel}`;
               break;
@@ -134,7 +120,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('[Offscreen] Received message:', message.type);
 
   if (message.type === 'PARSE_HTML') {
-    const result = parseHTMLForPrice(message.html);
+    const result = parseHTMLForPrice(message.html, message.contextData || {});
     sendResponse(result);
     return true; // Keep the message channel open for async response
   }

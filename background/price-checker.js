@@ -15,47 +15,34 @@ import browser from '../utils/browser-polyfill.js';
 import { fetchHTML } from '../utils/fetch-helper.js';
 import { StorageManager } from './storage-manager.js';
 import { isUrlSupportedOrPermitted } from '../utils/domain-validator.js';
+import { parsePrice } from '../utils/currency-parser.js';
 
 /**
- * Simple price parser (same as offscreen.js)
+ * Parse price string with context
+ * Uses the robust currency parser to avoid "two brains" problem
  * @param {string} priceString - The raw text to parse
+ * @param {Object} contextData - Context information (domain, locale, currency)
  * @returns {number|null} The numeric price or null
  */
-function simpleParsePrice(priceString) {
+function parseNumericPrice(priceString, contextData = {}) {
   if (!priceString || typeof priceString !== 'string') return null;
 
-  // Remove currency symbols, letters, and whitespace, except for . and ,
-  const numericString = priceString.replace(/[^0-9.,]/g, '').trim();
-
-  if (!numericString) return null;
-
-  // Handle European format (e.g., "1.299,99")
-  if (numericString.includes(',') && numericString.includes('.')) {
-    if (numericString.lastIndexOf(',') > numericString.lastIndexOf('.')) {
-      // Comma is the decimal separator
-      return parseFloat(numericString.replace(/\./g, '').replace(',', '.'));
-    }
+  try {
+    const parsed = parsePrice(priceString, contextData);
+    return parsed ? parsed.numeric : null;
+  } catch (error) {
+    console.warn('[PriceChecker] Error parsing price with currency-parser:', error);
+    return null;
   }
-
-  // Handle comma as decimal separator (e.g., "1299,99")
-  if (numericString.includes(',')) {
-    const parts = numericString.split(',');
-    if (parts.length === 2 && parts[1].length <= 2) {
-      return parseFloat(numericString.replace(',', '.'));
-    }
-  }
-
-  // Default to parseFloat for US-style or simple numbers
-  const price = parseFloat(numericString.replace(/,/g, ''));
-  return isNaN(price) ? null : price;
 }
 
 /**
  * Extract price from parsed HTML document (same logic as offscreen.js)
  * @param {Document} doc - Parsed DOM document
+ * @param {Object} contextData - Context information (domain, locale, currency)
  * @returns {Object} - { success: boolean, price: number, detectionMethod: string }
  */
-function extractPriceFromDocument(doc) {
+function extractPriceFromDocument(doc, contextData = {}) {
   let newPrice = null;
   let detectionMethod = 'none';
 
@@ -73,7 +60,7 @@ function extractPriceFromDocument(doc) {
           for (const offer of offers) {
             const priceString = offer.price || offer.lowPrice;
             if (priceString) {
-              newPrice = simpleParsePrice(String(priceString));
+              newPrice = parseNumericPrice(String(priceString), contextData);
               if (newPrice !== null) {
                 detectionMethod = 'schema.org';
                 break;
@@ -108,7 +95,7 @@ function extractPriceFromDocument(doc) {
       if (element) {
         const priceText = attr === 'content' ? element.getAttribute('content') : element.textContent;
         if (priceText) {
-          newPrice = simpleParsePrice(priceText);
+          newPrice = parseNumericPrice(priceText, contextData);
           if (newPrice !== null) {
             detectionMethod = `selector: ${sel}`;
             break;
@@ -162,18 +149,20 @@ async function setupOffscreenDocument() {
 /**
  * Parse HTML using the offscreen document or fallback parser
  * @param {string} html - The HTML string to parse
+ * @param {Object} contextData - Context information (domain, locale, currency)
  * @returns {Promise<Object>} - Parsed price data
  */
-async function parseHTMLForPrice(html) {
+async function parseHTMLForPrice(html, contextData = {}) {
   try {
     // Try offscreen document first (Manifest V3)
     if (browser.offscreen && browser.runtime.getContexts) {
       await setupOffscreenDocument();
 
-      // Send HTML to offscreen document for parsing
+      // Send HTML to offscreen document for parsing with context
       const response = await browser.runtime.sendMessage({
         type: 'PARSE_HTML',
-        html
+        html,
+        contextData
       });
 
       return response;
@@ -187,8 +176,8 @@ async function parseHTMLForPrice(html) {
       const parser = new DOMParser();
       const doc = parser.parseFromString(html, 'text/html');
 
-      // Extract price from the parsed document
-      return extractPriceFromDocument(doc);
+      // Extract price from the parsed document with context
+      return extractPriceFromDocument(doc, contextData);
     }
 
     // If no parser available, return raw HTML
@@ -292,7 +281,7 @@ async function checkAllProducts(options = {}) {
 
     // Process in batches
     const batch = productsToCheck.slice(0, batchSize);
-    console.log(`[PriceChecker] Processing batch of ${batch.length} products...`);
+    console.log(`[PriceChecker] Processing batch of ${batch.length} products in PARALLEL...`);
 
     const results = {
       total: allProducts.length,
@@ -305,17 +294,40 @@ async function checkAllProducts(options = {}) {
       details: [] // Store detailed results for each check
     };
 
-    for (const product of batch) {
-      try {
-        const result = await checkSingleProduct(product.productId);
+    // CRITICAL FIX: Use Promise.allSettled for TRUE parallel execution
+    // Previously this was using sequential await in a loop, which was slow
+    // Now we check multiple products concurrently
+    const checkPromises = batch.map(product =>
+      checkSingleProduct(product.productId)
+        .then(result => ({
+          productId: product.productId,
+          success: true,
+          result
+        }))
+        .catch(error => ({
+          productId: product.productId,
+          success: false,
+          error: error.message
+        }))
+    );
+
+    // Wait for all checks to complete (parallel execution)
+    const checkResults = await Promise.allSettled(checkPromises);
+
+    // Process results
+    for (const promiseResult of checkResults) {
+      const checkData = promiseResult.value || {};
+
+      results.checked++;
+
+      if (checkData.success && checkData.result) {
+        const result = checkData.result;
 
         // Store detailed result
         results.details.push({
-          productId: product.productId,
+          productId: checkData.productId,
           ...result
         });
-
-        results.checked++;
 
         if (result.status === PriceCheckResult.SUCCESS || result.status === PriceCheckResult.NO_CHANGE) {
           results.success++;
@@ -328,19 +340,13 @@ async function checkAllProducts(options = {}) {
         } else if (result.status === PriceCheckResult.PRICE_INCREASE) {
           results.priceIncreases++;
         }
-
-        // Delay between checks to avoid rate limiting
-        if (delayBetweenChecks > 0) {
-          await new Promise(resolve => setTimeout(resolve, delayBetweenChecks));
-        }
-
-      } catch (error) {
-        console.error(`[PriceChecker] Error checking product ${product.productId}:`, error);
+      } else {
+        // Error case
         results.errors++;
         results.details.push({
-          productId: product.productId,
+          productId: checkData.productId,
           status: PriceCheckResult.ERROR,
-          error: error.message
+          error: checkData.error || 'Unknown error'
         });
       }
     }
@@ -402,9 +408,16 @@ async function checkSingleProduct(productId) {
       timeout: 15000
     });
 
-    // Parse the HTML using offscreen document
-    console.log(`[PriceChecker] Parsing HTML for price...`);
-    const parseResult = await parseHTMLForPrice(html);
+    // Prepare context data for robust price parsing
+    const contextData = {
+      domain: product.domain,
+      locale: product.price?.locale,
+      expectedCurrency: product.price?.currency
+    };
+
+    // Parse the HTML using offscreen document with context
+    console.log(`[PriceChecker] Parsing HTML for price with context:`, contextData);
+    const parseResult = await parseHTMLForPrice(html, contextData);
 
     // Check if parsing was successful
     if (!parseResult.success || parseResult.price === null) {
