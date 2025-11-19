@@ -126,6 +126,15 @@ export class EbayAdapter extends BaseAdapter {
           continue;
         }
 
+        // FIX 1: Remove "/ea", "per each", and other suffixes BEFORE parsing
+        text = text.replace(/\/ea/gi, '')
+                   .replace(/per\s*each/gi, '')
+                   .replace(/each/gi, '');
+
+        // FIX 2: Handle potential whitespace issues around decimal points
+        // eBay sometimes renders $19 . 95 with spaces
+        text = text.replace(/\s+(\.)\s+/g, '.');
+
         // Clean up whitespace (eBay sometimes has weird spacing)
         text = text.replace(/\s+/g, ' ').trim();
 

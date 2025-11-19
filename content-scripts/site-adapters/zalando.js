@@ -47,10 +47,11 @@ export class ZalandoAdapter extends BaseAdapter {
   detectProduct() {
     // Zalando product pages have patterns like:
     // https://www.zalando.ee/product-name-ABC123.html
-    // https://www.zalando.de/product-name-ABC123.html
+    // https://www.zalando.de/product-name-q11.html (lowercase ID)
+    // Updated Regex to allow lowercase alphanumeric IDs
     return this.url.includes('.html') ||
            this.url.includes('/product/') ||
-           /\/[a-z0-9-]+-[A-Z0-9]+\.html/i.test(this.url);
+           /\/[a-z0-9-]+-[a-z0-9]+\.html/i.test(this.url);
   }
 
   /**
@@ -60,7 +61,8 @@ export class ZalandoAdapter extends BaseAdapter {
    */
   extractProductId() {
     // Try to extract from URL pattern: product-name-PRODUCTID.html
-    const match = this.url.match(/\/([a-z0-9-]+-([A-Z0-9]+))\.html/i);
+    // Updated Regex to allow lowercase alphanumeric IDs
+    const match = this.url.match(/\/([a-z0-9-]+-([a-z0-9]+))\.html/i);
     if (match && match[2]) {
       return match[2];
     }
@@ -124,6 +126,30 @@ export class ZalandoAdapter extends BaseAdapter {
    */
   extractPrice() {
     console.log('[Zalando] Extracting price...');
+
+    // 1. Try JSON-LD first (Most reliable for Zalando)
+    const scripts = this.querySelectorAll('script[type="application/ld+json"]');
+    for (const script of scripts) {
+      try {
+        const data = JSON.parse(script.textContent);
+        if (data['@type'] === 'Product' && data.offers) {
+          const offers = Array.isArray(data.offers) ? data.offers : [data.offers];
+          if (offers[0] && offers[0].price) {
+            const priceString = offers[0].price + " " + (offers[0].priceCurrency || "EUR");
+            console.log('[Zalando] Found price via JSON-LD:', priceString);
+            const parsed = this.parsePriceWithContext(priceString);
+            if (parsed && parsed.confidence >= 0.70) {
+              console.log('[Zalando] Successfully parsed price from JSON-LD:', parsed);
+              return this.validateCurrency(parsed);
+            }
+          }
+        }
+      } catch (e) {
+        // Ignore JSON parse errors, continue to next script
+      }
+    }
+
+    // 2. Fallback to DOM selectors
     const selectors = [
       // Modern Zalando (2024+)
       '[data-testid="price-current-price"]',
