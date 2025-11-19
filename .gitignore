@@ -69,3 +69,4 @@ web-ext-artifacts/
 # Miscellaneous
 .sass-cache/
 .parcel-cache/
+/build/
