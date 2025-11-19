@@ -359,7 +359,7 @@ async function checkAllProducts(options = {}) {
 
     // Process in batches
     const batch = productsToCheck.slice(0, batchSize);
-    console.log(`[PriceChecker] Processing batch of ${batch.length} products in PARALLEL...`);
+    console.log(`[PriceChecker] Processing batch of ${batch.length} products SEQUENTIALLY with delays to avoid rate limiting...`);
 
     const results = {
       total: allProducts.length,
@@ -372,38 +372,18 @@ async function checkAllProducts(options = {}) {
       details: [] // Store detailed results for each check
     };
 
-    // CRITICAL FIX: Use Promise.allSettled for TRUE parallel execution
-    // Previously this was using sequential await in a loop, which was slow
-    // Now we check multiple products concurrently
-    const checkPromises = batch.map(product =>
-      checkSingleProduct(product.productId)
-        .then(result => ({
-          productId: product.productId,
-          success: true,
-          result
-        }))
-        .catch(error => ({
-          productId: product.productId,
-          success: false,
-          error: error.message
-        }))
-    );
+    // CRITICAL: Sequential checking with random delays to avoid bot detection
+    // Firing 10 simultaneous requests from same IP = instant bot flag by Amazon/Cloudflare
+    // This is slower but prevents IP bans and 503 errors
+    for (const product of batch) {
+      try {
+        const result = await checkSingleProduct(product.productId);
 
-    // Wait for all checks to complete (parallel execution)
-    const checkResults = await Promise.allSettled(checkPromises);
-
-    // Process results
-    for (const promiseResult of checkResults) {
-      const checkData = promiseResult.value || {};
-
-      results.checked++;
-
-      if (checkData.success && checkData.result) {
-        const result = checkData.result;
+        results.checked++;
 
         // Store detailed result
         results.details.push({
-          productId: checkData.productId,
+          productId: product.productId,
           ...result
         });
 
@@ -418,14 +398,24 @@ async function checkAllProducts(options = {}) {
         } else if (result.status === PriceCheckResult.PRICE_INCREASE) {
           results.priceIncreases++;
         }
-      } else {
-        // Error case
+
+      } catch (error) {
+        console.error(`[PriceChecker] Error checking product ${product.productId}:`, error);
+        results.checked++;
         results.errors++;
         results.details.push({
-          productId: checkData.productId,
+          productId: product.productId,
           status: PriceCheckResult.ERROR,
-          error: checkData.error || 'Unknown error'
+          error: error.message
         });
+      }
+
+      // Random delay between 2-5 seconds to appear human
+      // Avoids rate limiting and bot detection
+      if (delayBetweenChecks > 0) {
+        const randomDelay = Math.floor(Math.random() * 3000) + delayBetweenChecks;
+        console.log(`[PriceChecker] Waiting ${(randomDelay / 1000).toFixed(1)}s before next check...`);
+        await new Promise(resolve => setTimeout(resolve, randomDelay));
       }
     }
 

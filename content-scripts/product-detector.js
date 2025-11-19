@@ -966,10 +966,27 @@ async function detectAndSave() {
   try {
     console.log('[Price Drop Tracker] Page loaded, checking for product...');
 
-    // Wait a bit for dynamic content to load
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // Retry logic instead of fixed wait - attempts detection up to 5 times
+    // This handles both slow and fast loading pages without fixed delays
+    let productData = null;
+    const maxAttempts = 5;
+    const intervalMs = 800;
 
-    const productData = await detectProduct();
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      console.log(`[Price Drop Tracker] Detection attempt ${attempt}/${maxAttempts}...`);
+
+      productData = await detectProduct();
+
+      if (productData) {
+        console.log(`[Price Drop Tracker] Product detected on attempt ${attempt}`);
+        break;
+      }
+
+      // Wait before next attempt (except on last attempt)
+      if (attempt < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, intervalMs));
+      }
+    }
 
     if (productData) {
       // Check if already tracking
@@ -982,6 +999,8 @@ async function detectAndSave() {
         console.log('[Price Drop Tracker] Product saved:', response.productId);
         showTrackingBadge(productData);
       }
+    } else {
+      console.log('[Price Drop Tracker] No product detected after 5 attempts');
     }
   } catch (error) {
     console.error('[Price Drop Tracker] Detection error:', error);
