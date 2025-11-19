@@ -5,11 +5,10 @@
  * while maintaining privacy by caching images locally
  */
 
-import browser from './browser-polyfill.js';
-
 /**
  * Create an optimized thumbnail from an image URL
  * Uses canvas to resize and compress the image
+ * This function works in any context (content script, popup, background)
  *
  * @param {string} imageUrl - URL of the image to thumbnail
  * @param {number} width - Target width in pixels (default: 80)
@@ -98,11 +97,13 @@ export async function createOptimizedThumbnail(imageUrl, width = 80, height = 80
 
 /**
  * Get image from separate storage
+ * NOTE: This function requires browser API - use only in background/popup contexts
  * @param {string} productId - Product ID
  * @returns {Promise<string|null>} - Data URL or null
  */
 export async function getProductImage(productId) {
   try {
+    const { default: browser } = await import('./browser-polyfill.js');
     const imageKey = `img_${productId}`;
     const result = await browser.storage.local.get(imageKey);
     return result[imageKey] || null;
@@ -114,12 +115,14 @@ export async function getProductImage(productId) {
 
 /**
  * Save image to separate storage
+ * NOTE: This function requires browser API - use only in background/popup contexts
  * @param {string} productId - Product ID
  * @param {string} imageDataUrl - Image data URL
  * @returns {Promise<void>}
  */
 export async function saveProductImage(productId, imageDataUrl) {
   try {
+    const { default: browser } = await import('./browser-polyfill.js');
     const imageKey = `img_${productId}`;
     await browser.storage.local.set({ [imageKey]: imageDataUrl });
     console.log(`[ImageHelper] Saved thumbnail for product: ${productId}`);
@@ -131,11 +134,13 @@ export async function saveProductImage(productId, imageDataUrl) {
 
 /**
  * Delete image from separate storage
+ * NOTE: This function requires browser API - use only in background/popup contexts
  * @param {string} productId - Product ID
  * @returns {Promise<void>}
  */
 export async function deleteProductImage(productId) {
   try {
+    const { default: browser } = await import('./browser-polyfill.js');
     const imageKey = `img_${productId}`;
     await browser.storage.local.remove(imageKey);
     console.log(`[ImageHelper] Deleted thumbnail for product: ${productId}`);
