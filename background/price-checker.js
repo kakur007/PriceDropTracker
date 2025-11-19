@@ -82,8 +82,7 @@ function extractPriceFromDocument(doc, contextData = {}) {
       { sel: 'meta[property="og:price:amount"]', attr: 'content' },
       { sel: 'meta[property="product:price:amount"]', attr: 'content' },
       { sel: 'meta[itemprop="price"]', attr: 'content' },
-      { sel: '.a-price .a-offscreen', attr: 'textContent' }, // Amazon
-      { sel: '.a-price-whole', attr: 'textContent' }, // Amazon
+      { sel: '.a-price .a-offscreen', attr: 'textContent' }, // Amazon (best option)
       { sel: '[data-testid="customer-price"]', attr: 'textContent' }, // Best Buy
       { sel: '.x-price-primary span', attr: 'textContent' }, // eBay
       { sel: '#priceblock_ourprice', attr: 'textContent' }, // Amazon (old)
@@ -100,6 +99,24 @@ function extractPriceFromDocument(doc, contextData = {}) {
             detectionMethod = `selector: ${sel}`;
             break;
           }
+        }
+      }
+    }
+
+    // Special handling for Amazon when a-offscreen is not available
+    // Combine a-price-whole and a-price-fraction for complete price
+    if (newPrice === null) {
+      const priceWhole = doc.querySelector('.a-price-whole');
+      const priceFraction = doc.querySelector('.a-price-fraction');
+      if (priceWhole) {
+        let combinedPrice = priceWhole.textContent.trim();
+        if (priceFraction) {
+          // Combine whole and fraction (e.g., "19" + "99" = "19.99")
+          combinedPrice = combinedPrice + '.' + priceFraction.textContent.trim();
+        }
+        newPrice = parseNumericPrice(combinedPrice, contextData);
+        if (newPrice !== null) {
+          detectionMethod = 'selector: .a-price-whole + .a-price-fraction';
         }
       }
     }

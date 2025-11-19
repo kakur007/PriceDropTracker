@@ -231,14 +231,24 @@ function createProductItem(productId, product) {
 
   // Product image
   const img = document.createElement('img');
-  if (product.imageUrl) {
-    img.src = product.imageUrl;
-    img.onerror = () => {
-      img.src = '../assets/icons/icon-48.png';
-    };
-  } else {
-    img.src = '../assets/icons/icon-48.png';
+  img.src = '../assets/icons/icon-48.png'; // Default placeholder
+
+  // Load image from separate storage if available
+  if (product.hasImage) {
+    const imageKey = `img_${productId}`;
+    browser.storage.local.get(imageKey).then(result => {
+      if (result[imageKey]) {
+        img.src = result[imageKey];
+      }
+    }).catch(error => {
+      console.error('[PriceHistory] Error loading image:', error);
+      // Keep placeholder on error
+    });
   }
+
+  img.onerror = () => {
+    img.src = '../assets/icons/icon-48.png';
+  };
 
   // Product content
   const content = document.createElement('div');
@@ -346,6 +356,31 @@ function renderChart(product) {
   // Destroy existing chart if any
   if (currentChart) {
     currentChart.destroy();
+  }
+
+  // Check if Chart.js is loaded (Firefox compatibility)
+  if (typeof Chart === 'undefined') {
+    console.error('[PriceHistory] Chart.js is not loaded yet');
+    // Wait for it to load
+    await new Promise((resolve) => {
+      const checkChart = setInterval(() => {
+        if (typeof Chart !== 'undefined') {
+          clearInterval(checkChart);
+          resolve();
+        }
+      }, 100);
+      // Timeout after 5 seconds
+      setTimeout(() => {
+        clearInterval(checkChart);
+        console.error('[PriceHistory] Chart.js failed to load');
+        resolve();
+      }, 5000);
+    });
+  }
+
+  if (typeof Chart === 'undefined') {
+    console.error('[PriceHistory] Cannot render chart - Chart.js not available');
+    return;
   }
 
   // Create new chart
