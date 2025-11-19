@@ -2,6 +2,7 @@
 // Handles product detection and data extraction for Etsy
 
 import { BaseAdapter } from './base-adapter.js';
+import { debug, debugWarn, debugError } from '../../utils/debug.js';
 
 /**
  * EtsyAdapter - Adapter for Etsy marketplace
@@ -51,7 +52,7 @@ export class EtsyAdapter extends BaseAdapter {
           return product;
         }
       } catch (error) {
-        console.error('[Etsy Adapter] Error parsing JSON-LD:', error);
+        debugError('[etsy]', '[Etsy Adapter] Error parsing JSON-LD:', error);
       }
     }
 

@@ -13,6 +13,7 @@ import browser, { executeScript } from '../utils/browser-polyfill.js';
 import { StorageManager } from './storage-manager.js';
 import { checkAllProducts, checkSingleProduct, PriceCheckResult } from './price-checker.js';
 import { showBatchPriceDropNotifications, showInfoNotification } from '../utils/notification-manager.js';
+import { debug, debugWarn, debugError } from '../utils/debug.js';
 
 // Alarm names
 const ALARMS = {
@@ -34,18 +35,18 @@ const MESSAGE_TYPES = {
   REFRESH_SINGLE_PRODUCT: 'REFRESH_SINGLE_PRODUCT'
 };
 
-console.log('[ServiceWorker] Price Drop Tracker: Service worker initializing...');
+debug('[ServiceWorker]', 'Price Drop Tracker: Service worker initializing...');
 
 /**
  * Extension installation handler
  * Sets up default settings and alarms on first install
  */
 browser.runtime.onInstalled.addListener(async (details) => {
-  console.log('[ServiceWorker] Extension installed/updated:', details.reason);
+  debug('[ServiceWorker]', 'Extension installed/updated:', details.reason);
 
   try {
     if (details.reason === 'install') {
-      console.log('[ServiceWorker] First time installation - setting up defaults');
+      debug('[ServiceWorker]', 'First time installation - setting up defaults');
 
       // Open welcome page on first install
       browser.tabs.create({ url: browser.runtime.getURL('onboarding/welcome.html') });
@@ -56,9 +57,9 @@ browser.runtime.onInstalled.addListener(async (details) => {
       // Set up initial alarms
       await setupAlarms();
 
-      console.log('[ServiceWorker] Default settings and alarms configured');
+      debug('[ServiceWorker]', 'Default settings and alarms configured');
     } else if (details.reason === 'update') {
-      console.log('[ServiceWorker] Extension updated - checking alarms');
+      debug('[ServiceWorker]', 'Extension updated - checking alarms');
 
       // Ensure alarms are set up after update
       await setupAlarms();
@@ -68,7 +69,7 @@ browser.runtime.onInstalled.addListener(async (details) => {
     await updateBadge();
 
   } catch (error) {
-    console.error('[ServiceWorker] Error during installation:', error);
+    debugError('[ServiceWorker]', 'Error during installation:', error);
   }
 });
 
@@ -77,7 +78,7 @@ browser.runtime.onInstalled.addListener(async (details) => {
  * Ensures alarms are active when browser starts
  */
 browser.runtime.onStartup.addListener(async () => {
-  console.log('[ServiceWorker] Browser started, service worker active');
+  debug('[ServiceWorker]', 'Browser started, service worker active');
 
   try {
     // Verify alarms are set up
@@ -87,7 +88,7 @@ browser.runtime.onStartup.addListener(async () => {
     await updateBadge();
 
   } catch (error) {
-    console.error('[ServiceWorker] Error during startup:', error);
+    debugError('[ServiceWorker]', 'Error during startup:', error);
   }
 });
 
@@ -97,7 +98,7 @@ browser.runtime.onStartup.addListener(async () => {
  * - Daily cleanup alarm (removes old products)
  */
 async function setupAlarms() {
-  console.log('[ServiceWorker] Setting up alarms...');
+  debug('[ServiceWorker]', 'Setting up alarms...');
 
   try {
     // Get current settings
@@ -110,28 +111,28 @@ async function setupAlarms() {
     if (settings.tracking.enabled) {
       const checkIntervalMinutes = settings.tracking.checkInterval / 60; // Convert seconds to minutes
 
-      console.log(`[ServiceWorker] Creating price check alarm: every ${checkIntervalMinutes} minutes`);
+      debug('[ServiceWorker]', `Creating price check alarm: every ${checkIntervalMinutes} minutes`);
 
       browser.alarms.create(ALARMS.PRICE_CHECK, {
         delayInMinutes: 1, // First check in 1 minute
         periodInMinutes: checkIntervalMinutes
       });
     } else {
-      console.log('[ServiceWorker] Price checking is disabled in settings');
+      debug('[ServiceWorker]', 'Price checking is disabled in settings');
     }
 
     // Set up daily cleanup alarm (runs at 3 AM)
-    console.log('[ServiceWorker] Creating daily cleanup alarm');
+    debug('[ServiceWorker]', 'Creating daily cleanup alarm');
 
     browser.alarms.create(ALARMS.DAILY_CLEANUP, {
       when: getNextCleanupTime(),
       periodInMinutes: 24 * 60 // 24 hours
     });
 
-    console.log('[ServiceWorker] Alarms configured successfully');
+    debug('[ServiceWorker]', 'Alarms configured successfully');
 
   } catch (error) {
-    console.error('[ServiceWorker] Error setting up alarms:', error);
+    debugError('[ServiceWorker]', 'Error setting up alarms:', error);
   }
 }
 
@@ -158,7 +159,7 @@ function getNextCleanupTime() {
  * Handles periodic tasks
  */
 browser.alarms.onAlarm.addListener(async (alarm) => {
-  console.log(`[ServiceWorker] Alarm triggered: ${alarm.name}`);
+  debug('[ServiceWorker]', `[ServiceWorker] Alarm triggered: ${alarm.name}`);
 
   try {
     if (alarm.name === ALARMS.PRICE_CHECK) {
@@ -167,7 +168,7 @@ browser.alarms.onAlarm.addListener(async (alarm) => {
       await handleCleanupAlarm();
     }
   } catch (error) {
-    console.error(`[ServiceWorker] Error handling alarm ${alarm.name}:`, error);
+    debugError('[ServiceWorker]', `[ServiceWorker] Error handling alarm ${alarm.name}:`, error);
   }
 });
 
@@ -176,13 +177,13 @@ browser.alarms.onAlarm.addListener(async (alarm) => {
  * Checks all products that need updating
  */
 async function handlePriceCheckAlarm() {
-  console.log('[ServiceWorker] Running periodic price check...');
+  debug('[ServiceWorker]', '[ServiceWorker] Running periodic price check...');
 
   try {
     const settings = await StorageManager.getSettings();
 
     if (!settings.tracking.enabled) {
-      console.log('[ServiceWorker] Price checking is disabled, skipping');
+      debug('[ServiceWorker]', '[ServiceWorker] Price checking is disabled, skipping');
       return;
     }
 
@@ -195,7 +196,7 @@ async function handlePriceCheckAlarm() {
       maxAge: maxAge
     });
 
-    console.log(`[ServiceWorker] Price check complete:`, results);
+    debug('[ServiceWorker]', `[ServiceWorker] Price check complete:`, results);
 
     // Update badge with new data
     await updateBadge();
@@ -206,7 +207,7 @@ async function handlePriceCheckAlarm() {
     }
 
   } catch (error) {
-    console.error('[ServiceWorker] Error during price check:', error);
+    debugError('[ServiceWorker]', '[ServiceWorker] Error during price check:', error);
   }
 }
 
@@ -215,7 +216,7 @@ async function handlePriceCheckAlarm() {
  * Removes old and expired products
  */
 async function handleCleanupAlarm() {
-  console.log('[ServiceWorker] Running daily cleanup...');
+  debug('[ServiceWorker]', '[ServiceWorker] Running daily cleanup...');
 
   try {
     const settings = await StorageManager.getSettings();
@@ -223,13 +224,13 @@ async function handleCleanupAlarm() {
 
     await StorageManager.cleanupOldProducts(maxAgeDays);
 
-    console.log('[ServiceWorker] Cleanup complete');
+    debug('[ServiceWorker]', '[ServiceWorker] Cleanup complete');
 
     // Update badge
     await updateBadge();
 
   } catch (error) {
-    console.error('[ServiceWorker] Error during cleanup:', error);
+    debugError('[ServiceWorker]', '[ServiceWorker] Error during cleanup:', error);
   }
 }
 
@@ -244,7 +245,7 @@ async function notifyPriceDrops(checkDetails) {
     return;
   }
 
-  console.log(`[ServiceWorker] Sending notifications for ${priceDrops.length} price drops`);
+  debug('[ServiceWorker]', `[ServiceWorker] Sending notifications for ${priceDrops.length} price drops`);
 
   try {
     // Get full product data for each drop
@@ -252,7 +253,7 @@ async function notifyPriceDrops(checkDetails) {
       priceDrops.map(async (drop) => {
         const product = await StorageManager.getProduct(drop.productId);
         if (!product) {
-          console.warn(`[ServiceWorker] Product not found for notification: ${drop.productId}`);
+          debugWarn('[ServiceWorker]', `[ServiceWorker] Product not found for notification: ${drop.productId}`);
           return null;
         }
 
@@ -274,7 +275,7 @@ async function notifyPriceDrops(checkDetails) {
     }
 
   } catch (error) {
-    console.error('[ServiceWorker] Error sending price drop notifications:', error);
+    debugError('[ServiceWorker]', '[ServiceWorker] Error sending price drop notifications:', error);
   }
 }
 
@@ -283,7 +284,7 @@ async function notifyPriceDrops(checkDetails) {
  * Handles messages from content scripts and popup
  */
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log('[ServiceWorker] Message received:', message.type, sender.tab?.url);
+  debug('[ServiceWorker]', '[ServiceWorker] Message received:', message.type, sender.tab?.url);
 
   // Ignore messages meant for offscreen document (PARSE_HTML)
   if (message.type === 'PARSE_HTML') {
@@ -297,7 +298,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ success: true, data: response });
     })
     .catch(error => {
-      console.error('[ServiceWorker] Error handling message:', error);
+      debugError('[ServiceWorker]', '[ServiceWorker] Error handling message:', error);
       sendResponse({ success: false, error: error.message });
     });
 
@@ -330,7 +331,7 @@ async function handleMessage(message, sender) {
       return { deleted: true };
 
     case MESSAGE_TYPES.REFRESH_SINGLE_PRODUCT:
-      console.log('[ServiceWorker] Refreshing single product:', data.productId);
+      debug('[ServiceWorker]', '[ServiceWorker] Refreshing single product:', data.productId);
       const refreshResult = await checkSingleProduct(data.productId);
       await updateBadge();
       // Return the updated product
@@ -365,7 +366,7 @@ async function handleMessage(message, sender) {
 
         return { success: true, results };
       } catch (error) {
-        console.error('[ServiceWorker] CHECK_NOW error:', error);
+        debugError('[ServiceWorker]', '[ServiceWorker] CHECK_NOW error:', error);
         return { success: false, error: error.message };
       }
 
@@ -396,15 +397,15 @@ async function handleMessage(message, sender) {
  * @returns {Promise<Object>} - Saved product or status
  */
 async function handleProductDetected(productData, sender) {
-  console.log('[ServiceWorker] Product detected:', productData.title, 'ID:', productData.productId);
-  console.log('[ServiceWorker] Product URL:', productData.url);
+  debug('[ServiceWorker]', '[ServiceWorker] Product detected:', productData.title, 'ID:', productData.productId);
+  debug('[ServiceWorker]', '[ServiceWorker] Product URL:', productData.url);
 
   try {
     // Check if product already exists
     const existingProduct = await StorageManager.getProduct(productData.productId);
 
     if (existingProduct) {
-      console.log('[ServiceWorker] ℹ️ Product already tracked:', productData.productId);
+      debug('[ServiceWorker]', '[ServiceWorker] ℹ️ Product already tracked:', productData.productId);
       return {
         alreadyTracked: true,
         product: existingProduct
@@ -413,10 +414,10 @@ async function handleProductDetected(productData, sender) {
 
     // Save new product
     // NOTE: Permissions are now checked in popup.js BEFORE calling this function
-    console.log('[ServiceWorker] Saving new product:', productData.productId);
+    debug('[ServiceWorker]', '[ServiceWorker] Saving new product:', productData.productId);
     await StorageManager.saveProduct(productData);
 
-    console.log('[ServiceWorker] ✓ New product saved successfully:', productData.productId);
+    debug('[ServiceWorker]', '[ServiceWorker] ✓ New product saved successfully:', productData.productId);
 
     // Update badge
     await updateBadge();
@@ -434,7 +435,7 @@ async function handleProductDetected(productData, sender) {
     };
 
   } catch (error) {
-    console.error('[ServiceWorker] Error handling detected product:', error);
+    debugError('[ServiceWorker]', '[ServiceWorker] Error handling detected product:', error);
     throw error;
   }
 }
@@ -451,7 +452,7 @@ async function updateBadge() {
     const badgeAPI = browser.action || browser.browserAction;
 
     if (!badgeAPI) {
-      console.warn('[ServiceWorker] No badge API available');
+      debugWarn('[ServiceWorker]', '[ServiceWorker] No badge API available');
       return;
     }
 
@@ -463,7 +464,7 @@ async function updateBadge() {
     }
 
   } catch (error) {
-    console.error('[ServiceWorker] Error updating badge:', error);
+    debugError('[ServiceWorker]', '[ServiceWorker] Error updating badge:', error);
   }
 }
 
@@ -472,29 +473,29 @@ async function updateBadge() {
  * Automatically run product detection when user grants permission for a custom site
  */
 browser.permissions.onAdded.addListener(async (permissions) => {
-  console.log('=================================================');
-  console.log('[ServiceWorker] 🔔 PERMISSIONS ADDED EVENT FIRED');
-  console.log('[ServiceWorker] New permissions granted:', permissions.origins);
-  console.log('=================================================');
+  debug('[ServiceWorker]', '=================================================');
+  debug('[ServiceWorker]', '[ServiceWorker] 🔔 PERMISSIONS ADDED EVENT FIRED');
+  debug('[ServiceWorker]', '[ServiceWorker] New permissions granted:', permissions.origins);
+  debug('[ServiceWorker]', '=================================================');
 
   try {
     // Get the currently active tab
     const [activeTab] = await browser.tabs.query({ active: true, currentWindow: true });
 
-    console.log('[ServiceWorker] Active tab info:', {
+    debug('[ServiceWorker]', '[ServiceWorker] Active tab info:', {
       id: activeTab?.id,
       url: activeTab?.url,
       title: activeTab?.title
     });
 
     if (!activeTab || !activeTab.id || !activeTab.url) {
-      console.log('[ServiceWorker] ❌ No active tab found after permission grant');
+      debug('[ServiceWorker]', '[ServiceWorker] ❌ No active tab found after permission grant');
       return;
     }
 
     // Check if the permission matches the active tab's domain
     const tabHostname = new URL(activeTab.url).hostname;
-    console.log('[ServiceWorker] Checking if permission matches active tab hostname:', tabHostname);
+    debug('[ServiceWorker]', '[ServiceWorker] Checking if permission matches active tab hostname:', tabHostname);
 
     const permissionMatches = permissions.origins.some(origin => {
       // Convert origin pattern to regex
@@ -504,26 +505,26 @@ browser.permissions.onAdded.addListener(async (permissions) => {
         .replace(/\./g, '\\.');
       const regex = new RegExp(pattern);
       const matches = regex.test(activeTab.url);
-      console.log(`[ServiceWorker] Testing pattern "${origin}" against "${activeTab.url}": ${matches}`);
+      debug('[ServiceWorker]', `[ServiceWorker] Testing pattern "${origin}" against "${activeTab.url}": ${matches}`);
       return matches;
     });
 
     if (!permissionMatches) {
-      console.log('[ServiceWorker] ❌ Permission granted for different site, ignoring automatic tracking');
+      debug('[ServiceWorker]', '[ServiceWorker] ❌ Permission granted for different site, ignoring automatic tracking');
       return;
     }
 
-    console.log('[ServiceWorker] ✓ Permission granted for active tab, starting auto-detection...');
+    debug('[ServiceWorker]', '[ServiceWorker] ✓ Permission granted for active tab, starting auto-detection...');
 
     // Wait a moment for page to be ready after reload (if it was reloaded)
-    console.log('[ServiceWorker] Waiting 1.5s for page to be ready...');
+    debug('[ServiceWorker]', '[ServiceWorker] Waiting 1.5s for page to be ready...');
     await new Promise(resolve => setTimeout(resolve, 1500));
 
     // Calculate detector URL in service worker context where browser polyfill exists
     const detectorUrl = browser.runtime.getURL('content-scripts/product-detector.js');
 
     // Inject and run product detection
-    console.log('[ServiceWorker] Injecting product detection script into tab:', activeTab.id);
+    debug('[ServiceWorker]', '[ServiceWorker] Injecting product detection script into tab:', activeTab.id);
     const results = await executeScript({
       target: { tabId: activeTab.id },
       func: async (scriptUrl) => {
@@ -532,22 +533,22 @@ browser.permissions.onAdded.addListener(async (permissions) => {
         const api = window.chrome || window.browser;
 
         try {
-          console.log('[Price Drop Tracker] 🚀 Starting auto-detection after permission grant...');
-          console.log('[Price Drop Tracker] Loading detector module from:', scriptUrl);
+          debug('[ServiceWorker]', '[Price Drop Tracker] 🚀 Starting auto-detection after permission grant...');
+          debug('[ServiceWorker]', '[Price Drop Tracker] Loading detector module from:', scriptUrl);
           const { detectProduct } = await import(scriptUrl);
 
-          console.log('[Price Drop Tracker] Detector module loaded, waiting 1s for page readiness...');
+          debug('[ServiceWorker]', '[Price Drop Tracker] Detector module loaded, waiting 1s for page readiness...');
           // Wait for page to be fully loaded
           await new Promise(resolve => setTimeout(resolve, 1000));
 
-          console.log('[Price Drop Tracker] Running product detection...');
+          debug('[ServiceWorker]', '[Price Drop Tracker] Running product detection...');
           const productData = await detectProduct();
 
           if (productData) {
-            console.log('[Price Drop Tracker] ✅ Product detected:', productData.title);
-            console.log('[Price Drop Tracker] Product ID:', productData.productId);
-            console.log('[Price Drop Tracker] Price:', productData.price.formatted);
-            console.log('[Price Drop Tracker] Sending to background for storage...');
+            debug('[ServiceWorker]', '[Price Drop Tracker] ✅ Product detected:', productData.title);
+            debug('[ServiceWorker]', '[Price Drop Tracker] Product ID:', productData.productId);
+            debug('[ServiceWorker]', '[Price Drop Tracker] Price:', productData.price.formatted);
+            debug('[ServiceWorker]', '[Price Drop Tracker] Sending to background for storage...');
 
             // Use callback-style messaging for Chrome compatibility
             const response = await new Promise((resolve, reject) => {
@@ -563,49 +564,49 @@ browser.permissions.onAdded.addListener(async (permissions) => {
               });
             });
 
-            console.log('[Price Drop Tracker] Background response:', response);
+            debug('[ServiceWorker]', '[Price Drop Tracker] Background response:', response);
 
             if (response && response.success && !response.data.alreadyTracked) {
-              console.log('[Price Drop Tracker] ✓ Product auto-tracked successfully!');
+              debug('[ServiceWorker]', '[Price Drop Tracker] ✓ Product auto-tracked successfully!');
               return { success: true };
             } else if (response && response.success && response.data.alreadyTracked) {
-              console.log('[Price Drop Tracker] ℹ️ Product was already being tracked');
+              debug('[ServiceWorker]', '[Price Drop Tracker] ℹ️ Product was already being tracked');
               return { success: false, alreadyTracked: true };
             }
 
             return { success: false, alreadyTracked: response?.data?.alreadyTracked };
           } else {
-            console.log('[Price Drop Tracker] ⚠️ No product detected on this page');
+            debug('[ServiceWorker]', '[Price Drop Tracker] ⚠️ No product detected on this page');
             return { success: false, error: 'No product found' };
           }
         } catch (error) {
-          console.error('[Price Drop Tracker] ❌ Auto-detection error:', error);
-          console.error('[Price Drop Tracker] Error stack:', error.stack);
+          debugError('[ServiceWorker]', '[Price Drop Tracker] ❌ Auto-detection error:', error);
+          debugError('[ServiceWorker]', '[Price Drop Tracker] Error stack:', error.stack);
           return { success: false, error: error.message };
         }
       },
       args: [detectorUrl]
     });
 
-    console.log('[ServiceWorker] Script execution completed, results:', results);
+    debug('[ServiceWorker]', '[ServiceWorker] Script execution completed, results:', results);
 
     const result = results?.[0]?.result;
     if (result && result.success) {
-      console.log('[ServiceWorker] ✅ Product auto-tracked successfully after permission grant!');
-      console.log('=================================================');
+      debug('[ServiceWorker]', '[ServiceWorker] ✅ Product auto-tracked successfully after permission grant!');
+      debug('[ServiceWorker]', '=================================================');
     } else if (result && result.alreadyTracked) {
-      console.log('[ServiceWorker] ℹ️ Product was already being tracked');
-      console.log('=================================================');
+      debug('[ServiceWorker]', '[ServiceWorker] ℹ️ Product was already being tracked');
+      debug('[ServiceWorker]', '=================================================');
     } else {
-      console.log('[ServiceWorker] ⚠️ Auto-detection completed but no product added:', result);
-      console.log('=================================================');
+      debug('[ServiceWorker]', '[ServiceWorker] ⚠️ Auto-detection completed but no product added:', result);
+      debug('[ServiceWorker]', '=================================================');
     }
 
   } catch (error) {
-    console.error('[ServiceWorker] ❌ Error during auto-detection after permission grant:', error);
-    console.error('[ServiceWorker] Error stack:', error.stack);
-    console.log('=================================================');
+    debugError('[ServiceWorker]', '[ServiceWorker] ❌ Error during auto-detection after permission grant:', error);
+    debugError('[ServiceWorker]', '[ServiceWorker] Error stack:', error.stack);
+    debug('[ServiceWorker]', '=================================================');
   }
 });
 
-console.log('[ServiceWorker] Service worker ready');
+debug('[ServiceWorker]', '[ServiceWorker] Service worker ready');

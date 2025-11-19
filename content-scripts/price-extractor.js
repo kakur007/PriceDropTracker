@@ -5,6 +5,7 @@
  */
 
 import { parsePrice } from '../utils/currency-parser.js';
+import { debug, debugWarn, debugError } from '../utils/debug.js';
 
 /**
  * Extract price from a DOM element
@@ -113,7 +114,7 @@ export function findPriceElements(rootElement = document) {
         }
       }
     } catch (error) {
-      console.warn('[Price Extractor] Invalid selector:', selector, error);
+      debugWarn('[price-extractor]', '[Price Extractor] Invalid selector:', selector, error);
     }
   }
 

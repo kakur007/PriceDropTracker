@@ -146,6 +146,13 @@ function extractPriceFromDocument(doc, contextData = {}) {
       { sel: 'meta[property="product:price:amount"]', attr: 'content' },
       { sel: 'meta[itemprop="price"]', attr: 'content' },
 
+      // SportsDirect - use ID selector
+      { sel: '#lblSellingPrice', attr: 'textContent' },
+
+      // Booztlet - use current price class
+      { sel: '.current-price', attr: 'textContent' },
+      { sel: '.price.campaign', attr: 'textContent' },
+
       // Amazon
       { sel: '.a-price .a-offscreen', attr: 'textContent' },
       { sel: '.a-price-whole', attr: 'textContent' }, // Will be combined with fraction
@@ -393,11 +400,14 @@ function extractPriceFromRawHTML(html, contextData) {
   // Try to extract from common price element patterns (text content only, not attributes)
   const priceElementPatterns = [
     // SportsDirect Specific (looks for ID)
-    /<span[^>]*id="lblSellingPrice"[^>]*>([^<]+)<\/span>/i,
+    // Matches: <span id="lblSellingPrice">£19.99</span>
+    /<span[^>]*id="lblSellingPrice"[^>]*>\s*([^<]+?)\s*<\/span>/i,
 
-    // Booztlet Specific (looks for class structure)
-    // Matches: <span class="price current-price">12.34 &euro;</span>
-    /<span[^>]*class="[^"]*current-price[^"]*"[^>]*>[\s\S]*?([\d\.,\s]+)/i,
+    // Booztlet Specific (looks for current-price class, avoiding old prices)
+    // Matches: <span class="current-price">27.99 €</span>
+    // More specific: capture only digits and decimal separator, ignore strikethrough
+    /<span[^>]*class="[^"]*current-price[^"]*"[^>]*(?!.*line-through)>([^<]+)<\/span>/i,
+    /<span[^>]*class="[^"]*price[^"]*campaign[^"]*"[^>]*>([^<]+)<\/span>/i,
 
     // Amazon offscreen
     /<span class="a-offscreen">([^<]+)<\/span>/i,
@@ -430,10 +440,23 @@ function extractPriceFromRawHTML(html, contextData) {
     const elementMatch = html.match(pattern);
     if (elementMatch && elementMatch[1]) {
       // Extract just the text content, remove HTML entities and extra whitespace
-      const text = elementMatch[1]
-        .replace(/&[a-z]+;/gi, '')
-        .replace(/\s+/g, ' ')
+      let text = elementMatch[1]
+        .replace(/&[a-z]+;/gi, '') // Remove HTML entities like &euro;, &pound;
+        .replace(/\s+/g, ' ') // Normalize whitespace
         .trim();
+
+      // Additional sanitization for Booztlet/SportsDirect:
+      // Remove any text in parentheses (e.g., "(was 49.99)")
+      text = text.replace(/\([^)]*\)/g, '').trim();
+
+      // Remove "was", "now", "from" prefixes common in discount sites
+      text = text.replace(/^(was|now|from)\s+/gi, '').trim();
+
+      // If multiple price-like numbers exist, take the first valid one
+      const priceOnlyMatch = text.match(/([\d\s,.']+[\d])/);
+      if (priceOnlyMatch) {
+        text = priceOnlyMatch[1].trim();
+      }
 
       if (text && text.length > 0 && text.length < 50) { // Sanity check
         const price = parseNumericPrice(text, contextData);

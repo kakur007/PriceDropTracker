@@ -2,6 +2,7 @@
 // Abstract base class for site-specific adapters
 
 import { parsePrice } from '../../utils/currency-parser.js';
+import { debug, debugWarn, debugError } from '../../utils/debug.js';
 
 /**
  * BaseAdapter - Abstract base class for site-specific adapters
@@ -121,7 +122,7 @@ export class BaseAdapter {
     if (!expected) return parsedPrice;
 
     if (parsedPrice.currency !== expected) {
-      console.warn(`[Adapter] Currency mismatch: expected ${expected}, got ${parsedPrice.currency}`);
+      debugWarn('[base-adapter]', `[Adapter] Currency mismatch: expected ${expected}, got ${parsedPrice.currency}`);
       parsedPrice.confidence *= 0.8;
     }
 

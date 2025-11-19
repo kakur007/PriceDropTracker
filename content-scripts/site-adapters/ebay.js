@@ -2,6 +2,7 @@
 // Handles eBay product detection across all regional domains
 
 import { BaseAdapter } from './base-adapter.js';
+import { debug, debugWarn, debugError } from '../../utils/debug.js';
 
 /**
  * EbayAdapter - Extracts product information from eBay product pages
@@ -156,7 +157,7 @@ export class EbayAdapter extends BaseAdapter {
           // eBay sometimes has prices like "$30.00" but content attribute has "3000"
           // If parsed.numeric is > 1000 and text doesn't contain comma or multiple zeros, it's likely cents
           if (parsed.numeric > 1000 && !text.includes(',') && !/\d{3,}/.test(text.replace(/\./g, ''))) {
-            console.warn(`[eBay] Suspicious price detected: ${parsed.numeric} from text "${text}" - likely in cents, rejecting`);
+            debugWarn('[ebay]', `[eBay] Suspicious price detected: ${parsed.numeric} from text "${text}" - likely in cents, rejecting`);
             continue; // Skip this price and try next selector
           }
 
@@ -166,7 +167,7 @@ export class EbayAdapter extends BaseAdapter {
           // Only accept if currency matches expected (or close enough)
           // This prevents picking up conversion rates
           if (!expectedCurrency || parsed.currency === expectedCurrency || validated.confidence >= 0.70) {
-            console.log(`[eBay] Extracted price: ${validated.numeric} ${validated.currency}`);
+            debug('[ebay]', `[eBay] Extracted price: ${validated.numeric} ${validated.currency}`);
             return validated;
           }
         }

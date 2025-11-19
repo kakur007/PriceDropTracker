@@ -11,7 +11,7 @@ let ChartJS = Chart; // Store the imported Chart
 document.addEventListener('DOMContentLoaded', async () => {
   // Wait for Chart.js to be available (in case module loaded before script tag)
   if (!ChartJS) {
-    console.log('[PriceHistory] Waiting for Chart.js to load...');
+    debug('[price-history]', '[PriceHistory] Waiting for Chart.js to load...');
     let attempts = 0;
     while (!ChartJS && attempts < 50) {
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -22,9 +22,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Check Chart.js availability
   if (!ChartJS) {
-    console.error('[PriceHistory] Chart.js failed to load after timeout!');
+    debugError('[price-history]', '[PriceHistory] Chart.js failed to load after timeout!');
   } else {
-    console.log('[PriceHistory] Chart.js loaded successfully, version:', ChartJS.version);
+    debug('[price-history]', '[PriceHistory] Chart.js loaded successfully, version:', ChartJS.version);
   }
 
   // Apply dark mode based on user preference
@@ -260,7 +260,7 @@ function createProductItem(productId, product) {
         img.src = result[imageKey];
       }
     }).catch(error => {
-      console.error('[PriceHistory] Error loading image:', error);
+      debugError('[price-history]', '[PriceHistory] Error loading image:', error);
       // Keep placeholder on error
     });
   }
@@ -379,7 +379,7 @@ async function renderChart(product) {
 
   // Check if Chart.js is loaded
   if (!ChartJS) {
-    console.error('[PriceHistory] Chart.js not available');
+    debugError('[price-history]', '[PriceHistory] Chart.js not available');
     // Show error message to user
     const chartWrapper = document.querySelector('.chart-wrapper');
     if (chartWrapper) {
