@@ -15,7 +15,7 @@ mkdir -p build/chrome build/firefox
 echo "📦 Copying extension files..."
 
 # List of directories and files to copy
-for item in assets background content-scripts onboarding options popup utils *.json *.js; do
+for item in assets background content-scripts lib onboarding options popup utils *.json *.js; do
   if [ -e "$item" ] && [ "$item" != "build.sh" ]; then
     cp -r "$item" build/chrome/ 2>/dev/null || true
     cp -r "$item" build/firefox/ 2>/dev/null || true

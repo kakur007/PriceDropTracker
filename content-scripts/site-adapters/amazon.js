@@ -122,6 +122,13 @@ export class AmazonAdapter extends BaseAdapter {
         let text = element.textContent || element.getAttribute('content');
 
         if (text) {
+          // Clean up any label text that might be included (RRP, MSRP, etc.)
+          // The currency-parser.js cleanPriceString() will handle this, but being explicit here
+          text = text.replace(/\bRRP\b:?\s*/gi, '')
+                     .replace(/\bMSRP\b:?\s*/gi, '')
+                     .replace(/\bSRP\b:?\s*/gi, '')
+                     .trim();
+
           const parsed = this.parsePriceWithContext(text);
 
           if (parsed && parsed.confidence >= 0.70) {
