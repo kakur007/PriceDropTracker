@@ -42,6 +42,9 @@ async function loadSettings() {
     document.getElementById('minDropPercentage').value = currentSettings.notifications.minDropPercentage;
     document.getElementById('maxNotificationsPerDay').value = currentSettings.notifications.maxPerDay;
 
+    // Advanced settings
+    document.getElementById('debugMode').checked = currentSettings.advanced?.debugMode || false;
+
     debug('[Settings]', 'Settings loaded successfully');
   } catch (error) {
     debugError('[Settings] Error loading settings:', error);
@@ -76,7 +79,7 @@ async function loadStorageStats() {
  */
 function setupEventListeners() {
   // Track changes to all settings inputs with debouncing
-  const inputs = ['trackingDuration', 'maxProducts', 'checkInterval', 'notificationsEnabled', 'minDropPercentage', 'maxNotificationsPerDay'];
+  const inputs = ['trackingDuration', 'maxProducts', 'checkInterval', 'notificationsEnabled', 'minDropPercentage', 'maxNotificationsPerDay', 'debugMode'];
 
   // Debounce settings saves to prevent excessive writes (300ms delay)
   const debouncedSettingSave = debounce(handleSettingChange, 300);
@@ -215,7 +218,8 @@ async function handleSettingChange(e) {
       'checkInterval': ['checking', 'interval'],
       'notificationsEnabled': ['notifications', 'enabled'],
       'minDropPercentage': ['notifications', 'minDropPercentage'],
-      'maxNotificationsPerDay': ['notifications', 'maxPerDay']
+      'maxNotificationsPerDay': ['notifications', 'maxPerDay'],
+      'debugMode': ['advanced', 'debugMode']
     };
 
     const [section, key] = settingMap[settingId];
