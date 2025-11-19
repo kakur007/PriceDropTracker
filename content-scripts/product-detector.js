@@ -9,7 +9,7 @@ import browser from '../utils/browser-polyfill.js';
 import { parsePrice } from '../utils/currency-parser.js';
 import { generateProductId } from '../utils/product-hasher.js';
 import { getAdapter } from './site-adapters/adapter-factory.js';
-import { createOptimizedThumbnail } from '../utils/image-helper.js';
+import { createOptimizedThumbnail } from '../utils/thumbnail-generator.js';
 
 /**
  * Main product detection function

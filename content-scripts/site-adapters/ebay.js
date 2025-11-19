@@ -115,10 +115,12 @@ export class EbayAdapter extends BaseAdapter {
     for (const selector of selectors) {
       const element = this.querySelector(selector);
       if (element) {
-        // Prefer content/value attributes over textContent (more reliable)
-        let text = element.getAttribute('content') ||
+        // IMPORTANT: Prefer textContent over content attribute
+        // eBay's content attribute often contains price in cents (e.g., "1495" instead of "14.95")
+        // textContent has the properly formatted human-readable price
+        let text = element.textContent ||
                    element.getAttribute('value') ||
-                   element.textContent;
+                   element.getAttribute('content');
 
         if (text) {
           // Clean up whitespace (eBay sometimes has weird spacing)
