@@ -5,14 +5,26 @@ import Chart from '../lib/chart-loader.js';
 let allProducts = {};
 let selectedProductId = null;
 let currentChart = null;
+let ChartJS = Chart; // Store the imported Chart
 
 // Initialize page
 document.addEventListener('DOMContentLoaded', async () => {
+  // Wait for Chart.js to be available (in case module loaded before script tag)
+  if (!ChartJS) {
+    console.log('[PriceHistory] Waiting for Chart.js to load...');
+    let attempts = 0;
+    while (!ChartJS && attempts < 50) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      ChartJS = window.Chart;
+      attempts++;
+    }
+  }
+
   // Check Chart.js availability
-  if (!Chart) {
-    console.error('[PriceHistory] Chart.js failed to load!');
+  if (!ChartJS) {
+    console.error('[PriceHistory] Chart.js failed to load after timeout!');
   } else {
-    console.log('[PriceHistory] Chart.js loaded successfully, version:', Chart.version);
+    console.log('[PriceHistory] Chart.js loaded successfully, version:', ChartJS.version);
   }
 
   // Apply dark mode based on user preference
@@ -366,7 +378,7 @@ async function renderChart(product) {
   }
 
   // Check if Chart.js is loaded
-  if (!Chart) {
+  if (!ChartJS) {
     console.error('[PriceHistory] Chart.js not available');
     // Show error message to user
     const chartWrapper = document.querySelector('.chart-wrapper');
@@ -383,7 +395,7 @@ async function renderChart(product) {
 
   // Create new chart
   const ctx = document.getElementById('priceChart').getContext('2d');
-  currentChart = new Chart(ctx, {
+  currentChart = new ChartJS(ctx, {
     type: 'line',
     data: {
       labels: labels,

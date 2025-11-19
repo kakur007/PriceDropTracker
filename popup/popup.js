@@ -493,7 +493,12 @@ async function executeProductDetection(tabId) {
       func: async (scriptUrl) => {
         // Define API wrapper for Chrome/Firefox compatibility
         // In injected functions, we don't have access to browser polyfill
-        const api = window.chrome || window.browser;
+        // FIX: Check globals directly, not window properties
+        const api = (typeof browser !== 'undefined' ? browser : (typeof chrome !== 'undefined' ? chrome : null));
+
+        if (!api) {
+          return { success: false, error: 'Browser API not found in script context' };
+        }
 
         try {
           // Dynamically import the detector module
@@ -582,7 +587,8 @@ async function executeProductDetection(tabId) {
 
               return { success: true, product: productData };
             } else if (response && response.success && response.data.alreadyTracked) {
-              return { success: false, error: 'Already tracking this product' };
+              // FIX: Treat "Already Tracked" as a success for the user interface
+              return { success: true, alreadyTracked: true, product: productData };
             } else {
               return { success: false, error: response.error || 'Unable to track product' };
             }
@@ -674,7 +680,13 @@ function setupEventListeners() {
       if (result && result.success) {
         // Reload products to show the newly tracked item
         await loadProducts();
-        showTemporaryMessage('Product tracked successfully!', 'success');
+
+        // FIX: Distinct messages for new vs existing
+        if (result.alreadyTracked) {
+          showTemporaryMessage('Product is already being tracked', 'info');
+        } else {
+          showTemporaryMessage('Product tracked successfully!', 'success');
+        }
       } else {
         const errorMsg = result && result.error ? result.error : 'Unable to detect product';
         showTemporaryMessage(errorMsg, 'error');
