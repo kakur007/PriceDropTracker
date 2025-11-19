@@ -16,6 +16,7 @@ import { fetchHTML } from '../utils/fetch-helper.js';
 import { StorageManager } from './storage-manager.js';
 import { isUrlSupportedOrPermitted } from '../utils/domain-validator.js';
 import { parsePrice } from '../utils/currency-parser.js';
+import { debug, debugWarn, debugError } from '../utils/debug.js';
 
 /**
  * Derive expected currency from domain
@@ -93,7 +94,7 @@ function parseNumericPrice(priceString, contextData = {}) {
     const parsed = parsePrice(priceString, contextData);
     return parsed ? parsed.numeric : null;
   } catch (error) {
-    console.warn('[PriceChecker] Error parsing price with currency-parser:', error);
+    debugWarn('[PriceChecker]', 'Error parsing price with currency-parser:', error);
     return null;
   }
 }
@@ -230,7 +231,7 @@ function extractPriceFromDocument(doc, contextData = {}) {
 async function setupOffscreenDocument() {
   // Offscreen API only available in Manifest V3
   if (!browser.runtime.getContexts || !browser.offscreen) {
-    console.log('[PriceChecker] Offscreen API not available (using fallback parser)');
+    debug('[PriceChecker]', 'Offscreen API not available (using fallback parser)');
     return;
   }
 
@@ -251,9 +252,9 @@ async function setupOffscreenDocument() {
       justification: 'Parse HTML to extract product prices in service worker context'
     });
 
-    console.log('[PriceChecker] Offscreen document created');
+    debug('[PriceChecker]', 'Offscreen document created');
   } catch (error) {
-    console.warn('[PriceChecker] Could not create offscreen document:', error);
+    debugWarn('[PriceChecker]', 'Could not create offscreen document:', error);
   }
 }
 
@@ -283,23 +284,23 @@ async function parseHTMLForPrice(html, contextData = {}) {
         // Check if we got a valid response (not undefined and has expected structure)
         if (response && typeof response === 'object' && 'success' in response) {
           if (response.success) {
-            console.log('[PriceChecker] Successfully parsed via offscreen document');
+            debug('[PriceChecker]', 'Successfully parsed via offscreen document');
             return response;
           } else {
-            console.warn('[PriceChecker] Offscreen parsing failed:', response.error);
+            debugWarn('[PriceChecker]', 'Offscreen parsing failed:', response.error);
           }
         } else {
-          console.warn('[PriceChecker] Offscreen document did not respond or returned invalid response');
+          debugWarn('[PriceChecker]', 'Offscreen document did not respond or returned invalid response');
         }
       } catch (offscreenError) {
-        console.warn('[PriceChecker] Offscreen document error:', offscreenError.message);
+        debugWarn('[PriceChecker]', 'Offscreen document error:', offscreenError.message);
         // Fall through to DOMParser fallback
       }
     }
 
     // Fallback for Manifest V2 (Firefox) - Use DOMParser directly
     // Background pages have access to DOM APIs
-    console.log('[PriceChecker] Using DOMParser fallback (Manifest V2 or offscreen failed)');
+    debug('[PriceChecker]', 'Using DOMParser fallback (Manifest V2 or offscreen failed)');
 
     if (typeof DOMParser !== 'undefined') {
       const parser = new DOMParser();
@@ -310,11 +311,11 @@ async function parseHTMLForPrice(html, contextData = {}) {
     }
 
     // If no parser available, try to extract from raw HTML using regex as last resort
-    console.warn('[PriceChecker] No HTML parser available - using regex extraction');
+    debugWarn('[PriceChecker]', 'No HTML parser available - using regex extraction');
     return extractPriceFromRawHTML(html, contextData);
 
   } catch (error) {
-    console.error('[PriceChecker] Error in parseHTMLForPrice:', error);
+    debugError('[PriceChecker]', 'Error in parseHTMLForPrice:', error);
     return {
       success: false,
       error: error.message
@@ -329,7 +330,7 @@ async function parseHTMLForPrice(html, contextData = {}) {
  * @returns {Object} - Parse result
  */
 function extractPriceFromRawHTML(html, contextData) {
-  console.log('[PriceChecker] Attempting regex-based price extraction...');
+  debug('[PriceChecker]', 'Attempting regex-based price extraction...');
 
   // Try to find Schema.org JSON-LD in raw HTML
   const jsonLdRegex = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/gi;
@@ -348,7 +349,7 @@ function extractPriceFromRawHTML(html, contextData) {
             if (priceString) {
               const price = parseNumericPrice(String(priceString), contextData);
               if (price !== null) {
-                console.log('[PriceChecker] ✓ Extracted price via regex:schema.org:', price);
+                debug('[PriceChecker]', '✓ Extracted price via regex:schema.org:', price);
                 return {
                   success: true,
                   price: price,
@@ -379,7 +380,7 @@ function extractPriceFromRawHTML(html, contextData) {
     if (metaMatch && metaMatch[1]) {
       const price = parseNumericPrice(metaMatch[1], contextData);
       if (price !== null) {
-        console.log('[PriceChecker] ✓ Extracted price via regex:meta tag:', price);
+        debug('[PriceChecker]', '✓ Extracted price via regex:meta tag:', price);
         return {
           success: true,
           price: price,
@@ -437,7 +438,7 @@ function extractPriceFromRawHTML(html, contextData) {
       if (text && text.length > 0 && text.length < 50) { // Sanity check
         const price = parseNumericPrice(text, contextData);
         if (price !== null && price > 0 && price < 1000000) { // Sanity check
-          console.log('[PriceChecker] ✓ Extracted price via regex:element:', price, 'from text:', text.substring(0, 30));
+          debug('[PriceChecker]', '✓ Extracted price via regex:element:', price, 'from text:', text.substring(0, 30));
           return {
             success: true,
             price: price,
@@ -448,7 +449,7 @@ function extractPriceFromRawHTML(html, contextData) {
     }
   }
 
-  console.warn('[PriceChecker] ❌ Regex extraction failed - no price found');
+  debugWarn('[PriceChecker]', '❌ Regex extraction failed - no price found');
   return {
     success: false,
     error: 'Could not parse HTML - no parser available and regex extraction failed'
@@ -486,7 +487,7 @@ async function checkAllProducts(options = {}) {
     maxAge = 60 * 60 * 1000 // 1 hour default
   } = options;
 
-  console.log('[PriceChecker] Starting check for all tracked products...');
+  debug('[PriceChecker]', 'Starting check for all tracked products...');
 
   try {
     // Get all tracked products
@@ -494,7 +495,7 @@ async function checkAllProducts(options = {}) {
     const allProducts = Object.values(allProductsObj);
 
     if (allProducts.length === 0) {
-      console.log('[PriceChecker] No products to check.');
+      debug('[PriceChecker]', 'No products to check.');
       return {
         total: 0,
         checked: 0,
@@ -507,7 +508,7 @@ async function checkAllProducts(options = {}) {
       };
     }
 
-    console.log(`[PriceChecker] Found ${allProducts.length} tracked products.`);
+    debug('[PriceChecker]', `Found ${allProducts.length} tracked products.`);
 
     // Filter products that need checking (based on lastChecked timestamp)
     const now = Date.now();
@@ -516,7 +517,7 @@ async function checkAllProducts(options = {}) {
       return timeSinceLastCheck >= maxAge;
     });
 
-    console.log(`[PriceChecker] ${productsToCheck.length} products need checking (older than ${maxAge / 1000}s).`);
+    debug('[PriceChecker]', `${productsToCheck.length} products need checking (older than ${maxAge / 1000}s).`);
 
     if (productsToCheck.length === 0) {
       return {
@@ -552,7 +553,7 @@ async function checkAllProducts(options = {}) {
     // Loop through all products in chunks
     for (let i = 0; i < productsToCheck.length; i += batchSize) {
       const batch = productsToCheck.slice(i, i + batchSize);
-      console.log(`[PriceChecker] Processing batch ${Math.floor(i/batchSize) + 1} of ${Math.ceil(productsToCheck.length/batchSize)} (${batch.length} products)...`);
+      debug('[PriceChecker]', `Processing batch ${Math.floor(i/batchSize) + 1} of ${Math.ceil(productsToCheck.length/batchSize)} (${batch.length} products)...`);
 
       // CRITICAL: Sequential checking with random delays to avoid bot detection
       // Firing 10 simultaneous requests from same IP = instant bot flag by Amazon/Cloudflare
@@ -582,7 +583,7 @@ async function checkAllProducts(options = {}) {
           }
 
         } catch (error) {
-          console.error(`[PriceChecker] Error checking product ${product.productId}:`, error);
+          debugError('[PriceChecker]', `Error checking product ${product.productId}:`, error);
           results.checked++;
           results.errors++;
           results.details.push({
@@ -596,24 +597,24 @@ async function checkAllProducts(options = {}) {
         // Avoids rate limiting and bot detection
         if (delayBetweenChecks > 0) {
           const randomDelay = Math.floor(Math.random() * 3000) + delayBetweenChecks;
-          console.log(`[PriceChecker] Waiting ${(randomDelay / 1000).toFixed(1)}s before next check...`);
+          debug('[PriceChecker]', `Waiting ${(randomDelay / 1000).toFixed(1)}s before next check...`);
           await new Promise(resolve => setTimeout(resolve, randomDelay));
         }
       }
 
       // Larger delay between batches to be safer
       if (i + batchSize < productsToCheck.length) {
-        console.log('[PriceChecker] Batch complete, waiting 5s before next batch...');
+        debug('[PriceChecker]', 'Batch complete, waiting 5s before next batch...');
         await new Promise(resolve => setTimeout(resolve, 5000));
       }
     }
 
-    console.log(`[PriceChecker] All batches complete: ${results.success} successful, ${results.errors} errors, ${results.priceDrops} drops, ${results.priceIncreases} increases.`);
+    debug('[PriceChecker]', `All batches complete: ${results.success} successful, ${results.errors} errors, ${results.priceDrops} drops, ${results.priceIncreases} increases.`);
 
     return results;
 
   } catch (error) {
-    console.error('[PriceChecker] Error in checkAllProducts:', error);
+    debugError('[PriceChecker]', 'Error in checkAllProducts:', error);
     throw error;
   }
 }
@@ -625,14 +626,14 @@ async function checkAllProducts(options = {}) {
  * @returns {Promise<Object>} - Check result
  */
 async function checkSingleProduct(productId) {
-  console.log(`[PriceChecker] Checking product: ${productId}`);
+  debug('[PriceChecker]', `Checking product: ${productId}`);
 
   try {
     // Get product from storage
     const product = await StorageManager.getProduct(productId);
 
     if (!product) {
-      console.warn(`[PriceChecker] Product not found: ${productId}`);
+      debugWarn('[PriceChecker]', `Product not found: ${productId}`);
       return {
         status: PriceCheckResult.NOT_FOUND,
         error: 'Product not found in storage'
@@ -642,7 +643,7 @@ async function checkSingleProduct(productId) {
     // Check if domain is supported or has permission
     const hasPermission = await isUrlSupportedOrPermitted(product.url);
     if (!hasPermission) {
-      console.warn(`[PriceChecker] No permission for domain, skipping: ${product.url}`);
+      debugWarn('[PriceChecker]', `No permission for domain, skipping: ${product.url}`);
 
       // Mark product as stale (no permission)
       product.tracking = product.tracking || {};
@@ -659,7 +660,7 @@ async function checkSingleProduct(productId) {
     }
 
     // Fetch the product page
-    console.log(`[PriceChecker] Fetching: ${product.url}`);
+    debug('[PriceChecker]', `Fetching: ${product.url}`);
     const html = await fetchHTML(product.url, {
       maxRetries: 2,
       timeout: 15000
@@ -676,16 +677,16 @@ async function checkSingleProduct(productId) {
 
     // Log if currency was corrected
     if (derivedCurrency && product.price?.currency && derivedCurrency !== product.price.currency) {
-      console.warn(`[PriceChecker] Currency corrected from ${product.price.currency} to ${derivedCurrency} based on domain ${product.domain}`);
+      debugWarn('[PriceChecker]', `Currency corrected from ${product.price.currency} to ${derivedCurrency} based on domain ${product.domain}`);
     }
 
     // Parse the HTML using offscreen document with context
-    console.log(`[PriceChecker] Parsing HTML for price with context:`, contextData);
+    debug('[PriceChecker]', `Parsing HTML for price with context:`, contextData);
     const parseResult = await parseHTMLForPrice(html, contextData);
 
     // Check if parsing was successful
     if (!parseResult.success || parseResult.price === null) {
-      console.warn(`[PriceChecker] Could not extract price for ${productId}`);
+      debugWarn('[PriceChecker]', `Could not extract price for ${productId}`);
 
       // Update failed checks counter
       product.tracking = product.tracking || {};
@@ -707,14 +708,14 @@ async function checkSingleProduct(productId) {
     const newPrice = parseResult.price;
     const detectionMethod = parseResult.detectionMethod;
 
-    console.log(`[PriceChecker] New price detected: ${newPrice} (via ${detectionMethod})`);
+    debug('[PriceChecker]', `New price detected: ${newPrice} (via ${detectionMethod})`);
 
     // Compare with current price
     const oldPrice = product.price.numeric;
 
     // Check for no significant change (less than 1 cent)
     if (Math.abs(oldPrice - newPrice) < 0.01) {
-      console.log(`[PriceChecker] Price unchanged for ${productId}`);
+      debug('[PriceChecker]', `Price unchanged for ${productId}`);
 
       // Update timestamp and reset failed checks
       product.tracking = product.tracking || {};
@@ -740,7 +741,7 @@ async function checkSingleProduct(productId) {
     const priceDiff = newPrice - oldPrice;
     const priceChangePercent = (priceDiff / oldPrice) * 100;
 
-    console.log(`[PriceChecker] Price change: ${priceDiff.toFixed(2)} (${priceChangePercent.toFixed(2)}%)`);
+    debug('[PriceChecker]', `Price change: ${priceDiff.toFixed(2)} (${priceChangePercent.toFixed(2)}%)`);
 
     // Update product price using storage manager
     await StorageManager.updateProductPrice(productId, {
@@ -766,7 +767,7 @@ async function checkSingleProduct(productId) {
     };
 
   } catch (error) {
-    console.error(`[PriceChecker] Error checking product ${productId}:`, error);
+    debugError('[PriceChecker]', `Error checking product ${productId}:`, error);
 
     // Try to update failed checks even on error
     try {
@@ -783,7 +784,7 @@ async function checkSingleProduct(productId) {
         await StorageManager.saveProduct(product);
       }
     } catch (updateError) {
-      console.error(`[PriceChecker] Failed to update error status:`, updateError);
+      debugError('[PriceChecker]', 'Failed to update error status:', updateError);
     }
 
     return {
@@ -815,7 +816,7 @@ async function getProductsNeedingCheck(maxAge = 60 * 60 * 1000) {
  * @returns {Promise<Object>} - Check result
  */
 async function forceCheckProduct(productId) {
-  console.log(`[PriceChecker] Force checking product: ${productId}`);
+  debug('[PriceChecker]', `Force checking product: ${productId}`);
   return checkSingleProduct(productId);
 }
 
