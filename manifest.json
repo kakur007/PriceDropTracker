@@ -87,6 +87,7 @@
 
   "background": {
     "service_worker": "background/background-wrapper.js",
+    "scripts": ["background/background-wrapper.js"],
     "type": "module"
   },
 
