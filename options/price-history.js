@@ -1,21 +1,18 @@
 import browser from '../utils/browser-polyfill.js';
-
 import { debug, debugError } from '../utils/debug.js';
+import Chart from '../lib/chart-loader.js';
 
 let allProducts = {};
 let selectedProductId = null;
 let currentChart = null;
 
-// Initialize page (check Chart.js after DOM is fully ready)
+// Initialize page
 document.addEventListener('DOMContentLoaded', async () => {
-  // Wait a moment for non-module scripts to finish loading
-  await new Promise(resolve => setTimeout(resolve, 100));
-
   // Check Chart.js availability
-  if (!window.Chart) {
+  if (!Chart) {
     console.error('[PriceHistory] Chart.js failed to load!');
   } else {
-    console.log('[PriceHistory] Chart.js loaded successfully, version:', window.Chart.version);
+    console.log('[PriceHistory] Chart.js loaded successfully, version:', Chart.version);
   }
 
   // Apply dark mode based on user preference
@@ -368,23 +365,9 @@ async function renderChart(product) {
     currentChart.destroy();
   }
 
-  // Check if Chart.js is loaded (defensive check for slow connections)
-  if (!window.Chart) {
-    console.error('[PriceHistory] Chart.js is not loaded yet, waiting...');
-    // Wait for it to load (up to 5 seconds)
-    await new Promise((resolve) => {
-      let attempts = 0;
-      const checkChart = setInterval(() => {
-        if (window.Chart || attempts++ > 50) {
-          clearInterval(checkChart);
-          resolve();
-        }
-      }, 100);
-    });
-  }
-
-  if (!window.Chart) {
-    console.error('[PriceHistory] Cannot render chart - Chart.js not available after timeout');
+  // Check if Chart.js is loaded
+  if (!Chart) {
+    console.error('[PriceHistory] Chart.js not available');
     // Show error message to user
     const chartWrapper = document.querySelector('.chart-wrapper');
     if (chartWrapper) {
@@ -399,9 +382,8 @@ async function renderChart(product) {
   }
 
   // Create new chart
-  // Chart.js is loaded via script tag and attached to window
   const ctx = document.getElementById('priceChart').getContext('2d');
-  currentChart = new window.Chart(ctx, {
+  currentChart = new Chart(ctx, {
     type: 'line',
     data: {
       labels: labels,
