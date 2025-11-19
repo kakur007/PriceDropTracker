@@ -86,7 +86,8 @@
   ],
 
   "background": {
-    "scripts": ["background/background-wrapper.js"]
+    "service_worker": "background/background-wrapper.js",
+    "type": "module"
   },
 
   "content_scripts": [
