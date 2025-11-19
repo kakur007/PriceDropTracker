@@ -16,6 +16,7 @@ import { EtsyAdapter } from './etsy.js';
 import { AliExpressAdapter } from './aliexpress.js';
 import { BooztletAdapter } from './booztlet.js';
 import { SportsDirectAdapter } from './sportsdirect.js';
+import { debug, debugWarn, debugError } from '../../utils/debug.js';
 
 /**
  * Factory function to get the appropriate adapter for a given domain
@@ -72,7 +73,7 @@ export function getAdapter(document, url) {
   // These need to be detected by page structure, not domain
   const wooAdapter = new WooCommerceAdapter(document, url);
   if (wooAdapter.detectProduct()) {
-    console.log('[Adapter Factory] Detected WooCommerce site');
+    debug('[adapter-factory]', '[Adapter Factory] Detected WooCommerce site');
     return wooAdapter;
   }
 

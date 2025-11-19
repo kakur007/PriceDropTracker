@@ -1,4 +1,5 @@
 /**
+import { debug, debugWarn, debugError } from '../utils/debug.js';
  * Image Helper - Storage functions for product thumbnails
  *
  * NOTE: This file contains only storage-related functions that require browser APIs.
@@ -20,7 +21,7 @@ export async function getProductImage(productId) {
     const result = await browser.storage.local.get(imageKey);
     return result[imageKey] || null;
   } catch (error) {
-    console.error('[ImageHelper] Error loading image:', error);
+    debugError('[image-helper]', '[ImageHelper] Error loading image:', error);
     return null;
   }
 }
@@ -37,9 +38,9 @@ export async function saveProductImage(productId, imageDataUrl) {
     const { default: browser } = await import('./browser-polyfill.js');
     const imageKey = `img_${productId}`;
     await browser.storage.local.set({ [imageKey]: imageDataUrl });
-    console.log(`[ImageHelper] Saved thumbnail for product: ${productId}`);
+    debug('[image-helper]', `[ImageHelper] Saved thumbnail for product: ${productId}`);
   } catch (error) {
-    console.error('[ImageHelper] Error saving image:', error);
+    debugError('[image-helper]', '[ImageHelper] Error saving image:', error);
     throw error;
   }
 }
@@ -55,8 +56,8 @@ export async function deleteProductImage(productId) {
     const { default: browser } = await import('./browser-polyfill.js');
     const imageKey = `img_${productId}`;
     await browser.storage.local.remove(imageKey);
-    console.log(`[ImageHelper] Deleted thumbnail for product: ${productId}`);
+    debug('[image-helper]', `[ImageHelper] Deleted thumbnail for product: ${productId}`);
   } catch (error) {
-    console.error('[ImageHelper] Error deleting image:', error);
+    debugError('[image-helper]', '[ImageHelper] Error deleting image:', error);
   }
 }

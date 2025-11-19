@@ -1,4 +1,5 @@
 /**
+import { debug, debugWarn, debugError } from '../utils/debug.js';
  * Fetch Helper - Network utilities with retry logic and rate limiting
  *
  * Provides robust HTTP fetching with:
@@ -38,7 +39,7 @@ class RateLimiter {
       const oldestRequest = this.requests[0];
       const waitTime = this.windowMs - (now - oldestRequest) + 100; // +100ms buffer
 
-      console.log(`[RateLimiter] Limit reached (${this.requests.length}/${this.maxRequests}). Waiting ${waitTime}ms...`);
+      debug('[fetch-helper]', `[RateLimiter] Limit reached (${this.requests.length}/${this.maxRequests}). Waiting ${waitTime}ms...`);
       await this.sleep(waitTime);
 
       // Recursively check again after waiting
@@ -115,7 +116,7 @@ async function fetchWithRetry(url, options = {}) {
       const timeoutId = setTimeout(() => controller.abort(), timeout);
 
       try {
-        console.log(`[FetchHelper] Attempt ${attempt + 1}/${maxRetries + 1}: ${url}`);
+        debug('[fetch-helper]', `[FetchHelper] Attempt ${attempt + 1}/${maxRetries + 1}: ${url}`);
 
         const response = await fetch(url, {
           ...fetchOptions,
@@ -133,7 +134,7 @@ async function fetchWithRetry(url, options = {}) {
 
           // For 404 or other client errors, don't retry
           if (response.status >= 400 && response.status < 500) {
-            console.warn(`[FetchHelper] Client error ${response.status}, not retrying: ${url}`);
+            debugWarn('[fetch-helper]', `[FetchHelper] Client error ${response.status}, not retrying: ${url}`);
             return response; // Return the response, let caller handle it
           }
 
@@ -144,7 +145,7 @@ async function fetchWithRetry(url, options = {}) {
         }
 
         // Success!
-        console.log(`[FetchHelper] Success on attempt ${attempt + 1}: ${url}`);
+        debug('[fetch-helper]', `[FetchHelper] Success on attempt ${attempt + 1}: ${url}`);
         return response;
 
       } catch (fetchError) {
@@ -160,11 +161,11 @@ async function fetchWithRetry(url, options = {}) {
 
     } catch (error) {
       lastError = error;
-      console.warn(`[FetchHelper] Attempt ${attempt + 1} failed: ${error.message}`);
+      debugWarn('[fetch-helper]', `[FetchHelper] Attempt ${attempt + 1} failed: ${error.message}`);
 
       // If this was the last attempt, throw the error
       if (attempt === maxRetries) {
-        console.error(`[FetchHelper] All ${maxRetries + 1} attempts failed for ${url}`);
+        debugError('[fetch-helper]', `[FetchHelper] All ${maxRetries + 1} attempts failed for ${url}`);
         throw new Error(`Failed to fetch ${url} after ${maxRetries + 1} attempts: ${error.message}`);
       }
 
@@ -175,7 +176,7 @@ async function fetchWithRetry(url, options = {}) {
       const jitter = delay * 0.2 * (Math.random() * 2 - 1);
       const finalDelay = Math.max(0, delay + jitter);
 
-      console.log(`[FetchHelper] Waiting ${Math.round(finalDelay)}ms before retry...`);
+      debug('[fetch-helper]', `[FetchHelper] Waiting ${Math.round(finalDelay)}ms before retry...`);
       await new Promise(resolve => setTimeout(resolve, finalDelay));
     }
   }
@@ -258,7 +259,7 @@ async function isUrlAccessible(url, options = {}) {
 
     return response.ok;
   } catch (error) {
-    console.warn(`[FetchHelper] URL not accessible: ${url}`, error.message);
+    debugWarn('[fetch-helper]', `[FetchHelper] URL not accessible: ${url}`, error.message);
     return false;
   }
 }
@@ -277,7 +278,7 @@ async function downloadImageAsDataURL(imageUrl, options = {}) {
   }
 
   try {
-    console.log(`[FetchHelper] Downloading image for local caching: ${imageUrl}`);
+    debug('[fetch-helper]', `[FetchHelper] Downloading image for local caching: ${imageUrl}`);
 
     const response = await fetchWithRetry(imageUrl, {
       ...options,
@@ -287,7 +288,7 @@ async function downloadImageAsDataURL(imageUrl, options = {}) {
     });
 
     if (!response.ok) {
-      console.warn(`[FetchHelper] Failed to download image: ${response.status}`);
+      debugWarn('[fetch-helper]', `[FetchHelper] Failed to download image: ${response.status}`);
       return null;
     }
 
@@ -296,7 +297,7 @@ async function downloadImageAsDataURL(imageUrl, options = {}) {
 
     // Limit image size to 100KB to avoid storage bloat
     if (blob.size > 100 * 1024) {
-      console.warn(`[FetchHelper] Image too large (${(blob.size / 1024).toFixed(1)}KB), skipping cache`);
+      debugWarn('[fetch-helper]', `[FetchHelper] Image too large (${(blob.size / 1024).toFixed(1)}KB), skipping cache`);
       return null;
     }
 
@@ -305,14 +306,14 @@ async function downloadImageAsDataURL(imageUrl, options = {}) {
       const reader = new FileReader();
       reader.onloadend = () => resolve(reader.result);
       reader.onerror = () => {
-        console.error('[FetchHelper] Error reading image blob');
+        debugError('[fetch-helper]', '[FetchHelper] Error reading image blob');
         reject(new Error('Failed to convert image to data URL'));
       };
       reader.readAsDataURL(blob);
     });
 
   } catch (error) {
-    console.warn(`[FetchHelper] Error downloading image: ${error.message}`);
+    debugWarn('[fetch-helper]', `[FetchHelper] Error downloading image: ${error.message}`);
     return null;
   }
 }

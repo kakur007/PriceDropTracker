@@ -2,6 +2,7 @@
 // Handles product detection and data extraction for Zalando
 
 import { BaseAdapter } from './base-adapter.js';
+import { debug, debugWarn, debugError } from '../../utils/debug.js';
 
 /**
  * ZalandoAdapter - Adapter for Zalando e-commerce sites
@@ -83,7 +84,7 @@ export class ZalandoAdapter extends BaseAdapter {
    * @returns {string|null}
    */
   extractTitle() {
-    console.log('[Zalando] Extracting title...');
+    debug('[zalando]', '[Zalando] Extracting title...');
     const selectors = [
       'h1[class*="title"]',
       'h1[class*="product"]',
@@ -101,7 +102,7 @@ export class ZalandoAdapter extends BaseAdapter {
       if (element) {
         const text = element.textContent.trim();
         if (text && text.length > 0) {
-          console.log(`[Zalando] Found title via ${selector}:`, text.substring(0, 50));
+          debug('[zalando]', `[Zalando] Found title via ${selector}:`, text.substring(0, 50));
           return text;
         }
       }
@@ -112,11 +113,11 @@ export class ZalandoAdapter extends BaseAdapter {
     const name = this.querySelector('[data-testid="pdp-product-name"]');
     if (brand && name) {
       const combined = `${brand.textContent.trim()} ${name.textContent.trim()}`;
-      console.log('[Zalando] Found title via brand+name:', combined.substring(0, 50));
+      debug('[zalando]', '[Zalando] Found title via brand+name:', combined.substring(0, 50));
       return combined;
     }
 
-    console.warn('[Zalando] No title found');
+    debugWarn('[zalando]', '[Zalando] No title found');
     return null;
   }
 
@@ -125,7 +126,7 @@ export class ZalandoAdapter extends BaseAdapter {
    * @returns {Object|null}
    */
   extractPrice() {
-    console.log('[Zalando] Extracting price...');
+    debug('[zalando]', '[Zalando] Extracting price...');
 
     // 1. Try JSON-LD first (Most reliable for Zalando)
     const scripts = this.querySelectorAll('script[type="application/ld+json"]');
@@ -136,10 +137,10 @@ export class ZalandoAdapter extends BaseAdapter {
           const offers = Array.isArray(data.offers) ? data.offers : [data.offers];
           if (offers[0] && offers[0].price) {
             const priceString = offers[0].price + " " + (offers[0].priceCurrency || "EUR");
-            console.log('[Zalando] Found price via JSON-LD:', priceString);
+            debug('[zalando]', '[Zalando] Found price via JSON-LD:', priceString);
             const parsed = this.parsePriceWithContext(priceString);
             if (parsed && parsed.confidence >= 0.70) {
-              console.log('[Zalando] Successfully parsed price from JSON-LD:', parsed);
+              debug('[zalando]', '[Zalando] Successfully parsed price from JSON-LD:', parsed);
               return this.validateCurrency(parsed);
             }
           }
@@ -171,7 +172,7 @@ export class ZalandoAdapter extends BaseAdapter {
 
     for (const selector of selectors) {
       const elements = this.querySelectorAll(selector);
-      console.log(`[Zalando] Checking selector ${selector}: found ${elements.length} elements`);
+      debug('[zalando]', `[Zalando] Checking selector ${selector}: found ${elements.length} elements`);
 
       for (const element of elements) {
         // Skip if this looks like an original/strikethrough price
@@ -181,7 +182,7 @@ export class ZalandoAdapter extends BaseAdapter {
 
         if (classes.match(/original|strike|was|old|before/i) ||
             parentClasses.match(/original|strike|was|old|before/i)) {
-          console.log('[Zalando] Skipping strikethrough price');
+          debug('[zalando]', '[Zalando] Skipping strikethrough price');
           continue;
         }
 
@@ -199,17 +200,17 @@ export class ZalandoAdapter extends BaseAdapter {
         }
 
         if (text) {
-          console.log('[Zalando] Found price text:', text.substring(0, 30));
+          debug('[zalando]', '[Zalando] Found price text:', text.substring(0, 30));
           const parsed = this.parsePriceWithContext(text);
           if (parsed && parsed.confidence >= 0.70) {
-            console.log('[Zalando] Successfully parsed price:', parsed);
+            debug('[zalando]', '[Zalando] Successfully parsed price:', parsed);
             return this.validateCurrency(parsed);
           }
         }
       }
     }
 
-    console.warn('[Zalando] No price found');
+    debugWarn('[zalando]', '[Zalando] No price found');
     return null;
   }
 

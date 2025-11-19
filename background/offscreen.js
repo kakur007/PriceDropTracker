@@ -1,5 +1,6 @@
 import browser from '../utils/browser-polyfill.js';
 import { parsePrice } from '../utils/currency-parser.js';
+import { debug, debugWarn, debugError } from '../utils/debug.js';
 
 /**
  * Offscreen Document - DOM Parsing for Service Worker
@@ -21,7 +22,7 @@ function parseNumericPrice(priceString, contextData = {}) {
     const parsed = parsePrice(priceString, contextData);
     return parsed ? parsed.numeric : null;
   } catch (error) {
-    console.warn('[Offscreen] Error parsing price with currency-parser:', error);
+    debugWarn('[offscreen]', '[Offscreen] Error parsing price with currency-parser:', error);
     return null;
   }
 }
@@ -156,7 +157,7 @@ function parseHTMLForPrice(html, contextData = {}) {
     };
 
   } catch (error) {
-    console.error('[Offscreen] Error parsing HTML:', error);
+    debugError('[offscreen]', '[Offscreen] Error parsing HTML:', error);
     return {
       success: false,
       error: error.message
@@ -166,7 +167,7 @@ function parseHTMLForPrice(html, contextData = {}) {
 
 // Listen for messages from the service worker
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log('[Offscreen] Received message:', message.type);
+  debug('[offscreen]', '[Offscreen] Received message:', message.type);
 
   if (message.type === 'PARSE_HTML') {
     const result = parseHTMLForPrice(message.html, message.contextData || {});
@@ -175,4 +176,4 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-console.log('[Offscreen] Document initialized and ready to parse HTML');
+debug('[offscreen]', '[Offscreen] Document initialized and ready to parse HTML');

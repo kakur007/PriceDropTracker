@@ -13,6 +13,7 @@
 import browser from './browser-polyfill.js';
 import { StorageManager } from '../background/storage-manager.js';
 import { isFirefox } from './browser-polyfill.js';
+import { debug, debugWarn, debugError } from '../utils/debug.js';
 
 /**
  * Notification cooldown tracking
@@ -41,20 +42,20 @@ export async function showPriceDropNotification(product, oldPrice, newPrice, dro
     // Check if notifications are enabled
     const settings = await StorageManager.getSettings();
     if (!settings.notifications.enabled) {
-      console.log('[Notifications] Notifications disabled in settings');
+      debug('[notification-manager]', '[Notifications] Notifications disabled in settings');
       return null;
     }
 
     // Check if drop meets minimum threshold
     const minThreshold = settings.notifications.minDropPercentage || settings.notifications.minDropPercent || 5;
     if (dropPercentage < minThreshold) {
-      console.log(`[Notifications] Drop ${dropPercentage}% below threshold ${minThreshold}%`);
+      debug('[notification-manager]', `[Notifications] Drop ${dropPercentage}% below threshold ${minThreshold}%`);
       return null;
     }
 
     // Check cooldown
-    if (isOnCooldown(product.id)) {
-      console.log(`[Notifications] Product ${product.id} is on cooldown`);
+    if (isOnCooldown(product.productId)) {
+      debug('[notification-manager]', `[Notifications] Product ${product.productId} is on cooldown`);
       return null;
     }
 
@@ -89,24 +90,24 @@ Save: ${formatPrice(parseFloat(dropAmount), product.currency, product.locale)} (
       notificationOptions.silent = false;
     }
 
-    const notificationId = await browser.notifications.create(product.id, notificationOptions);
+    const notificationId = await browser.notifications.create(product.productId, notificationOptions);
 
-    console.log(`[Notifications] Created notification: ${notificationId} for product: ${product.title}`);
+    debug('[notification-manager]', `[Notifications] Created notification: ${notificationId} for product: ${product.title}`);
 
     // Set cooldown
-    setCooldown(product.id);
+    setCooldown(product.productId);
 
     // Auto-clear after 10 seconds
     setTimeout(() => {
       browser.notifications.clear(notificationId).catch(err => {
-        console.warn('[Notifications] Error clearing notification:', err);
+        debugWarn('[notification-manager]', '[Notifications] Error clearing notification:', err);
       });
     }, 10000);
 
     return notificationId;
 
   } catch (error) {
-    console.error('[Notifications] Error creating price drop notification:', error);
+    debugError('[notification-manager]', '[Notifications] Error creating price drop notification:', error);
     return null;
   }
 }
@@ -124,7 +125,7 @@ export async function showBatchPriceDropNotifications(priceDrops) {
       return 0;
     }
 
-    console.log(`[Notifications] Showing ${priceDrops.length} price drop notifications`);
+    debug('[notification-manager]', `[Notifications] Showing ${priceDrops.length} price drop notifications`);
 
     // If 3 or fewer, show individual notifications
     if (priceDrops.length <= 3) {
@@ -182,15 +183,15 @@ export async function showBatchPriceDropNotifications(priceDrops) {
 
     await browser.notifications.create('batch-price-drops', batchOptions);
 
-    console.log('[Notifications] Created batch notification');
+    debug('[notification-manager]', '[Notifications] Created batch notification');
 
     // Set cooldowns for all products
-    priceDrops.forEach(drop => setCooldown(drop.product.id));
+    priceDrops.forEach(drop => setCooldown(drop.product.productId));
 
     return 1; // One summary notification
 
   } catch (error) {
-    console.error('[Notifications] Error creating batch notifications:', error);
+    debugError('[notification-manager]', '[Notifications] Error creating batch notifications:', error);
     return 0;
   }
 }
@@ -209,7 +210,7 @@ export async function showInfoNotification(title, message, options = {}) {
 
     // Only check settings if onAddProduct notification
     if (options.type === 'product_added' && !settings.notifications.onAddProduct) {
-      console.log('[Notifications] Product added notifications disabled');
+      debug('[notification-manager]', '[Notifications] Product added notifications disabled');
       return null;
     }
 
@@ -229,13 +230,13 @@ export async function showInfoNotification(title, message, options = {}) {
 
     const notificationId = await browser.notifications.create(infoOptions);
 
-    console.log(`[Notifications] Created info notification: ${title}`);
+    debug('[notification-manager]', `[Notifications] Created info notification: ${title}`);
 
     // Auto-clear after duration if specified
     if (options.duration) {
       setTimeout(() => {
         browser.notifications.clear(notificationId).catch(err => {
-          console.warn('[Notifications] Error clearing notification:', err);
+          debugWarn('[notification-manager]', '[Notifications] Error clearing notification:', err);
         });
       }, options.duration);
     }
@@ -243,7 +244,7 @@ export async function showInfoNotification(title, message, options = {}) {
     return notificationId;
 
   } catch (error) {
-    console.error('[Notifications] Error creating info notification:', error);
+    debugError('[notification-manager]', '[Notifications] Error creating info notification:', error);
     return null;
   }
 }
@@ -272,19 +273,19 @@ export async function showErrorNotification(message) {
 
     const notificationId = await browser.notifications.create(errorOptions);
 
-    console.log(`[Notifications] Created error notification: ${message}`);
+    debug('[notification-manager]', `[Notifications] Created error notification: ${message}`);
 
     // Auto-clear after 8 seconds
     setTimeout(() => {
       browser.notifications.clear(notificationId).catch(err => {
-        console.warn('[Notifications] Error clearing notification:', err);
+        debugWarn('[notification-manager]', '[Notifications] Error clearing notification:', err);
       });
     }, 8000);
 
     return notificationId;
 
   } catch (error) {
-    console.error('[Notifications] Error creating error notification:', error);
+    debugError('[notification-manager]', '[Notifications] Error creating error notification:', error);
     return null;
   }
 }
@@ -306,7 +307,7 @@ function formatPrice(amount, currency = 'USD', locale = 'en-US') {
       maximumFractionDigits: currency === 'JPY' ? 0 : 2
     }).format(amount);
   } catch (error) {
-    console.warn('[Notifications] Error formatting price:', error);
+    debugWarn('[notification-manager]', '[Notifications] Error formatting price:', error);
     // Fallback to simple formatting
     return `${currency} ${amount.toFixed(2)}`;
   }
@@ -366,13 +367,13 @@ export function clearAllCooldowns() {
 if (typeof chrome !== 'undefined' && chrome.notifications) {
   chrome.notifications.onClicked.addListener(async (notificationId) => {
     try {
-      console.log(`[Notifications] Notification clicked: ${notificationId}`);
+      debug('[notification-manager]', `[Notifications] Notification clicked: ${notificationId}`);
 
       // Handle batch notification clicks
       if (notificationId === 'batch-price-drops') {
         // Open the extension popup
         chrome.action.openPopup().catch(() => {
-          console.log('[Notifications] Could not open popup, opening in new tab');
+          debug('[notification-manager]', '[Notifications] Could not open popup, opening in new tab');
           chrome.tabs.create({ url: chrome.runtime.getURL('popup/popup.html') });
         });
         chrome.notifications.clear(notificationId);
@@ -385,23 +386,23 @@ if (typeof chrome !== 'undefined' && chrome.notifications) {
       if (product && product.url) {
         // Open product page in new tab
         await chrome.tabs.create({ url: product.url });
-        console.log(`[Notifications] Opened product page: ${product.url}`);
+        debug('[notification-manager]', `[Notifications] Opened product page: ${product.url}`);
       } else {
-        console.warn(`[Notifications] Product not found: ${notificationId}`);
+        debugWarn('[notification-manager]', `[Notifications] Product not found: ${notificationId}`);
       }
 
       // Clear the notification
       chrome.notifications.clear(notificationId);
 
     } catch (error) {
-      console.error('[Notifications] Error handling notification click:', error);
+      debugError('[notification-manager]', '[Notifications] Error handling notification click:', error);
     }
   });
 
   // Handle notification close events
   chrome.notifications.onClosed.addListener((notificationId, byUser) => {
     if (byUser) {
-      console.log(`[Notifications] Notification closed by user: ${notificationId}`);
+      debug('[notification-manager]', `[Notifications] Notification closed by user: ${notificationId}`);
     }
   });
 }

@@ -1,4 +1,5 @@
 /**
+import { debug, debugWarn, debugError } from '../utils/debug.js';
  * Thumbnail Generator - Image compression utility
  *
  * Creates small, compressed thumbnails for local caching
@@ -62,7 +63,7 @@ export async function createOptimizedThumbnail(imageUrl, width = 80, height = 80
 
           // Sanity check - ensure thumbnail is small enough
           if (dataUrl.length > 50000) { // 50KB max
-            console.warn('[ThumbnailGenerator] Thumbnail too large, trying lower quality...');
+            debugWarn('[thumbnail-generator]', '[ThumbnailGenerator] Thumbnail too large, trying lower quality...');
             const smallerDataUrl = canvas.toDataURL('image/jpeg', 0.5);
             resolve(smallerDataUrl);
           } else {
@@ -70,24 +71,24 @@ export async function createOptimizedThumbnail(imageUrl, width = 80, height = 80
           }
         } catch (e) {
           // CORS or security error - cannot export canvas data
-          console.warn('[ThumbnailGenerator] Cannot export canvas due to CORS:', e.message);
+          debugWarn('[thumbnail-generator]', '[ThumbnailGenerator] Cannot export canvas due to CORS:', e.message);
           resolve(null);
         }
       } catch (error) {
-        console.error('[ThumbnailGenerator] Error creating thumbnail:', error);
+        debugError('[thumbnail-generator]', '[ThumbnailGenerator] Error creating thumbnail:', error);
         resolve(null);
       }
     };
 
     img.onerror = (error) => {
-      console.warn('[ThumbnailGenerator] Error loading image:', imageUrl, error);
+      debugWarn('[thumbnail-generator]', '[ThumbnailGenerator] Error loading image:', imageUrl, error);
       resolve(null);
     };
 
     // Set timeout to avoid hanging
     setTimeout(() => {
       if (!img.complete) {
-        console.warn('[ThumbnailGenerator] Image load timeout:', imageUrl);
+        debugWarn('[thumbnail-generator]', '[ThumbnailGenerator] Image load timeout:', imageUrl);
         resolve(null);
       }
     }, 5000);

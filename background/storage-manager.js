@@ -2,6 +2,7 @@
 // Handles all data persistence using Browser Storage API
 
 import browser from '../utils/browser-polyfill.js';
+import { debug, debugWarn, debugError } from '../utils/debug.js';
 
 /**
  * Default settings for the extension
@@ -140,14 +141,14 @@ export async function saveProduct(productData) {
     if (imageThumbnail) {
       const imageKey = `img_${productId}`;
       await browser.storage.local.set({ [imageKey]: imageThumbnail });
-      console.log(`[Storage] Saved thumbnail for product: ${productId}`);
+      debug('[storage-manager]', `[Storage] Saved thumbnail for product: ${productId}`);
     }
 
-    console.log(`[Storage] Saved product: ${productId}`);
+    debug('[storage-manager]', `[Storage] Saved product: ${productId}`);
     return productId;
 
   } catch (error) {
-    console.error('[Storage] Error saving product:', error);
+    debugError('[storage-manager]', '[Storage] Error saving product:', error);
     throw error;
   }
 }
@@ -163,7 +164,7 @@ export async function getProduct(productId) {
     const products = result.products || {};
     return products[productId] || null;
   } catch (error) {
-    console.error('[Storage] Error getting product:', error);
+    debugError('[storage-manager]', '[Storage] Error getting product:', error);
     return null;
   }
 }
@@ -177,7 +178,7 @@ export async function getAllProducts() {
     const result = await browser.storage.local.get('products');
     return result.products || {};
   } catch (error) {
-    console.error('[Storage] Error getting all products:', error);
+    debugError('[storage-manager]', '[Storage] Error getting all products:', error);
     return {};
   }
 }
@@ -203,13 +204,13 @@ export async function deleteProduct(productId) {
       const imageKey = `img_${productId}`;
       await browser.storage.local.remove(imageKey);
 
-      console.log(`[Storage] Deleted product and thumbnail: ${productId}`);
+      debug('[storage-manager]', `[Storage] Deleted product and thumbnail: ${productId}`);
       return true;
     }
 
     return false;
   } catch (error) {
-    console.error('[Storage] Error deleting product:', error);
+    debugError('[storage-manager]', '[Storage] Error deleting product:', error);
     return false;
   }
 }
@@ -252,7 +253,7 @@ export async function updateProductPrice(productId, newPriceData) {
 
     return product;
   } catch (error) {
-    console.error('[Storage] Error updating product price:', error);
+    debugError('[storage-manager]', '[Storage] Error updating product price:', error);
     return null;
   }
 }
@@ -303,11 +304,11 @@ export async function cleanupOldProducts() {
     };
     await browser.storage.local.set({ metadata });
 
-    console.log(`[Storage] Cleaned up ${deletedCount} old products`);
+    debug('[storage-manager]', `[Storage] Cleaned up ${deletedCount} old products`);
     return deletedCount;
 
   } catch (error) {
-    console.error('[Storage] Error cleaning up:', error);
+    debugError('[storage-manager]', '[Storage] Error cleaning up:', error);
     return 0;
   }
 }
@@ -321,7 +322,7 @@ export async function getSettings() {
     const result = await browser.storage.local.get('settings');
     return result.settings || DEFAULT_SETTINGS;
   } catch (error) {
-    console.error('[Storage] Error getting settings:', error);
+    debugError('[storage-manager]', '[Storage] Error getting settings:', error);
     return DEFAULT_SETTINGS;
   }
 }
@@ -334,7 +335,7 @@ export async function getSettings() {
 export async function updateSettings(newSettings) {
   try {
     if (!newSettings || typeof newSettings !== 'object') {
-      console.error('[Storage] Invalid settings provided:', newSettings);
+      debugError('[storage-manager]', '[Storage] Invalid settings provided:', newSettings);
       throw new Error('Invalid settings object');
     }
 
@@ -358,11 +359,11 @@ export async function updateSettings(newSettings) {
     }
 
     await browser.storage.local.set({ settings: updated });
-    console.log('[Storage] Settings updated');
+    debug('[storage-manager]', '[Storage] Settings updated');
     return updated;
 
   } catch (error) {
-    console.error('[Storage] Error updating settings:', error);
+    debugError('[storage-manager]', '[Storage] Error updating settings:', error);
     throw error;
   }
 }
@@ -400,7 +401,7 @@ export async function getStorageStats() {
     };
 
   } catch (error) {
-    console.error('[Storage] Error getting stats:', error);
+    debugError('[storage-manager]', '[Storage] Error getting stats:', error);
     return null;
   }
 }
@@ -414,7 +415,7 @@ export async function exportData() {
     const result = await chrome.storage.local.get(null);
     return JSON.stringify(result, null, 2);
   } catch (error) {
-    console.error('[Storage] Error exporting data:', error);
+    debugError('[storage-manager]', '[Storage] Error exporting data:', error);
     return null;
   }
 }
@@ -435,11 +436,11 @@ export async function importData(jsonString) {
 
     // Import
     await browser.storage.local.set(data);
-    console.log('[Storage] Data imported successfully');
+    debug('[storage-manager]', '[Storage] Data imported successfully');
     return true;
 
   } catch (error) {
-    console.error('[Storage] Error importing data:', error);
+    debugError('[storage-manager]', '[Storage] Error importing data:', error);
     return false;
   }
 }
@@ -451,10 +452,10 @@ export async function importData(jsonString) {
 export async function clearAllData() {
   try {
     await browser.storage.local.clear();
-    console.log('[Storage] All data cleared');
+    debug('[storage-manager]', '[Storage] All data cleared');
     return true;
   } catch (error) {
-    console.error('[Storage] Error clearing data:', error);
+    debugError('[storage-manager]', '[Storage] Error clearing data:', error);
     return false;
   }
 }
@@ -469,7 +470,7 @@ export async function initializeSettings() {
   // getSettings already returns defaults if settings don't exist
   // Just save them to ensure they're persisted
   await browser.storage.local.set({ settings });
-  console.log('[Storage] Settings initialized with defaults');
+  debug('[storage-manager]', '[Storage] Settings initialized with defaults');
 }
 
 /**

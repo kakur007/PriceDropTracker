@@ -10,6 +10,7 @@ import { parsePrice } from '../utils/currency-parser.js';
 import { generateProductId } from '../utils/product-hasher.js';
 import { getAdapter } from './site-adapters/adapter-factory.js';
 import { createOptimizedThumbnail } from '../utils/thumbnail-generator.js';
+import { debug, debugWarn, debugError } from '../utils/debug.js';
 
 /**
  * Main product detection function
@@ -17,11 +18,11 @@ import { createOptimizedThumbnail } from '../utils/thumbnail-generator.js';
  * @returns {Promise<Object|null>} Product data or null if not a product page
  */
 export async function detectProduct() {
-  console.log('[Price Drop Tracker] Scanning page for product data...');
+  debug('[product-detector]', '[Price Drop Tracker] Scanning page for product data...');
 
   // Quick reject: ignore non-product pages
   if (isNonProductPage()) {
-    console.log('[Price Drop Tracker] Non-product page detected, skipping');
+    debug('[product-detector]', '[Price Drop Tracker] Non-product page detected, skipping');
     return null;
   }
 
@@ -29,11 +30,11 @@ export async function detectProduct() {
   try {
     const adapter = getAdapter(document, window.location.href);
     if (adapter) {
-      console.log('[Price Drop Tracker] Using site-specific adapter');
+      debug('[product-detector]', '[Price Drop Tracker] Using site-specific adapter');
 
       // Check if this is actually a product page (if adapter has detectProduct method)
       if (adapter.detectProduct && !adapter.detectProduct()) {
-        console.log('[Price Drop Tracker] Adapter detected this is not a product page');
+        debug('[product-detector]', '[Price Drop Tracker] Adapter detected this is not a product page');
         return null;
       }
 
@@ -54,14 +55,14 @@ export async function detectProduct() {
           confidence: 0.90,
           detectionMethod: 'siteAdapter'
         };
-        console.log('[Price Drop Tracker] Product detected via adapter (confidence: 0.90)');
+        debug('[product-detector]', '[Price Drop Tracker] Product detected via adapter (confidence: 0.90)');
         return await enhanceProductData(productData);
       } else {
-        console.log('[Price Drop Tracker] Adapter could not extract required data (title or price missing)');
+        debug('[product-detector]', '[Price Drop Tracker] Adapter could not extract required data (title or price missing)');
       }
     }
   } catch (error) {
-    console.error('[Price Drop Tracker] Error using adapter:', error);
+    debugError('[product-detector]', '[Price Drop Tracker] Error using adapter:', error);
     // Fall through to generic detection
   }
 
@@ -71,7 +72,7 @@ export async function detectProduct() {
   // Layer 1: Schema.org JSON-LD (most reliable)
   productData = extractFromSchemaOrg();
   if (productData && productData.confidence >= 0.90) {
-    console.log('[Price Drop Tracker] Product detected via Schema.org (confidence:', productData.confidence + ')');
+    debug('[product-detector]', '[Price Drop Tracker] Product detected via Schema.org (confidence:', productData.confidence + ')');
     return await enhanceProductData(productData);
   }
 
@@ -79,14 +80,14 @@ export async function detectProduct() {
   const ogData = extractFromOpenGraph();
   if (ogData && (!productData || ogData.confidence > productData.confidence)) {
     productData = ogData;
-    console.log('[Price Drop Tracker] Product detected via Open Graph (confidence:', ogData.confidence + ')');
+    debug('[product-detector]', '[Price Drop Tracker] Product detected via Open Graph (confidence:', ogData.confidence + ')');
   }
 
   // Layer 3: Microdata/RDFa
   const microdataData = extractFromMicrodata();
   if (microdataData && (!productData || microdataData.confidence > productData.confidence)) {
     productData = microdataData;
-    console.log('[Price Drop Tracker] Product detected via Microdata (confidence:', microdataData.confidence + ')');
+    debug('[product-detector]', '[Price Drop Tracker] Product detected via Microdata (confidence:', microdataData.confidence + ')');
   }
 
   // Layer 4: CSS Selectors (fallback)
@@ -94,19 +95,19 @@ export async function detectProduct() {
     const cssData = extractFromSelectors();
     if (cssData && (!productData || cssData.confidence > productData.confidence)) {
       productData = cssData;
-      console.log('[Price Drop Tracker] Product detected via CSS selectors (confidence:', cssData.confidence + ')');
+      debug('[product-detector]', '[Price Drop Tracker] Product detected via CSS selectors (confidence:', cssData.confidence + ')');
     }
   }
 
   // Reject if confidence too low
   if (!productData || productData.confidence < 0.60) {
-    console.log('[Price Drop Tracker] No reliable product data found (confidence too low)');
+    debug('[product-detector]', '[Price Drop Tracker] No reliable product data found (confidence too low)');
     return null;
   }
 
   // Enhance and validate the data
   const enhanced = await enhanceProductData(productData);
-  console.log('[Price Drop Tracker] Product detected:', enhanced);
+  debug('[product-detector]', '[Price Drop Tracker] Product detected:', enhanced);
 
   return enhanced;
 }
@@ -202,7 +203,7 @@ function makeAbsoluteUrl(url) {
     const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
     return new URL(url, baseUrl).href;
   } catch (error) {
-    console.warn('[Price Drop Tracker] Failed to convert URL to absolute:', url, error);
+    debugWarn('[product-detector]', '[Price Drop Tracker] Failed to convert URL to absolute:', url, error);
     return url; // Return original if conversion fails
   }
 }
@@ -258,7 +259,7 @@ function findProductsRecursively(obj, products = []) {
 function extractFromSchemaOrg() {
   const scripts = document.querySelectorAll('script[type="application/ld+json"]');
 
-  console.log(`[Price Drop Tracker] Found ${scripts.length} JSON-LD scripts`);
+  debug('[product-detector]', `[Price Drop Tracker] Found ${scripts.length} JSON-LD scripts`);
 
   for (const script of scripts) {
     try {
@@ -267,10 +268,10 @@ function extractFromSchemaOrg() {
       // Use recursive search to find all Product entities
       const products = findProductsRecursively(data);
 
-      console.log(`[Price Drop Tracker] Found ${products.length} Product(s) in this script`);
+      debug('[product-detector]', `[Price Drop Tracker] Found ${products.length} Product(s) in this script`);
 
       for (const item of products) {
-        console.log('[Price Drop Tracker] Processing Product:', item);
+        debug('[product-detector]', '[Price Drop Tracker] Processing Product:', item);
 
         // Extract offers - handle multiple structures
         let offersList = [];
@@ -284,7 +285,7 @@ function extractFromSchemaOrg() {
         }
 
         if (offersList.length === 0) {
-          console.log('[Price Drop Tracker] No offers in Schema.org data');
+          debug('[product-detector]', '[Price Drop Tracker] No offers in Schema.org data');
           continue;
         }
 
@@ -296,14 +297,14 @@ function extractFromSchemaOrg() {
         for (const offers of offersList) {
           // Handle AggregateOffer (variable products)
           if (offers['@type'] === 'AggregateOffer' || offers['@type'] === 'https://schema.org/AggregateOffer') {
-            console.log('[Price Drop Tracker] Found AggregateOffer (variable product)');
+            debug('[product-detector]', '[Price Drop Tracker] Found AggregateOffer (variable product)');
 
             // Use lowPrice for variable products
             const priceValue = offers.lowPrice || offers.price || offers.highPrice;
             currency = offers.priceCurrency || 'EUR';
 
             if (priceValue) {
-              console.log('[Price Drop Tracker] Variable product price:', priceValue, 'Currency:', currency);
+              debug('[product-detector]', '[Price Drop Tracker] Variable product price:', priceValue, 'Currency:', currency);
 
               // Include currency symbol in the price string for better detection
               const currencySymbol = currency === 'EUR' ? '€' : currency === 'USD' ? '$' : currency === 'GBP' ? '£' : '';
@@ -331,7 +332,7 @@ function extractFromSchemaOrg() {
             currency = offers.priceCurrency || 'EUR';
 
             if (priceValue) {
-              console.log('[Price Drop Tracker] Schema.org price:', priceValue, 'Currency:', currency);
+              debug('[product-detector]', '[Price Drop Tracker] Schema.org price:', priceValue, 'Currency:', currency);
 
               // Include currency symbol in the price string
               const currencySymbol = currency === 'EUR' ? '€' : currency === 'USD' ? '$' : currency === 'GBP' ? '£' : '';
@@ -356,11 +357,11 @@ function extractFromSchemaOrg() {
         }
 
         if (!priceData) {
-          console.log('[Price Drop Tracker] Failed to parse any offers');
+          debug('[product-detector]', '[Price Drop Tracker] Failed to parse any offers');
           continue;
         }
 
-        console.log('[Price Drop Tracker] ✓ Successfully parsed price:', priceData.numeric, priceData.currency);
+        debug('[product-detector]', '[Price Drop Tracker] ✓ Successfully parsed price:', priceData.numeric, priceData.currency);
 
         // Extract image (handle different formats)
         let imageUrl = null;
@@ -390,7 +391,7 @@ function extractFromSchemaOrg() {
         };
       }
     } catch (error) {
-      console.error('[Price Drop Tracker] Error parsing Schema.org:', error);
+      debugError('[product-detector]', '[Price Drop Tracker] Error parsing Schema.org:', error);
     }
   }
 
@@ -584,12 +585,12 @@ function scorePriceCandidate(candidate, titleElement, addToCartButton) {
   if (priceValue > 0 && priceValue < 10) {
     // Prices under 10 are often shipping/handling fees, not products
     score -= 30;
-    console.log(`[Price Candidate] Low price penalty for ${priceValue}: -30 points`);
+    debug('[product-detector]', `[Price Candidate] Low price penalty for ${priceValue}: -30 points`);
   }
   if (priceValue > 0 && priceValue < 2) {
     // Extremely low prices (under 2) are almost never product prices
     score -= 50;
-    console.log(`[Price Candidate] Very low price penalty for ${priceValue}: -50 points`);
+    debug('[product-detector]', `[Price Candidate] Very low price penalty for ${priceValue}: -50 points`);
   }
 
   // +20 points: Element has price-related class or ID
@@ -628,7 +629,7 @@ function scorePriceCandidate(candidate, titleElement, addToCartButton) {
                         'save', 'off', 'was', 'msrp', 'list price', 'handling', 'freight', 'postage'];
   if (badKeywords.some(keyword => text.includes(keyword))) {
     score -= 40;
-    console.log(`[Price Candidate] Bad keyword penalty: -40 points`);
+    debug('[product-detector]', `[Price Candidate] Bad keyword penalty: -40 points`);
   }
 
   // -60 points: In a "related items", "upsells", or shipping section (increased penalty)
@@ -644,7 +645,7 @@ function scorePriceCandidate(candidate, titleElement, addToCartButton) {
         parentId.includes('related') || parentId.includes('similar') ||
         parentId.includes('shipping') || parentId.includes('delivery')) {
       score -= 60;
-      console.log(`[Price Candidate] Related/shipping section penalty: -60 points`);
+      debug('[product-detector]', `[Price Candidate] Related/shipping section penalty: -60 points`);
       break;
     }
     parent = parent.parentElement;
@@ -716,7 +717,7 @@ function extractFromSelectors() {
   const hasProductId = /\/\d{6,}/.test(url) || /[?&](product|item|sku|id)=\d+/.test(url);
 
   if (!hasProductUrl && !hasProductId) {
-    console.log('[Price Drop Tracker] URL does not match product patterns');
+    debug('[product-detector]', '[Price Drop Tracker] URL does not match product patterns');
     return null;
   }
 
@@ -730,11 +731,11 @@ function extractFromSelectors() {
   const title = titleElement?.textContent?.trim();
 
   if (!title || title.length < 3) {
-    console.log('[Price Drop Tracker] No valid title found');
+    debug('[product-detector]', '[Price Drop Tracker] No valid title found');
     return null;
   }
 
-  console.log('[Price Drop Tracker] Found title:', title.slice(0, 60));
+  debug('[product-detector]', '[Price Drop Tracker] Found title:', title.slice(0, 60));
 
   // Try to detect product ID from data attributes on body or container divs
   let productId = null;
@@ -749,13 +750,13 @@ function extractFromSelectors() {
     productId = productIdElement.getAttribute('data-product-id') ||
                 productIdElement.getAttribute('data-sku') ||
                 productIdElement.getAttribute('data-id');
-    console.log('[Price Drop Tracker] Found product ID from data attributes:', productId);
+    debug('[product-detector]', '[Price Drop Tracker] Found product ID from data attributes:', productId);
   }
 
   // Find "Add to Cart" button - strong signal of product page
   const addToCartButton = findAddToCartButton();
   if (addToCartButton) {
-    console.log('[Price Drop Tracker] ✓ Add to Cart button found');
+    debug('[product-detector]', '[Price Drop Tracker] ✓ Add to Cart button found');
   }
 
   // Use heuristic price detection for maximum compatibility
@@ -785,7 +786,7 @@ function extractFromSelectors() {
         if (parsed && parsed.confidence >= 0.70) {
           priceData = parsed;
           detectedPriceElement = element;
-          console.log('[Price Drop Tracker] ✓ Amazon price found:', priceData.numeric);
+          debug('[product-detector]', '[Price Drop Tracker] ✓ Amazon price found:', priceData.numeric);
           break;
         }
       }
@@ -812,7 +813,7 @@ function extractFromSelectors() {
         if (parsed && parsed.confidence >= 0.70) {
           priceData = parsed;
           detectedPriceElement = element;
-          console.log('[Price Drop Tracker] ✓ Walmart price found:', priceData.numeric);
+          debug('[product-detector]', '[Price Drop Tracker] ✓ Walmart price found:', priceData.numeric);
           break;
         }
       }
@@ -821,7 +822,7 @@ function extractFromSelectors() {
 
   // Fallback: Use heuristic price candidate scoring for generic sites
   if (!priceData) {
-    console.log('[Price Drop Tracker] Using heuristic price detection...');
+    debug('[product-detector]', '[Price Drop Tracker] Using heuristic price detection...');
 
     // First try common generic selectors (fast path)
     // Enhanced with case-insensitive attribute selectors
@@ -854,7 +855,7 @@ function extractFromSelectors() {
         if (parsed && parsed.confidence >= 0.70) {
           priceData = parsed;
           detectedPriceElement = element;
-          console.log('[Price Drop Tracker] ✓ Quick selector price found:', priceData.numeric);
+          debug('[product-detector]', '[Price Drop Tracker] ✓ Quick selector price found:', priceData.numeric);
           break;
         }
       }
@@ -863,10 +864,10 @@ function extractFromSelectors() {
 
     // If still no price, use the full candidate scoring system
     if (!priceData) {
-      console.log('[Price Drop Tracker] Running full price candidate scoring...');
+      debug('[product-detector]', '[Price Drop Tracker] Running full price candidate scoring...');
 
       const candidates = findAllPriceCandidates();
-      console.log(`[Price Drop Tracker] Found ${candidates.length} price candidates`);
+      debug('[product-detector]', `[Price Drop Tracker] Found ${candidates.length} price candidates`);
 
       if (candidates.length > 0) {
         // Score each candidate
@@ -878,9 +879,9 @@ function extractFromSelectors() {
         candidates.sort((a, b) => b.score - a.score);
 
         // Log top candidates for debugging
-        console.log('[Price Drop Tracker] Top 3 candidates:');
+        debug('[product-detector]', '[Price Drop Tracker] Top 3 candidates:');
         for (let i = 0; i < Math.min(3, candidates.length); i++) {
-          console.log(`  ${i + 1}. ${candidates[i].text} (score: ${candidates[i].score})`);
+          debug('[product-detector]', `  ${i + 1}. ${candidates[i].text} (score: ${candidates[i].score})`);
         }
 
         // Select the best candidate if score is high enough
@@ -888,16 +889,16 @@ function extractFromSelectors() {
         if (bestCandidate.score >= 60) {
           priceData = bestCandidate.parsed;
           detectedPriceElement = bestCandidate.element;
-          console.log('[Price Drop Tracker] ✓ Best candidate selected:', priceData.numeric, 'score:', bestCandidate.score);
+          debug('[product-detector]', '[Price Drop Tracker] ✓ Best candidate selected:', priceData.numeric, 'score:', bestCandidate.score);
         } else {
-          console.log('[Price Drop Tracker] Best candidate score too low:', bestCandidate.score);
+          debug('[product-detector]', '[Price Drop Tracker] Best candidate score too low:', bestCandidate.score);
         }
       }
     }
   }
 
   if (!priceData) {
-    console.log('[Price Drop Tracker] No reliable price found');
+    debug('[product-detector]', '[Price Drop Tracker] No reliable price found');
     return null;
   }
 
@@ -924,7 +925,7 @@ function extractFromSelectors() {
   if (detectedPriceElement) confidence += 0.20;
   if (imageUrl) confidence += 0.05;
 
-  console.log('[Price Drop Tracker] ✓ Product detected with confidence:', confidence);
+  debug('[product-detector]', '[Price Drop Tracker] ✓ Product detected with confidence:', confidence);
 
   return {
     title,
@@ -957,19 +958,19 @@ async function enhanceProductData(data) {
   // 2. Compressing images to ~5KB thumbnails (storage efficiency)
   // 3. Storing images separately from product data (performance)
   if (data.imageUrl && !data.imageUrl.startsWith('data:')) {
-    console.log('[Price Drop Tracker] Creating optimized thumbnail...');
+    debug('[product-detector]', '[Price Drop Tracker] Creating optimized thumbnail...');
     try {
       const thumbnail = await createOptimizedThumbnail(data.imageUrl, 80, 80);
       if (thumbnail) {
         data.imageThumbnail = thumbnail; // Temp field to be stored separately
         data.hasImage = true;
-        console.log(`[Price Drop Tracker] Thumbnail created (${(thumbnail.length / 1024).toFixed(1)}KB)`);
+        debug('[product-detector]', `[Price Drop Tracker] Thumbnail created (${(thumbnail.length / 1024).toFixed(1)}KB)`);
       } else {
-        console.warn('[Price Drop Tracker] Thumbnail creation failed, will use placeholder');
+        debugWarn('[product-detector]', '[Price Drop Tracker] Thumbnail creation failed, will use placeholder');
         data.hasImage = false;
       }
     } catch (error) {
-      console.error('[Price Drop Tracker] Error creating thumbnail:', error);
+      debugError('[product-detector]', '[Price Drop Tracker] Error creating thumbnail:', error);
       data.hasImage = false;
     }
     // Remove the original URL to prevent privacy leaks
@@ -1007,7 +1008,7 @@ if (!window.__PRICE_TRACKER_MANUAL_MODE__) {
 
 async function detectAndSave() {
   try {
-    console.log('[Price Drop Tracker] Page loaded, checking for product...');
+    debug('[product-detector]', '[Price Drop Tracker] Page loaded, checking for product...');
 
     // Retry logic instead of fixed wait - attempts detection up to 5 times
     // This handles both slow and fast loading pages without fixed delays
@@ -1016,12 +1017,12 @@ async function detectAndSave() {
     const intervalMs = 800;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      console.log(`[Price Drop Tracker] Detection attempt ${attempt}/${maxAttempts}...`);
+      debug('[product-detector]', `[Price Drop Tracker] Detection attempt ${attempt}/${maxAttempts}...`);
 
       productData = await detectProduct();
 
       if (productData) {
-        console.log(`[Price Drop Tracker] Product detected on attempt ${attempt}`);
+        debug('[product-detector]', `[Price Drop Tracker] Product detected on attempt ${attempt}`);
         break;
       }
 
@@ -1039,21 +1040,21 @@ async function detectAndSave() {
       });
 
       if (response.success) {
-        console.log('[Price Drop Tracker] Product saved:', response.productId);
+        debug('[product-detector]', '[Price Drop Tracker] Product saved:', response.productId);
         showTrackingBadge(productData);
       }
     } else {
-      console.log('[Price Drop Tracker] No product detected after 5 attempts');
+      debug('[product-detector]', '[Price Drop Tracker] No product detected after 5 attempts');
     }
   } catch (error) {
-    console.error('[Price Drop Tracker] Detection error:', error);
+    debugError('[product-detector]', '[Price Drop Tracker] Detection error:', error);
   }
 }
 
 function showTrackingBadge(product) {
   // Check if badge already exists to prevent duplicates
   if (document.getElementById('price-tracker-badge')) {
-    console.log('[Price Drop Tracker] Badge already exists, skipping');
+    debug('[product-detector]', '[Price Drop Tracker] Badge already exists, skipping');
     return;
   }
 

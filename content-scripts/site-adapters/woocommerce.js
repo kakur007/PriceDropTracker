@@ -7,6 +7,7 @@
  */
 
 import { BaseAdapter } from './base-adapter.js';
+import { debug, debugWarn, debugError } from '../../utils/debug.js';
 
 export class WooCommerceAdapter extends BaseAdapter {
   /**
@@ -88,7 +89,7 @@ export class WooCommerceAdapter extends BaseAdapter {
    * @returns {Object|null} Parsed price data or null
    */
   extractPrice() {
-    console.log('[WooCommerce Adapter] Starting price extraction with regular price support (v8)...');
+    debug('[woocommerce]', '[WooCommerce Adapter] Starting price extraction with regular price support (v8)...');
 
     const summaryArea = this.querySelector('.summary.entry-summary') || this.document;
     let currentPrice = null;
@@ -97,7 +98,7 @@ export class WooCommerceAdapter extends BaseAdapter {
     // PRIORITY 1: Check for variation price (variable products with selected variation)
     const variationPriceContainer = summaryArea.querySelector('.woocommerce-variation-price');
     if (variationPriceContainer) {
-      console.log('[WooCommerce Adapter] Found .woocommerce-variation-price container');
+      debug('[woocommerce]', '[WooCommerce Adapter] Found .woocommerce-variation-price container');
 
       // Extract regular price from <del> tag (original price before discount)
       const delElement = variationPriceContainer.querySelector('del .woocommerce-Price-amount, del .amount');
@@ -107,7 +108,7 @@ export class WooCommerceAdapter extends BaseAdapter {
           const parsedDel = this.parsePriceWithContext(delPriceText);
           if (parsedDel && parsedDel.confidence >= 0.70) {
             regularPrice = parsedDel.numeric;
-            console.log(`[WooCommerce Adapter] ✓ Found regular price in <del>: ${parsedDel.numeric} ${parsedDel.currency}`);
+            debug('[woocommerce]', `[WooCommerce Adapter] ✓ Found regular price in <del>: ${parsedDel.numeric} ${parsedDel.currency}`);
           }
         }
       }
@@ -120,7 +121,7 @@ export class WooCommerceAdapter extends BaseAdapter {
           const parsed = this.parsePriceWithContext(insPriceText);
           if (parsed && parsed.confidence >= 0.70) {
             currentPrice = parsed;
-            console.log(`[WooCommerce Adapter] ✓ Found sale price in <ins>: ${parsed.numeric} ${parsed.currency}`);
+            debug('[woocommerce]', `[WooCommerce Adapter] ✓ Found sale price in <ins>: ${parsed.numeric} ${parsed.currency}`);
           }
         }
       }
@@ -134,7 +135,7 @@ export class WooCommerceAdapter extends BaseAdapter {
             const parsed = this.parsePriceWithContext(priceText);
             if (parsed && parsed.confidence >= 0.70) {
               currentPrice = parsed;
-              console.log(`[WooCommerce Adapter] ✓ Found current price in variation: ${parsed.numeric} ${parsed.currency}`);
+              debug('[woocommerce]', `[WooCommerce Adapter] ✓ Found current price in variation: ${parsed.numeric} ${parsed.currency}`);
             }
           }
         }
@@ -147,7 +148,7 @@ export class WooCommerceAdapter extends BaseAdapter {
           currentPrice.isOnSale = true;
           const savings = regularPrice - currentPrice.numeric;
           const savingsPercent = ((savings / regularPrice) * 100).toFixed(0);
-          console.log(`[WooCommerce Adapter] ✓ Product is on sale! Regular: ${regularPrice}, Current: ${currentPrice.numeric}, Savings: ${savings} (${savingsPercent}%)`);
+          debug('[woocommerce]', `[WooCommerce Adapter] ✓ Product is on sale! Regular: ${regularPrice}, Current: ${currentPrice.numeric}, Savings: ${savings} (${savingsPercent}%)`);
         }
         return currentPrice;
       }
@@ -156,7 +157,7 @@ export class WooCommerceAdapter extends BaseAdapter {
     // PRIORITY 2: Check for standard product price with sale
     const standardPriceContainer = summaryArea.querySelector('p.price');
     if (standardPriceContainer) {
-      console.log('[WooCommerce Adapter] Found p.price container');
+      debug('[woocommerce]', '[WooCommerce Adapter] Found p.price container');
 
       // Extract regular price from <del> tag
       const delElement = standardPriceContainer.querySelector('del .woocommerce-Price-amount, del .amount');
@@ -166,7 +167,7 @@ export class WooCommerceAdapter extends BaseAdapter {
           const parsedDel = this.parsePriceWithContext(delPriceText);
           if (parsedDel && parsedDel.confidence >= 0.70) {
             regularPrice = parsedDel.numeric;
-            console.log(`[WooCommerce Adapter] ✓ Found regular price in <del>: ${parsedDel.numeric} ${parsedDel.currency}`);
+            debug('[woocommerce]', `[WooCommerce Adapter] ✓ Found regular price in <del>: ${parsedDel.numeric} ${parsedDel.currency}`);
           }
         }
       }
@@ -179,7 +180,7 @@ export class WooCommerceAdapter extends BaseAdapter {
           const parsed = this.parsePriceWithContext(insPriceText);
           if (parsed && parsed.confidence >= 0.70) {
             currentPrice = parsed;
-            console.log(`[WooCommerce Adapter] ✓ Found sale price in <ins>: ${parsed.numeric} ${parsed.currency}`);
+            debug('[woocommerce]', `[WooCommerce Adapter] ✓ Found sale price in <ins>: ${parsed.numeric} ${parsed.currency}`);
           }
         }
       }
@@ -193,7 +194,7 @@ export class WooCommerceAdapter extends BaseAdapter {
             const parsed = this.parsePriceWithContext(priceText);
             if (parsed && parsed.confidence >= 0.70) {
               currentPrice = parsed;
-              console.log(`[WooCommerce Adapter] ✓ Found current price in p.price: ${parsed.numeric} ${parsed.currency}`);
+              debug('[woocommerce]', `[WooCommerce Adapter] ✓ Found current price in p.price: ${parsed.numeric} ${parsed.currency}`);
             }
           }
         }
@@ -206,14 +207,14 @@ export class WooCommerceAdapter extends BaseAdapter {
           currentPrice.isOnSale = true;
           const savings = regularPrice - currentPrice.numeric;
           const savingsPercent = ((savings / regularPrice) * 100).toFixed(0);
-          console.log(`[WooCommerce Adapter] ✓ Product is on sale! Regular: ${regularPrice}, Current: ${currentPrice.numeric}, Savings: ${savings} (${savingsPercent}%)`);
+          debug('[woocommerce]', `[WooCommerce Adapter] ✓ Product is on sale! Regular: ${regularPrice}, Current: ${currentPrice.numeric}, Savings: ${savings} (${savingsPercent}%)`);
         }
         return currentPrice;
       }
     }
 
     // PRIORITY 3: Generic fallback - avoid cart/header/footer
-    console.log('[WooCommerce Adapter] Using generic fallback...');
+    debug('[woocommerce]', '[WooCommerce Adapter] Using generic fallback...');
     const allPrices = summaryArea.querySelectorAll('.woocommerce-Price-amount, .amount');
     for (const element of allPrices) {
       if (element.closest('del')) continue;
@@ -223,13 +224,13 @@ export class WooCommerceAdapter extends BaseAdapter {
       if (priceText && !priceText.includes('–') && !priceText.includes('-')) {
         const parsed = this.parsePriceWithContext(priceText);
         if (parsed && parsed.confidence >= 0.70) {
-          console.log(`[WooCommerce Adapter] ✓ Found fallback price: ${parsed.numeric} ${parsed.currency}`);
+          debug('[woocommerce]', `[WooCommerce Adapter] ✓ Found fallback price: ${parsed.numeric} ${parsed.currency}`);
           return parsed;
         }
       }
     }
 
-    console.log('[WooCommerce Adapter] ✗ No valid price found.');
+    debug('[woocommerce]', '[WooCommerce Adapter] ✗ No valid price found.');
     return null;
   }
 

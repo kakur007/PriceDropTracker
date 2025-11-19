@@ -6,6 +6,7 @@
  */
 
 import browser from './browser-polyfill.js';
+import { debug, debugWarn, debugError } from '../utils/debug.js';
 
 /**
  * Check if we have permission to access a URL
@@ -30,7 +31,7 @@ export async function hasPermissionForUrl(url) {
 
     return hasPermission;
   } catch (error) {
-    console.error('[PermissionManager] Error checking permission:', error);
+    debugError('[permission-manager]', '[PermissionManager] Error checking permission:', error);
     return false;
   }
 }
@@ -54,7 +55,7 @@ export async function hasPermissionForDomain(domain) {
 
     return hasPermission;
   } catch (error) {
-    console.error('[PermissionManager] Error checking domain permission:', error);
+    debugError('[permission-manager]', '[PermissionManager] Error checking domain permission:', error);
     return false;
   }
 }
@@ -77,21 +78,21 @@ export async function requestPermissionForUrl(url) {
       `*://*.${domain}/*`
     ];
 
-    console.log('[PermissionManager] Requesting permission for:', patterns);
+    debug('[permission-manager]', '[PermissionManager] Requesting permission for:', patterns);
 
     const granted = await browser.permissions.request({
       origins: patterns
     });
 
     if (granted) {
-      console.log('[PermissionManager] Permission granted for:', domain);
+      debug('[permission-manager]', '[PermissionManager] Permission granted for:', domain);
     } else {
-      console.log('[PermissionManager] Permission denied for:', domain);
+      debug('[permission-manager]', '[PermissionManager] Permission denied for:', domain);
     }
 
     return granted;
   } catch (error) {
-    console.error('[PermissionManager] Error requesting permission:', error);
+    debugError('[permission-manager]', '[PermissionManager] Error requesting permission:', error);
     return false;
   }
 }
@@ -105,7 +106,7 @@ export async function getGrantedPermissions() {
     const permissions = await browser.permissions.getAll();
     return permissions.origins || [];
   } catch (error) {
-    console.error('[PermissionManager] Error getting permissions:', error);
+    debugError('[permission-manager]', '[PermissionManager] Error getting permissions:', error);
     return [];
   }
 }
@@ -130,12 +131,12 @@ export async function removePermissionForUrl(url) {
     });
 
     if (removed) {
-      console.log('[PermissionManager] Permission removed for:', domain);
+      debug('[permission-manager]', '[PermissionManager] Permission removed for:', domain);
     }
 
     return removed;
   } catch (error) {
-    console.error('[PermissionManager] Error removing permission:', error);
+    debugError('[permission-manager]', '[PermissionManager] Error removing permission:', error);
     return false;
   }
 }
@@ -175,7 +176,7 @@ export async function checkPermissionStatus(url, isDefaultSupported = false) {
     };
 
   } catch (error) {
-    console.error('[PermissionManager] Error checking permission status:', error);
+    debugError('[permission-manager]', '[PermissionManager] Error checking permission status:', error);
     return {
       needsRequest: false,
       hasPermission: false,
@@ -201,10 +202,10 @@ export function extractDomain(url) {
 // Listen for permission changes
 if (browser && browser.permissions) {
   browser.permissions.onAdded.addListener((permissions) => {
-    console.log('[PermissionManager] Permissions added:', permissions.origins);
+    debug('[permission-manager]', '[PermissionManager] Permissions added:', permissions.origins);
   });
 
   browser.permissions.onRemoved.addListener((permissions) => {
-    console.log('[PermissionManager] Permissions removed:', permissions.origins);
+    debug('[permission-manager]', '[PermissionManager] Permissions removed:', permissions.origins);
   });
 }
