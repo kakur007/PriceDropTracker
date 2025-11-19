@@ -102,6 +102,9 @@ function cleanPriceString(str) {
     .replace(/sale:/gi, '')
     .replace(/from:/gi, '')
     .replace(/only:/gi, '')
+    .replace(/approximately/gi, '')  // Remove "approximately" (eBay conversion rates)
+    .replace(/approx\.?/gi, '')      // Remove "approx" or "approx."
+    .replace(/~\s*/g, '')            // Remove tilde used for approximate values
     .trim();
 
   // Handle non-breaking spaces
