@@ -439,8 +439,8 @@
     </div>
   </div>
 
-  <!-- Load Chart.js before the module script to ensure it's available -->
+  <!-- Load Chart.js synchronously before module -->
   <script src="../lib/chart.umd.min.js"></script>
-  <script type="module" src="price-history.js"></script>
+  <script type="module" src="price-history.js" defer></script>
 </body>
 </html>

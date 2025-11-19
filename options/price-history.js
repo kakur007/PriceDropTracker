@@ -6,15 +6,18 @@ let allProducts = {};
 let selectedProductId = null;
 let currentChart = null;
 
-// Check Chart.js availability on load
-if (!window.Chart) {
-  console.error('[PriceHistory] Chart.js not loaded at script initialization!');
-} else {
-  console.log('[PriceHistory] Chart.js loaded successfully, version:', window.Chart.version);
-}
-
-// Initialize page
+// Initialize page (check Chart.js after DOM is fully ready)
 document.addEventListener('DOMContentLoaded', async () => {
+  // Wait a moment for non-module scripts to finish loading
+  await new Promise(resolve => setTimeout(resolve, 100));
+
+  // Check Chart.js availability
+  if (!window.Chart) {
+    console.error('[PriceHistory] Chart.js failed to load!');
+  } else {
+    console.log('[PriceHistory] Chart.js loaded successfully, version:', window.Chart.version);
+  }
+
   // Apply dark mode based on user preference
   applyTheme();
 

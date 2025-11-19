@@ -143,12 +143,21 @@ export class EbayAdapter extends BaseAdapter {
         const parsed = this.parsePriceWithContext(text);
 
         if (parsed && parsed.confidence >= 0.70) {
+          // CRITICAL VALIDATION: Detect if price is in cents (e.g., 3000 instead of 30.00)
+          // eBay sometimes has prices like "$30.00" but content attribute has "3000"
+          // If parsed.numeric is > 1000 and text doesn't contain comma or multiple zeros, it's likely cents
+          if (parsed.numeric > 1000 && !text.includes(',') && !/\d{3,}/.test(text.replace(/\./g, ''))) {
+            console.warn(`[eBay] Suspicious price detected: ${parsed.numeric} from text "${text}" - likely in cents, rejecting`);
+            continue; // Skip this price and try next selector
+          }
+
           // Validate that it matches expected currency for this domain
           const validated = this.validateCurrency(parsed);
 
           // Only accept if currency matches expected (or close enough)
           // This prevents picking up conversion rates
           if (!expectedCurrency || parsed.currency === expectedCurrency || validated.confidence >= 0.70) {
+            console.log(`[eBay] Extracted price: ${validated.numeric} ${validated.currency}`);
             return validated;
           }
         }
