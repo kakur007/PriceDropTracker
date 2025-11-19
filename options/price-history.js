@@ -2,6 +2,10 @@ import browser from '../utils/browser-polyfill.js';
 
 import { debug, debugError } from '../utils/debug.js';
 
+// Chart.js is loaded via UMD script tag and attached to window
+// Reference it here for use in module scope
+const Chart = window.Chart;
+
 let allProducts = {};
 let selectedProductId = null;
 let currentChart = null;
@@ -358,28 +362,23 @@ async function renderChart(product) {
     currentChart.destroy();
   }
 
-  // Check if Chart.js is loaded (Firefox compatibility)
-  if (typeof Chart === 'undefined') {
-    console.error('[PriceHistory] Chart.js is not loaded yet');
-    // Wait for it to load
+  // Check if Chart.js is loaded (defensive check for slow connections)
+  if (!window.Chart) {
+    console.error('[PriceHistory] Chart.js is not loaded yet, waiting...');
+    // Wait for it to load (up to 5 seconds)
     await new Promise((resolve) => {
+      let attempts = 0;
       const checkChart = setInterval(() => {
-        if (typeof Chart !== 'undefined') {
+        if (window.Chart || attempts++ > 50) {
           clearInterval(checkChart);
           resolve();
         }
       }, 100);
-      // Timeout after 5 seconds
-      setTimeout(() => {
-        clearInterval(checkChart);
-        console.error('[PriceHistory] Chart.js failed to load');
-        resolve();
-      }, 5000);
     });
   }
 
-  if (typeof Chart === 'undefined') {
-    console.error('[PriceHistory] Cannot render chart - Chart.js not available');
+  if (!window.Chart) {
+    console.error('[PriceHistory] Cannot render chart - Chart.js not available after timeout');
     return;
   }
 
