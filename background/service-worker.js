@@ -519,16 +519,22 @@ browser.permissions.onAdded.addListener(async (permissions) => {
     console.log('[ServiceWorker] Waiting 1.5s for page to be ready...');
     await new Promise(resolve => setTimeout(resolve, 1500));
 
+    // Calculate detector URL in service worker context where browser polyfill exists
+    const detectorUrl = browser.runtime.getURL('content-scripts/product-detector.js');
+
     // Inject and run product detection
     console.log('[ServiceWorker] Injecting product detection script into tab:', activeTab.id);
     const results = await executeScript({
       target: { tabId: activeTab.id },
-      func: async () => {
+      func: async (scriptUrl) => {
+        // Define API wrapper for Chrome/Firefox compatibility
+        // In injected functions, we don't have access to browser polyfill
+        const api = window.chrome || window.browser;
+
         try {
           console.log('[Price Drop Tracker] 🚀 Starting auto-detection after permission grant...');
-          const detectorUrl = browser.runtime.getURL('content-scripts/product-detector.js');
-          console.log('[Price Drop Tracker] Loading detector module from:', detectorUrl);
-          const { detectProduct } = await import(detectorUrl);
+          console.log('[Price Drop Tracker] Loading detector module from:', scriptUrl);
+          const { detectProduct } = await import(scriptUrl);
 
           console.log('[Price Drop Tracker] Detector module loaded, waiting 1s for page readiness...');
           // Wait for page to be fully loaded
@@ -543,9 +549,18 @@ browser.permissions.onAdded.addListener(async (permissions) => {
             console.log('[Price Drop Tracker] Price:', productData.price.formatted);
             console.log('[Price Drop Tracker] Sending to background for storage...');
 
-            const response = await browser.runtime.sendMessage({
-              type: 'PRODUCT_DETECTED',
-              data: productData
+            // Use callback-style messaging for Chrome compatibility
+            const response = await new Promise((resolve, reject) => {
+              api.runtime.sendMessage({
+                type: 'PRODUCT_DETECTED',
+                data: productData
+              }, response => {
+                if (api.runtime.lastError) {
+                  reject(api.runtime.lastError);
+                } else {
+                  resolve(response);
+                }
+              });
             });
 
             console.log('[Price Drop Tracker] Background response:', response);
@@ -568,7 +583,8 @@ browser.permissions.onAdded.addListener(async (permissions) => {
           console.error('[Price Drop Tracker] Error stack:', error.stack);
           return { success: false, error: error.message };
         }
-      }
+      },
+      args: [detectorUrl]
     });
 
     console.log('[ServiceWorker] Script execution completed, results:', results);

@@ -76,18 +76,20 @@ export function getBrowserName() {
  * @param {Object} options - Execution options
  * @param {Object} options.target - Target tab {tabId: number}
  * @param {Function} options.func - Function to execute (MV3) or files to inject (MV2)
+ * @param {Array} options.args - Arguments to pass to the function
  * @param {Array<string>} options.files - Files to inject (MV2 only)
  * @returns {Promise<Array>} Execution results
  */
 export async function executeScript(options) {
-  const { target, func, files } = options;
+  const { target, func, files, args } = options;
 
   // Manifest V3: Use scripting API (Chrome, newer Firefox)
   if (browserAPI.scripting && browserAPI.scripting.executeScript) {
     console.log('[BrowserPolyfill] Using Manifest V3 scripting API');
     return await browserAPI.scripting.executeScript({
       target: target,
-      func: func
+      func: func,
+      args: args || []
     });
   }
 
@@ -96,7 +98,14 @@ export async function executeScript(options) {
     console.log('[BrowserPolyfill] Using Manifest V2 tabs API');
 
     // Convert function to code string for tabs.executeScript
-    const code = func ? `(${func.toString()})()` : undefined;
+    // For MV2, we need to handle args manually by creating a wrapper
+    let code;
+    if (func && args && args.length > 0) {
+      // Create wrapper that calls the function with args
+      code = `(${func.toString()})(${args.map(arg => JSON.stringify(arg)).join(', ')})`;
+    } else {
+      code = func ? `(${func.toString()})()` : undefined;
+    }
 
     const result = await browserAPI.tabs.executeScript(target.tabId, {
       code: code,
