@@ -1002,7 +1002,7 @@ function showTrackingBadge(product) {
       <circle cx="10" cy="10" r="10" fill="white" fill-opacity="0.2"/>
       <path d="M6 10L9 13L14 7" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
-    <span>Now tracking: ${product.price.formatted}</span>
+    <span>Now tracking: ${product.price.symbol}${product.price.numeric.toFixed(2)}</span>
   `;
 
   // Add animation styles
