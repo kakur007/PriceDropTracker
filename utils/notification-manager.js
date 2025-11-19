@@ -54,8 +54,8 @@ export async function showPriceDropNotification(product, oldPrice, newPrice, dro
     }
 
     // Check cooldown
-    if (isOnCooldown(product.id)) {
-      debug('[notification-manager]', `[Notifications] Product ${product.id} is on cooldown`);
+    if (isOnCooldown(product.productId)) {
+      debug('[notification-manager]', `[Notifications] Product ${product.productId} is on cooldown`);
       return null;
     }
 
@@ -90,12 +90,12 @@ Save: ${formatPrice(parseFloat(dropAmount), product.currency, product.locale)} (
       notificationOptions.silent = false;
     }
 
-    const notificationId = await browser.notifications.create(product.id, notificationOptions);
+    const notificationId = await browser.notifications.create(product.productId, notificationOptions);
 
     debug('[notification-manager]', `[Notifications] Created notification: ${notificationId} for product: ${product.title}`);
 
     // Set cooldown
-    setCooldown(product.id);
+    setCooldown(product.productId);
 
     // Auto-clear after 10 seconds
     setTimeout(() => {
@@ -186,7 +186,7 @@ export async function showBatchPriceDropNotifications(priceDrops) {
     debug('[notification-manager]', '[Notifications] Created batch notification');
 
     // Set cooldowns for all products
-    priceDrops.forEach(drop => setCooldown(drop.product.id));
+    priceDrops.forEach(drop => setCooldown(drop.product.productId));
 
     return 1; // One summary notification
 
