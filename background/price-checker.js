@@ -391,6 +391,13 @@ function extractPriceFromRawHTML(html, contextData) {
 
   // Try to extract from common price element patterns (text content only, not attributes)
   const priceElementPatterns = [
+    // SportsDirect Specific (looks for ID)
+    /<span[^>]*id="lblSellingPrice"[^>]*>([^<]+)<\/span>/i,
+
+    // Booztlet Specific (looks for class structure)
+    // Matches: <span class="price current-price">12.34 &euro;</span>
+    /<span[^>]*class="[^"]*current-price[^"]*"[^>]*>[\s\S]*?([\d\.,\s]+)/i,
+
     // Amazon offscreen
     /<span class="a-offscreen">([^<]+)<\/span>/i,
 
@@ -531,10 +538,6 @@ async function checkAllProducts(options = {}) {
       return aLastChecked - bLastChecked;
     });
 
-    // Process in batches
-    const batch = productsToCheck.slice(0, batchSize);
-    console.log(`[PriceChecker] Processing batch of ${batch.length} products SEQUENTIALLY with delays to avoid rate limiting...`);
-
     const results = {
       total: allProducts.length,
       checked: 0,
@@ -546,54 +549,66 @@ async function checkAllProducts(options = {}) {
       details: [] // Store detailed results for each check
     };
 
-    // CRITICAL: Sequential checking with random delays to avoid bot detection
-    // Firing 10 simultaneous requests from same IP = instant bot flag by Amazon/Cloudflare
-    // This is slower but prevents IP bans and 503 errors
-    for (const product of batch) {
-      try {
-        const result = await checkSingleProduct(product.productId);
+    // Loop through all products in chunks
+    for (let i = 0; i < productsToCheck.length; i += batchSize) {
+      const batch = productsToCheck.slice(i, i + batchSize);
+      console.log(`[PriceChecker] Processing batch ${Math.floor(i/batchSize) + 1} of ${Math.ceil(productsToCheck.length/batchSize)} (${batch.length} products)...`);
 
-        results.checked++;
+      // CRITICAL: Sequential checking with random delays to avoid bot detection
+      // Firing 10 simultaneous requests from same IP = instant bot flag by Amazon/Cloudflare
+      // This is slower but prevents IP bans and 503 errors
+      for (const product of batch) {
+        try {
+          const result = await checkSingleProduct(product.productId);
 
-        // Store detailed result
-        results.details.push({
-          productId: product.productId,
-          ...result
-        });
+          results.checked++;
 
-        if (result.status === PriceCheckResult.SUCCESS || result.status === PriceCheckResult.NO_CHANGE) {
-          results.success++;
-        } else if (result.status === PriceCheckResult.ERROR) {
+          // Store detailed result
+          results.details.push({
+            productId: product.productId,
+            ...result
+          });
+
+          if (result.status === PriceCheckResult.SUCCESS || result.status === PriceCheckResult.NO_CHANGE) {
+            results.success++;
+          } else if (result.status === PriceCheckResult.ERROR) {
+            results.errors++;
+          }
+
+          if (result.status === PriceCheckResult.PRICE_DROP) {
+            results.priceDrops++;
+          } else if (result.status === PriceCheckResult.PRICE_INCREASE) {
+            results.priceIncreases++;
+          }
+
+        } catch (error) {
+          console.error(`[PriceChecker] Error checking product ${product.productId}:`, error);
+          results.checked++;
           results.errors++;
+          results.details.push({
+            productId: product.productId,
+            status: PriceCheckResult.ERROR,
+            error: error.message
+          });
         }
 
-        if (result.status === PriceCheckResult.PRICE_DROP) {
-          results.priceDrops++;
-        } else if (result.status === PriceCheckResult.PRICE_INCREASE) {
-          results.priceIncreases++;
+        // Random delay between 2-5 seconds to appear human
+        // Avoids rate limiting and bot detection
+        if (delayBetweenChecks > 0) {
+          const randomDelay = Math.floor(Math.random() * 3000) + delayBetweenChecks;
+          console.log(`[PriceChecker] Waiting ${(randomDelay / 1000).toFixed(1)}s before next check...`);
+          await new Promise(resolve => setTimeout(resolve, randomDelay));
         }
-
-      } catch (error) {
-        console.error(`[PriceChecker] Error checking product ${product.productId}:`, error);
-        results.checked++;
-        results.errors++;
-        results.details.push({
-          productId: product.productId,
-          status: PriceCheckResult.ERROR,
-          error: error.message
-        });
       }
 
-      // Random delay between 2-5 seconds to appear human
-      // Avoids rate limiting and bot detection
-      if (delayBetweenChecks > 0) {
-        const randomDelay = Math.floor(Math.random() * 3000) + delayBetweenChecks;
-        console.log(`[PriceChecker] Waiting ${(randomDelay / 1000).toFixed(1)}s before next check...`);
-        await new Promise(resolve => setTimeout(resolve, randomDelay));
+      // Larger delay between batches to be safer
+      if (i + batchSize < productsToCheck.length) {
+        console.log('[PriceChecker] Batch complete, waiting 5s before next batch...');
+        await new Promise(resolve => setTimeout(resolve, 5000));
       }
     }
 
-    console.log(`[PriceChecker] Batch complete: ${results.success} successful, ${results.errors} errors, ${results.priceDrops} drops, ${results.priceIncreases} increases.`);
+    console.log(`[PriceChecker] All batches complete: ${results.success} successful, ${results.errors} errors, ${results.priceDrops} drops, ${results.priceIncreases} increases.`);
 
     return results;
 
