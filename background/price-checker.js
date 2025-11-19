@@ -18,6 +18,68 @@ import { isUrlSupportedOrPermitted } from '../utils/domain-validator.js';
 import { parsePrice } from '../utils/currency-parser.js';
 
 /**
+ * Derive expected currency from domain
+ * This ensures currency is always correct even if initially detected wrong
+ * @param {string} domain - Domain like 'www.amazon.co.uk'
+ * @returns {string|null} Expected currency code or null
+ */
+function getExpectedCurrencyFromDomain(domain) {
+  const cleanDomain = domain.replace(/^www\./, '').toLowerCase();
+
+  // Amazon domains
+  const amazonCurrencies = {
+    'amazon.com': 'USD',
+    'amazon.co.uk': 'GBP',
+    'amazon.de': 'EUR',
+    'amazon.fr': 'EUR',
+    'amazon.it': 'EUR',
+    'amazon.es': 'EUR',
+    'amazon.ca': 'CAD',
+    'amazon.com.au': 'AUD',
+    'amazon.co.jp': 'JPY',
+    'amazon.in': 'INR',
+    'amazon.com.mx': 'MXN',
+    'amazon.com.br': 'BRL',
+    'amazon.nl': 'EUR',
+    'amazon.se': 'SEK'
+  };
+
+  // eBay domains
+  const ebayCurrencies = {
+    'ebay.com': 'USD',
+    'ebay.co.uk': 'GBP',
+    'ebay.de': 'EUR',
+    'ebay.fr': 'EUR',
+    'ebay.it': 'EUR',
+    'ebay.es': 'EUR',
+    'ebay.ca': 'CAD',
+    'ebay.com.au': 'AUD'
+  };
+
+  // Check Amazon
+  for (const [domain, currency] of Object.entries(amazonCurrencies)) {
+    if (cleanDomain.includes(domain)) {
+      return currency;
+    }
+  }
+
+  // Check eBay
+  for (const [domain, currency] of Object.entries(ebayCurrencies)) {
+    if (cleanDomain.includes(domain)) {
+      return currency;
+    }
+  }
+
+  // Target is always USD
+  if (cleanDomain.includes('target.com')) return 'USD';
+
+  // Walmart is always USD
+  if (cleanDomain.includes('walmart.com')) return 'USD';
+
+  return null; // Let currency parser auto-detect
+}
+
+/**
  * Parse price string with context
  * Uses the robust currency parser to avoid "two brains" problem
  * @param {string} priceString - The raw text to parse
@@ -331,25 +393,44 @@ function extractPriceFromRawHTML(html, contextData) {
   const priceElementPatterns = [
     // Amazon offscreen
     /<span class="a-offscreen">([^<]+)<\/span>/i,
-    // eBay primary price (look for actual text, not data attributes)
+
+    // eBay - multiple patterns for different layouts
     /<span[^>]*class="[^"]*x-price-primary[^"]*"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>/i,
+    /<div[^>]*class="[^"]*x-price-primary[^"]*"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>/i,
+    /<span[^>]*id="prcIsum"[^>]*>([^<]+)<\/span>/i,
+
     // Target
     /<span[^>]*data-test="product-price"[^>]*>([^<]+)<\/span>/i,
+    /<div[^>]*data-test="product-price"[^>]*>([^<]+)<\/div>/i,
+
     // Zalando
     /<[^>]*data-testid="price"[^>]*>([^<]+)<\//i,
-    // Generic price class
+    /<[^>]*class="[^"]*priceNow[^"]*"[^>]*>([^<]+)<\//i,
+
+    // WooCommerce (GoGoNano, etc.)
+    /<span[^>]*class="[^"]*woocommerce-Price-amount[^"]*"[^>]*>[\s\S]*?<bdi>([^<]+)<\/bdi>/i,
+    /<p[^>]*class="[^"]*price[^"]*"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>/i,
+    /<ins[^>]*>[\s\S]*?<span[^>]*class="[^"]*woocommerce-Price-amount[^"]*"[^>]*>([^<]+)<\/span>/i,
+
+    // Generic price selectors (broader patterns)
+    /<div[^>]*class="[^"]*product[_-]price[^"]*"[^>]*>[\s\S]{0,200}?([€$£¥₹₽][\d\s,\.]+)/i,
+    /<span[^>]*class="[^"]*(?:current|sale)[_-]?price[^"]*"[^>]*>([^<]+)<\/span>/i,
     /<[^>]*class="[^"]*price[^"]*"[^>]*>([^<]+)</i
   ];
 
   for (const pattern of priceElementPatterns) {
     const elementMatch = html.match(pattern);
     if (elementMatch && elementMatch[1]) {
-      // Extract just the text content, remove HTML entities
-      const text = elementMatch[1].replace(/&[a-z]+;/gi, '').trim();
-      if (text) {
+      // Extract just the text content, remove HTML entities and extra whitespace
+      const text = elementMatch[1]
+        .replace(/&[a-z]+;/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (text && text.length > 0 && text.length < 50) { // Sanity check
         const price = parseNumericPrice(text, contextData);
-        if (price !== null) {
-          console.log('[PriceChecker] ✓ Extracted price via regex:element:', price);
+        if (price !== null && price > 0 && price < 1000000) { // Sanity check
+          console.log('[PriceChecker] ✓ Extracted price via regex:element:', price, 'from text:', text.substring(0, 30));
           return {
             success: true,
             price: price,
@@ -570,11 +651,18 @@ async function checkSingleProduct(productId) {
     });
 
     // Prepare context data for robust price parsing
+    // Use domain-derived currency to fix initial detection errors
+    const derivedCurrency = getExpectedCurrencyFromDomain(product.domain);
     const contextData = {
       domain: product.domain,
       locale: product.price?.locale,
-      expectedCurrency: product.price?.currency
+      expectedCurrency: derivedCurrency || product.price?.currency
     };
+
+    // Log if currency was corrected
+    if (derivedCurrency && product.price?.currency && derivedCurrency !== product.price.currency) {
+      console.warn(`[PriceChecker] Currency corrected from ${product.price.currency} to ${derivedCurrency} based on domain ${product.domain}`);
+    }
 
     // Parse the HTML using offscreen document with context
     console.log(`[PriceChecker] Parsing HTML for price with context:`, contextData);

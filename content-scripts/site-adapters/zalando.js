@@ -125,6 +125,15 @@ export class ZalandoAdapter extends BaseAdapter {
   extractPrice() {
     console.log('[Zalando] Extracting price...');
     const selectors = [
+      // Modern Zalando (2024+)
+      '[data-testid="price-current-price"]',
+      '[class*="priceNow"]',
+      '[class*="sale"]',
+      'span[class*="_price_"]',
+      'p[class*="_price_"]',
+      'div[class*="_price_"] span',
+
+      // Legacy selectors
       '[data-testid="price"]',
       '[class*="price"][class*="current"]',
       '[class*="currentPrice"]',
@@ -144,8 +153,8 @@ export class ZalandoAdapter extends BaseAdapter {
         const parent = element.parentElement;
         const parentClasses = parent?.className || '';
 
-        if (classes.match(/original|strike|was|old/i) ||
-            parentClasses.match(/original|strike|was|old/i)) {
+        if (classes.match(/original|strike|was|old|before/i) ||
+            parentClasses.match(/original|strike|was|old|before/i)) {
           console.log('[Zalando] Skipping strikethrough price');
           continue;
         }

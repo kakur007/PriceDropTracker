@@ -28,6 +28,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   setupEventListeners();
+
+  // Listen for storage changes to auto-refresh popup when products are added/removed
+  browser.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === 'local' && changes.products) {
+      debug('[Popup]', 'Products changed in storage, reloading...');
+      loadProducts();
+    }
+  });
 });
 
 /**
