@@ -14,6 +14,8 @@ import { WooCommerceAdapter } from './woocommerce.js';
 import { ZalandoAdapter } from './zalando.js';
 import { EtsyAdapter } from './etsy.js';
 import { AliExpressAdapter } from './aliexpress.js';
+import { BooztletAdapter } from './booztlet.js';
+import { SportsDirectAdapter } from './sportsdirect.js';
 
 /**
  * Factory function to get the appropriate adapter for a given domain
@@ -56,6 +58,14 @@ export function getAdapter(document, url) {
 
   if (domain.includes('aliexpress')) {
     return new AliExpressAdapter(document, url);
+  }
+
+  if (domain.includes('booztlet')) {
+    return new BooztletAdapter(document, url);
+  }
+
+  if (domain.includes('sportsdirect')) {
+    return new SportsDirectAdapter(document, url);
   }
 
   // Check for platform-based sites (WooCommerce, Shopify, etc.)

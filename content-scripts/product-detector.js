@@ -208,8 +208,51 @@ function makeAbsoluteUrl(url) {
 }
 
 /**
+ * Recursively search for Product entities in nested JSON-LD structures
+ * @param {Object|Array} obj - JSON-LD object or array to search
+ * @param {Array} products - Accumulator array for found products
+ * @returns {void}
+ */
+function findProductsRecursively(obj, products = []) {
+  if (!obj || typeof obj !== 'object') {
+    return products;
+  }
+
+  // Check if this object is a Product
+  if (obj['@type'] === 'Product' || obj['@type'] === 'https://schema.org/Product') {
+    products.push(obj);
+    return products;
+  }
+
+  // Check if this is a ProductGroup containing products
+  if (obj['@type'] === 'ProductGroup' && obj.hasVariant) {
+    const variants = Array.isArray(obj.hasVariant) ? obj.hasVariant : [obj.hasVariant];
+    for (const variant of variants) {
+      findProductsRecursively(variant, products);
+    }
+  }
+
+  // Recursively search arrays
+  if (Array.isArray(obj)) {
+    for (const item of obj) {
+      findProductsRecursively(item, products);
+    }
+  } else {
+    // Recursively search object properties
+    for (const key in obj) {
+      if (obj.hasOwnProperty(key) && typeof obj[key] === 'object') {
+        findProductsRecursively(obj[key], products);
+      }
+    }
+  }
+
+  return products;
+}
+
+/**
  * Extract product data from Schema.org JSON-LD
  * Highest confidence (0.95) - SEO-critical data
+ * Enhanced with recursive @graph parsing for nested structures
  * @returns {Object|null} Product data or null
  */
 function extractFromSchemaOrg() {
@@ -221,31 +264,8 @@ function extractFromSchemaOrg() {
     try {
       const data = JSON.parse(script.textContent);
 
-      // Collect all potential products from different structures
-      let products = [];
-
-      // Case 1: Direct Product object
-      if (data['@type'] === 'Product' || data['@type'] === 'https://schema.org/Product') {
-        products.push(data);
-      }
-      // Case 2: Direct array of items
-      else if (Array.isArray(data)) {
-        products.push(...data.filter(item =>
-          item['@type'] === 'Product' || item['@type'] === 'https://schema.org/Product'
-        ));
-      }
-      // Case 3: @graph wrapper (common in Walmart, eBay, etc.)
-      else if (data['@graph'] && Array.isArray(data['@graph'])) {
-        products.push(...data['@graph'].filter(item =>
-          item['@type'] === 'Product' || item['@type'] === 'https://schema.org/Product'
-        ));
-      }
-      // Case 4: Single @graph object
-      else if (data['@graph'] && !Array.isArray(data['@graph'])) {
-        if (data['@graph']['@type'] === 'Product' || data['@graph']['@type'] === 'https://schema.org/Product') {
-          products.push(data['@graph']);
-        }
-      }
+      // Use recursive search to find all Product entities
+      const products = findProductsRecursively(data);
 
       console.log(`[Price Drop Tracker] Found ${products.length} Product(s) in this script`);
 
@@ -716,6 +736,22 @@ function extractFromSelectors() {
 
   console.log('[Price Drop Tracker] Found title:', title.slice(0, 60));
 
+  // Try to detect product ID from data attributes on body or container divs
+  let productId = null;
+  const productIdElement =
+    document.querySelector('body[data-product-id]') ||
+    document.querySelector('body[data-sku]') ||
+    document.querySelector('[data-product-id]') ||
+    document.querySelector('[data-sku]') ||
+    document.querySelector('[data-id]');
+
+  if (productIdElement) {
+    productId = productIdElement.getAttribute('data-product-id') ||
+                productIdElement.getAttribute('data-sku') ||
+                productIdElement.getAttribute('data-id');
+    console.log('[Price Drop Tracker] Found product ID from data attributes:', productId);
+  }
+
   // Find "Add to Cart" button - strong signal of product page
   const addToCartButton = findAddToCartButton();
   if (addToCartButton) {
@@ -788,15 +824,18 @@ function extractFromSelectors() {
     console.log('[Price Drop Tracker] Using heuristic price detection...');
 
     // First try common generic selectors (fast path)
+    // Enhanced with case-insensitive attribute selectors
     const quickSelectors = [
       '[itemprop="price"]',
       '[data-price]',
       '.price',
       '.product-price',
       '.product_price',
-      '[class*="price-now"]',
-      '[class*="current-price"]',
-      '[id*="product-price"]'
+      '[class*="price-now" i]',        // Case insensitive
+      '[class*="current-price" i]',    // Case insensitive
+      '[id*="product-price" i]',       // Case insensitive
+      '[id*="price" i]',               // Case insensitive - catches id="Price", id="PRICE", etc.
+      '[class*="price" i]:not([class*="shipping" i]):not([class*="delivery" i])'  // Broad price class search with exclusions
     ];
 
     for (const selector of quickSelectors) {
@@ -893,7 +932,7 @@ function extractFromSelectors() {
     imageUrl,
     url: window.location.href,
     domain: window.location.hostname,
-    sku: null,
+    sku: productId,  // Use detected product ID from data attributes
     availability: null,
     confidence: Math.min(confidence, 0.95), // Cap at 0.95
     detectionMethod: 'cssSelectors'
@@ -953,14 +992,18 @@ async function enhanceProductData(data) {
 }
 
 // Auto-detect product when page loads
-(async function initialize() {
-  // Wait for page to be fully loaded
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', detectAndSave);
-  } else {
-    detectAndSave();
-  }
-})();
+// Only run if this script is loaded as a content script (not imported as module)
+// This prevents double-detection when manually triggered from popup
+if (!window.__PRICE_TRACKER_MANUAL_MODE__) {
+  (async function initialize() {
+    // Wait for page to be fully loaded
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', detectAndSave);
+    } else {
+      detectAndSave();
+    }
+  })();
+}
 
 async function detectAndSave() {
   try {

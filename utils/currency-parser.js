@@ -94,8 +94,11 @@ export function parsePrice(rawPriceString, contextData = {}) {
  * @returns {string|null} Cleaned string or null
  */
 function cleanPriceString(str) {
-  // Remove common price-related text
+  // Remove common price-related text and prefixes
   let cleaned = str
+    .replace(/\bRRP\b:?/gi, '')      // Remove "RRP" (Recommended Retail Price) - Amazon UK issue
+    .replace(/\bSRP\b:?/gi, '')      // Remove "SRP" (Suggested Retail Price)
+    .replace(/\bMSRP\b:?/gi, '')     // Remove "MSRP" (Manufacturer's Suggested Retail Price)
     .replace(/price:/gi, '')
     .replace(/was:/gi, '')
     .replace(/now:/gi, '')
@@ -211,10 +214,14 @@ function detectCurrency(str, context) {
  * @returns {Object|null} Symbol detection result
  */
 function detectCurrencySymbol(str, context) {
-  // Check for each known symbol
-  for (const [symbol, currencies] of Object.entries(CURRENCY_SYMBOLS)) {
-    if (str.includes(symbol)) {
-      // If only one possible currency, return it
+  // Define priority order - check stronger/more specific symbols first
+  const prioritySymbols = ['£', '€', '₹', '¥', '₩', '฿', '₱', '₽', '₴', '₪', '₺', '₫', '﷼'];
+  const weakSymbols = ['R', 'kr']; // Ambiguous symbols that need context
+
+  // Check priority symbols first
+  for (const symbol of prioritySymbols) {
+    if (str.includes(symbol) && CURRENCY_SYMBOLS[symbol]) {
+      const currencies = CURRENCY_SYMBOLS[symbol];
       if (currencies.length === 1) {
         return {
           code: currencies[0],
@@ -223,7 +230,6 @@ function detectCurrencySymbol(str, context) {
           method: 'symbol'
         };
       }
-
       // Multiple possibilities - need to disambiguate
       const disambiguated = disambiguateCurrency(currencies, context);
       return {
@@ -231,6 +237,79 @@ function detectCurrencySymbol(str, context) {
         symbol: symbol,
         confidence: context.domain || context.locale ? 0.85 : 0.75,
         method: 'symbol_disambiguated'
+      };
+    }
+  }
+
+  // Check dollar sign (common but ambiguous)
+  if (str.includes('$')) {
+    const currencies = CURRENCY_SYMBOLS['$'];
+    const disambiguated = disambiguateCurrency(currencies, context);
+    return {
+      code: disambiguated,
+      symbol: '$',
+      confidence: context.domain || context.locale ? 0.85 : 0.75,
+      method: 'symbol_disambiguated'
+    };
+  }
+
+  // Check multi-character symbols (more specific)
+  if (str.includes('R$')) {
+    return {
+      code: 'BRL',
+      symbol: 'R$',
+      confidence: 0.90,
+      method: 'symbol'
+    };
+  }
+
+  if (str.includes('Rp')) {
+    return {
+      code: 'IDR',
+      symbol: 'Rp',
+      confidence: 0.90,
+      method: 'symbol'
+    };
+  }
+
+  if (str.includes('RM')) {
+    return {
+      code: 'MYR',
+      symbol: 'RM',
+      confidence: 0.90,
+      method: 'symbol'
+    };
+  }
+
+  // Check weak symbols only if we have strong context and they appear at start
+  for (const symbol of weakSymbols) {
+    // For 'R', only match if it appears at the beginning followed by digit/space
+    if (symbol === 'R') {
+      const rMatch = str.match(/\bR\s*\d/);
+      if (rMatch && context.domain) {
+        // Check if domain suggests ZAR (South Africa)
+        if (context.domain.includes('.za') || context.expectedCurrency === 'ZAR') {
+          return {
+            code: 'ZAR',
+            symbol: 'R',
+            confidence: 0.80,
+            method: 'symbol_contextual'
+          };
+        }
+      }
+      // Don't match 'R' without strong context
+      continue;
+    }
+
+    // For other weak symbols, check with lower confidence
+    if (str.includes(symbol) && CURRENCY_SYMBOLS[symbol]) {
+      const currencies = CURRENCY_SYMBOLS[symbol];
+      const disambiguated = disambiguateCurrency(currencies, context);
+      return {
+        code: disambiguated,
+        symbol: symbol,
+        confidence: context.domain || context.locale ? 0.75 : 0.65,
+        method: 'symbol_weak'
       };
     }
   }

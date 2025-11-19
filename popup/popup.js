@@ -501,6 +501,9 @@ async function executeProductDetection(tabId) {
         }
 
         try {
+          // Set manual mode flag to prevent auto-detection IIFE from running
+          window.__PRICE_TRACKER_MANUAL_MODE__ = true;
+
           // Dynamically import the detector module
           const { detectProduct } = await import(scriptUrl);
 
