@@ -79,6 +79,135 @@ class RateLimiter {
 }
 
 /**
+ * Shared Rate Limiter - Uses chrome.storage to share state across contexts
+ * This ensures popup and service worker respect the same rate limits
+ *
+ * CRITICAL FIX: In Manifest V3, popup and service worker are separate processes.
+ * Each has its own memory heap, so a local RateLimiter instance won't be shared.
+ * This implementation uses chrome.storage.session (ephemeral, fast) to coordinate.
+ */
+class SharedRateLimiter {
+  /**
+   * @param {number} maxRequests - Maximum requests per window
+   * @param {number} windowMs - Time window in milliseconds (default: 60000 = 1 minute)
+   * @param {string} storageKey - Key for storing request timestamps
+   */
+  constructor(maxRequests = 10, windowMs = 60000, storageKey = 'rateLimiter_requests') {
+    this.maxRequests = maxRequests;
+    this.windowMs = windowMs;
+    this.storageKey = storageKey;
+  }
+
+  /**
+   * Get current request timestamps from storage
+   * @returns {Promise<number[]>} Array of timestamps
+   */
+  async getRequests() {
+    try {
+      // Try chrome.storage.session first (Manifest V3, faster, ephemeral)
+      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.session) {
+        const result = await chrome.storage.session.get(this.storageKey);
+        return result[this.storageKey] || [];
+      }
+
+      // Fallback to local storage (Manifest V2)
+      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        const result = await chrome.storage.local.get(this.storageKey);
+        return result[this.storageKey] || [];
+      }
+
+      // If no storage available, return empty array (graceful degradation)
+      debugWarn('[fetch-helper]', '[SharedRateLimiter] No storage API available, rate limiting disabled');
+      return [];
+    } catch (error) {
+      debugWarn('[fetch-helper]', '[SharedRateLimiter] Error reading requests:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Save request timestamps to storage
+   * @param {number[]} requests - Array of timestamps
+   * @returns {Promise<void>}
+   */
+  async saveRequests(requests) {
+    try {
+      // Try chrome.storage.session first
+      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.session) {
+        await chrome.storage.session.set({ [this.storageKey]: requests });
+        return;
+      }
+
+      // Fallback to local storage
+      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        await chrome.storage.local.set({ [this.storageKey]: requests });
+        return;
+      }
+    } catch (error) {
+      debugWarn('[fetch-helper]', '[SharedRateLimiter] Error saving requests:', error);
+    }
+  }
+
+  /**
+   * Wait if necessary to stay within rate limit
+   * @returns {Promise<void>}
+   */
+  async waitIfNeeded() {
+    const now = Date.now();
+
+    // Get current requests from shared storage
+    let requests = await this.getRequests();
+
+    // Remove requests older than the window
+    requests = requests.filter(timestamp => now - timestamp < this.windowMs);
+
+    // If we're at the limit, wait until the oldest request expires
+    if (requests.length >= this.maxRequests) {
+      const oldestRequest = requests[0];
+      const waitTime = this.windowMs - (now - oldestRequest) + 100; // +100ms buffer
+
+      debug('[fetch-helper]', `[SharedRateLimiter] Limit reached (${requests.length}/${this.maxRequests}). Waiting ${waitTime}ms...`);
+      await this.sleep(waitTime);
+
+      // Recursively check again after waiting
+      return this.waitIfNeeded();
+    }
+
+    // Record this request
+    requests.push(now);
+    await this.saveRequests(requests);
+  }
+
+  /**
+   * Helper to sleep for specified milliseconds
+   * @param {number} ms - Milliseconds to sleep
+   * @returns {Promise<void>}
+   */
+  sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Reset the rate limiter (useful for testing)
+   */
+  async reset() {
+    await this.saveRequests([]);
+  }
+
+  /**
+   * Get current request count in the window
+   * @returns {Promise<number>}
+   */
+  async getCurrentCount() {
+    const now = Date.now();
+    let requests = await this.getRequests();
+    requests = requests.filter(timestamp => now - timestamp < this.windowMs);
+    await this.saveRequests(requests); // Clean up old requests
+    return requests.length;
+  }
+}
+
+/**
  * Fetch with retry logic and exponential backoff
  *
  * @param {string} url - URL to fetch
@@ -187,13 +316,86 @@ async function fetchWithRetry(url, options = {}) {
 }
 
 /**
+ * Detect if HTML content contains a CAPTCHA challenge
+ * Checks for common CAPTCHA patterns from major retailers
+ *
+ * @param {string} html - HTML content to check
+ * @param {string} url - Original URL (for context)
+ * @returns {boolean} - True if CAPTCHA detected
+ */
+function detectCaptcha(html, url) {
+  if (!html || typeof html !== 'string') return false;
+
+  // Convert to lowercase for case-insensitive matching
+  const lowerHtml = html.toLowerCase();
+
+  // Amazon CAPTCHA indicators
+  if (url.includes('amazon')) {
+    if (lowerHtml.includes('api.captcha.amazon.com') ||
+        lowerHtml.includes('sorry, we just need to make sure you\'re not a robot') ||
+        lowerHtml.includes('enter the characters you see below') ||
+        lowerHtml.includes('type the characters you see in this image')) {
+      return true;
+    }
+  }
+
+  // Walmart CAPTCHA indicators
+  if (url.includes('walmart')) {
+    if (lowerHtml.includes('robot or human') ||
+        lowerHtml.includes('please verify you are a human') ||
+        lowerHtml.includes('security check') ||
+        lowerHtml.includes('blocked by walmart')) {
+      return true;
+    }
+  }
+
+  // Target CAPTCHA indicators
+  if (url.includes('target')) {
+    if (lowerHtml.includes('security challenge') ||
+        lowerHtml.includes('verify you\'re human')) {
+      return true;
+    }
+  }
+
+  // Generic CAPTCHA patterns (Google reCAPTCHA, hCaptcha, etc.)
+  const captchaPatterns = [
+    'google.com/recaptcha',
+    'recaptcha',
+    'hcaptcha',
+    'cloudflare challenge',
+    'cf-challenge',
+    'please complete the security check',
+    'verify you are human',
+    'are you a robot',
+    'captcha'
+  ];
+
+  for (const pattern of captchaPatterns) {
+    if (lowerHtml.includes(pattern)) {
+      // Additional check: ensure it's not just a mention in comments or documentation
+      // Look for actual challenge forms or scripts
+      if (lowerHtml.includes('<form') || lowerHtml.includes('challenge') || lowerHtml.includes('verification')) {
+        return true;
+      }
+    }
+  }
+
+  // Check for suspiciously short responses (often redirect pages to CAPTCHA)
+  if (html.length < 500 && (lowerHtml.includes('redirect') || lowerHtml.includes('blocked'))) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Fetch HTML content from a URL
  * Convenience wrapper around fetchWithRetry for HTML content
  *
  * @param {string} url - URL to fetch
  * @param {Object} options - Fetch options (same as fetchWithRetry)
  * @returns {Promise<string>} - HTML content as string
- * @throws {Error} - If fetch fails or response is not OK
+ * @throws {Error} - If fetch fails, response is not OK, or CAPTCHA detected
  */
 async function fetchHTML(url, options = {}) {
   // Note: User-Agent is intentionally NOT set here
@@ -214,7 +416,15 @@ async function fetchHTML(url, options = {}) {
     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
   }
 
-  return await response.text();
+  const html = await response.text();
+
+  // Check for CAPTCHA in response
+  if (detectCaptcha(html, url)) {
+    debugWarn('[fetch-helper]', `[FetchHelper] CAPTCHA detected for ${url}`);
+    throw new Error('CAPTCHA_DETECTED: The website is challenging our request. Please visit the site manually or wait before trying again.');
+  }
+
+  return html;
 }
 
 /**
@@ -320,12 +530,14 @@ async function downloadImageAsDataURL(imageUrl, options = {}) {
 }
 
 // Global rate limiter instance (10 requests/minute)
-// Shared across all fetch operations unless overridden
-const globalRateLimiter = new RateLimiter(10, 60000);
+// IMPORTANT: Use SharedRateLimiter to coordinate across popup and service worker
+// This prevents the "double rate" bug where each context has its own limiter
+const globalRateLimiter = new SharedRateLimiter(10, 60000);
 
 // Export for use in other modules
 export {
   RateLimiter,
+  SharedRateLimiter,
   fetchWithRetry,
   fetchHTML,
   fetchJSON,

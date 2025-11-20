@@ -3,6 +3,7 @@
 
 import browser from '../utils/browser-polyfill.js';
 import { debug, debugWarn, debugError } from '../utils/debug.js';
+import { productStorageMutex } from '../utils/storage-mutex.js';
 
 /**
  * Default settings for the extension
@@ -43,114 +44,118 @@ const DEFAULT_SETTINGS = {
  * @returns {Promise<string>} Product ID
  */
 export async function saveProduct(productData) {
-  try {
-    // Extract and separate image thumbnail if present
-    let imageThumbnail = null;
-    if (productData.imageThumbnail) {
-      imageThumbnail = productData.imageThumbnail;
-      delete productData.imageThumbnail; // Remove from main product object
-    }
-    // Also remove imageUrl if it somehow still exists
-    if (productData.imageUrl) {
-      delete productData.imageUrl;
-    }
+  // CRITICAL FIX: Use mutex to prevent race conditions
+  // Without this, concurrent saves from popup + service worker can lose data
+  return await productStorageMutex.withLock(async () => {
+    try {
+      // Extract and separate image thumbnail if present
+      let imageThumbnail = null;
+      if (productData.imageThumbnail) {
+        imageThumbnail = productData.imageThumbnail;
+        delete productData.imageThumbnail; // Remove from main product object
+      }
+      // Also remove imageUrl if it somehow still exists
+      if (productData.imageUrl) {
+        delete productData.imageUrl;
+      }
 
-    // Get existing products
-    const result = await browser.storage.local.get(['products', 'metadata']);
-    const products = result.products || {};
-    const metadata = result.metadata || { totalProducts: 0, lastCleanup: Date.now(), storageUsed: 0 };
+      // Get existing products
+      const result = await browser.storage.local.get(['products', 'metadata']);
+      const products = result.products || {};
+      const metadata = result.metadata || { totalProducts: 0, lastCleanup: Date.now(), storageUsed: 0 };
 
-    const productId = productData.productId;
+      const productId = productData.productId;
 
-    // Check if product exists
-    if (products[productId]) {
-      // Update existing
-      const existing = products[productId];
+      // Check if product exists
+      if (products[productId]) {
+        // Update existing
+        const existing = products[productId];
 
-      // Add to price history if price changed
-      if (existing.price.numeric !== productData.price.numeric) {
-        existing.priceHistory = existing.priceHistory || [];
+        // Add to price history if price changed
+        if (existing.price.numeric !== productData.price.numeric) {
+          existing.priceHistory = existing.priceHistory || [];
+          const now = Date.now();
+
+          // Add ONLY the actual current price change
+          // Do NOT add fake historical entries with backdated timestamps
+          // The regularPrice is already stored in the price object itself
+          existing.priceHistory.push({
+            price: productData.price.numeric,
+            currency: productData.price.currency,
+            timestamp: now,
+            checkMethod: productData.detectionMethod
+          });
+
+          // Limit history to 30 entries
+          if (existing.priceHistory.length > 30) {
+            existing.priceHistory = existing.priceHistory.slice(-30);
+          }
+        }
+
+        // Update fields
+        existing.price = productData.price;
+        existing.tracking.lastViewed = Date.now();
+        existing.tracking.lastChecked = Date.now();
+
+        products[productId] = existing;
+      } else {
+        // Check max products limit
+        const settings = await getSettings();
+        if (Object.keys(products).length >= settings.tracking.maxProducts) {
+          throw new Error('Maximum product limit reached');
+        }
+
+        // Create new product entry
+        // Initialize price history with only the ACTUAL current price
+        // The regularPrice (if any) is already stored in productData.price.regularPrice
+        // We should NOT create fake historical entries with backdated timestamps
         const now = Date.now();
-
-        // Add ONLY the actual current price change
-        // Do NOT add fake historical entries with backdated timestamps
-        // The regularPrice is already stored in the price object itself
-        existing.priceHistory.push({
+        const priceHistory = [{
           price: productData.price.numeric,
           currency: productData.price.currency,
           timestamp: now,
           checkMethod: productData.detectionMethod
-        });
+        }];
 
-        // Limit history to 30 entries
-        if (existing.priceHistory.length > 30) {
-          existing.priceHistory = existing.priceHistory.slice(-30);
-        }
+        products[productId] = {
+          ...productData,
+          priceHistory,
+          tracking: {
+            firstSeen: Date.now(),
+            lastViewed: Date.now(),
+            lastChecked: Date.now(),
+            checkCount: 1,
+            failedChecks: 0,
+            status: 'tracking'
+          },
+          notifications: {
+            lastNotified: null,
+            notificationCount: 0,
+            userDismissed: false
+          }
+        };
+
+        metadata.totalProducts++;
       }
 
-      // Update fields
-      existing.price = productData.price;
-      existing.tracking.lastViewed = Date.now();
-      existing.tracking.lastChecked = Date.now();
+      // Save back to storage
+      await browser.storage.local.set({ products, metadata });
 
-      products[productId] = existing;
-    } else {
-      // Check max products limit
-      const settings = await getSettings();
-      if (Object.keys(products).length >= settings.tracking.maxProducts) {
-        throw new Error('Maximum product limit reached');
+      // Save image thumbnail separately to keep product data lean
+      if (imageThumbnail) {
+        const imageKey = `img_${productId}`;
+        await browser.storage.local.set({ [imageKey]: imageThumbnail });
+        debug('[storage-manager]', `[Storage] Saved thumbnail for product: ${productId}`);
       }
 
-      // Create new product entry
-      // Initialize price history with only the ACTUAL current price
-      // The regularPrice (if any) is already stored in productData.price.regularPrice
-      // We should NOT create fake historical entries with backdated timestamps
-      const now = Date.now();
-      const priceHistory = [{
-        price: productData.price.numeric,
-        currency: productData.price.currency,
-        timestamp: now,
-        checkMethod: productData.detectionMethod
-      }];
+      debug('[storage-manager]', `[Storage] Saved product: ${productId}`);
+      return productId;
 
-      products[productId] = {
-        ...productData,
-        priceHistory,
-        tracking: {
-          firstSeen: Date.now(),
-          lastViewed: Date.now(),
-          lastChecked: Date.now(),
-          checkCount: 1,
-          failedChecks: 0,
-          status: 'tracking'
-        },
-        notifications: {
-          lastNotified: null,
-          notificationCount: 0,
-          userDismissed: false
-        }
-      };
-
-      metadata.totalProducts++;
+    } catch (error) {
+      debugError('[storage-manager]', '[Storage] Error saving product:', error);
+      throw error;
     }
-
-    // Save back to storage
-    await browser.storage.local.set({ products, metadata });
-
-    // Save image thumbnail separately to keep product data lean
-    if (imageThumbnail) {
-      const imageKey = `img_${productId}`;
-      await browser.storage.local.set({ [imageKey]: imageThumbnail });
-      debug('[storage-manager]', `[Storage] Saved thumbnail for product: ${productId}`);
-    }
-
-    debug('[storage-manager]', `[Storage] Saved product: ${productId}`);
-    return productId;
-
-  } catch (error) {
-    debugError('[storage-manager]', '[Storage] Error saving product:', error);
-    throw error;
-  }
+  });
 }
 
 /**
@@ -222,40 +227,43 @@ export async function deleteProduct(productId) {
  * @returns {Promise<Object|null>} Updated product or null
  */
 export async function updateProductPrice(productId, newPriceData) {
-  try {
-    const product = await getProduct(productId);
-    if (!product) return null;
+  // CRITICAL FIX: Use mutex to prevent race conditions
+  return await productStorageMutex.withLock(async () => {
+    try {
+      const product = await getProduct(productId);
+      if (!product) return null;
 
-    // Add to price history
-    product.priceHistory = product.priceHistory || [];
-    product.priceHistory.push({
-      price: newPriceData.numeric,
-      currency: newPriceData.currency,
-      timestamp: Date.now(),
-      checkMethod: newPriceData.detectionMethod || 'unknown'
-    });
+      // Add to price history
+      product.priceHistory = product.priceHistory || [];
+      product.priceHistory.push({
+        price: newPriceData.numeric,
+        currency: newPriceData.currency,
+        timestamp: Date.now(),
+        checkMethod: newPriceData.detectionMethod || 'unknown'
+      });
 
-    // Limit history
-    if (product.priceHistory.length > 30) {
-      product.priceHistory = product.priceHistory.slice(-30);
+      // Limit history
+      if (product.priceHistory.length > 30) {
+        product.priceHistory = product.priceHistory.slice(-30);
+      }
+
+      // Update price
+      product.price = newPriceData;
+      product.tracking.lastChecked = Date.now();
+      product.tracking.checkCount++;
+      product.tracking.failedChecks = 0; // Reset on success
+
+      // Save
+      const products = await getAllProducts();
+      products[productId] = product;
+      await browser.storage.local.set({ products });
+
+      return product;
+    } catch (error) {
+      debugError('[storage-manager]', '[Storage] Error updating product price:', error);
+      return null;
     }
-
-    // Update price
-    product.price = newPriceData;
-    product.tracking.lastChecked = Date.now();
-    product.tracking.checkCount++;
-    product.tracking.failedChecks = 0; // Reset on success
-
-    // Save
-    const products = await getAllProducts();
-    products[productId] = product;
-    await browser.storage.local.set({ products });
-
-    return product;
-  } catch (error) {
-    debugError('[storage-manager]', '[Storage] Error updating product price:', error);
-    return null;
-  }
+  });
 }
 
 /**
