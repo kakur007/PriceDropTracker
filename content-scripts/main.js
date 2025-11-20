@@ -1,5 +1,6 @@
-/**
 import { debug, debugWarn, debugError } from '../utils/debug.js';
+
+/**
  * Main Content Script Entry Point
  * This script is injected into product pages and coordinates product detection
  *
