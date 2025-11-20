@@ -28,7 +28,7 @@
     "chrome-extension",
     "firefox-addon"
   ],
-  "author": "GoGoNano OÜ",
+  "author": "GoGoNano",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/kakur007/PriceDropTracker/issues"

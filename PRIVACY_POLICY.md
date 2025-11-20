@@ -11,7 +11,7 @@
 
 ## Our Privacy Commitment
 
-Price Genius by GoGoNano OÜ is built with privacy as our top priority. Unlike many browser extensions, we don't collect, transmit, or sell your data. This privacy policy explains exactly how the extension works and what data is stored.
+Price Genius by GoGoNano is built with privacy as our top priority. Unlike many browser extensions, we don't collect, transmit, or sell your data. This privacy policy explains exactly how the extension works and what data is stored.
 
 ## What Data We Store (Locally Only)
 
@@ -80,10 +80,10 @@ Price Genius is open source. You can review the code on GitHub to verify our pri
 
 If you have questions about this privacy policy or how Price Genius works, please contact us at:
 
-- **Company:** GoGoNano OÜ
+- **Company:** GoGoNano
 - **Website:** [www.gogonano.com](https://www.gogonano.com)
 - **Contact:** [Contact Us](https://www.gogonano.com/contact-us/?lang=en)
 
 ---
 
-**GoGoNano OÜ** - Building privacy-focused tools for a better web.
+**GoGoNano** - Building privacy-focused tools for a better web.

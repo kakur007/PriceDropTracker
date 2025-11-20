@@ -64,7 +64,7 @@ Unlike other price trackers, we don't collect ANY of your data. No tracking, no 
 • Price-conscious consumers
 • Anyone tired of overpriced products
 
-Built with ❤️ by GoGoNano OÜ - Your privacy-focused shopping companion.
+Built with ❤️ by GoGoNano - Your privacy-focused shopping companion.
 
 Open Source: https://github.com/[your-username]/PriceDropTracker
 ```
@@ -97,7 +97,7 @@ Open Source: https://github.com/[your-username]/PriceDropTracker
 - Keep text minimal and readable
 
 ### 5. Developer Information
-- [x] **Developer Name:** GoGoNano OÜ
+- [x] **Developer Name:** GoGoNano
 - [x] **Developer Website:** https://www.gogonano.com
 - [x] **Support Email/Contact:** https://www.gogonano.com/contact-us/?lang=en
 
