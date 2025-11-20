@@ -1,5 +1,6 @@
+import { debug, debugWarn, debugError } from './debug.js';
+
 /**
-import { debug, debugWarn, debugError } from '../utils/debug.js';
  * Fetch Helper - Network utilities with retry logic and rate limiting
  *
  * Provides robust HTTP fetching with:

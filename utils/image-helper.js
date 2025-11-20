@@ -1,5 +1,6 @@
+import { debug, debugWarn, debugError } from './debug.js';
+
 /**
-import { debug, debugWarn, debugError } from '../utils/debug.js';
  * Image Helper - Storage functions for product thumbnails
  *
  * NOTE: This file contains only storage-related functions that require browser APIs.
