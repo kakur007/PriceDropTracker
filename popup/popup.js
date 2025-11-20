@@ -650,30 +650,50 @@ function setupEventListeners() {
       const isDefaultSupported = isUrlSupported(tab.url);
       debug('[Popup]', 'Is default supported:', isDefaultSupported);
 
-      // If not in default list, request permission immediately
+      // If not in default list, check and request permission if needed
       // CRITICAL: No await operations before this point!
       // Firefox requires permissions.request() to be called directly from user gesture
       if (!isDefaultSupported) {
-        debug('[Popup]', 'Requesting permission for custom site:', tab.url);
+        debug('[Popup]', 'Custom site detected, checking permission:', tab.url);
 
-        // THIS IS THE FIRST AWAIT - directly calling permission request
-        // Request permission - this will return true if already granted
-        // IMPORTANT: In Firefox, requesting permission may close the popup!
-        const granted = await requestPermissionForUrl(tab.url);
+        // Check if we ALREADY have permission (before requesting)
+        const alreadyHasPermission = await hasPermissionForUrl(tab.url);
+        debug('[Popup]', 'Already has permission:', alreadyHasPermission);
 
-        if (!granted) {
-          debug('[Popup]', 'Permission denied by user');
-          showTemporaryMessage('Permission denied. Cannot track products on this site.', 'error');
+        if (!alreadyHasPermission) {
+          // Need to request NEW permission
+          debug('[Popup]', 'Requesting NEW permission for custom site:', tab.url);
+
+          // THIS IS THE FIRST AWAIT - directly calling permission request
+          // IMPORTANT: In Firefox, requesting permission may close the popup!
+          const granted = await requestPermissionForUrl(tab.url);
+
+          if (!granted) {
+            debug('[Popup]', 'Permission denied by user');
+            showTemporaryMessage('Permission denied. Cannot track products on this site.', 'error');
+            trackThisPageBtn.innerHTML = '<span>➕</span>';
+            trackThisPageBtn.disabled = false;
+            return;
+          }
+
+          debug('[Popup]', 'NEW permission granted for:', tab.url);
+
+          // Permission was JUST granted - the service worker's permissions.onAdded listener
+          // will handle injection and detection. We need to wait for it to complete.
+          // Wait 3 seconds for the service worker to inject scripts and detect product
+          debug('[Popup]', 'Waiting 3s for service worker to handle new permission...');
+          await new Promise(resolve => setTimeout(resolve, 3000));
+
+          // After waiting, reload products to show the newly tracked item
+          await loadProducts();
+          showTemporaryMessage('Product tracked successfully!', 'success');
           trackThisPageBtn.innerHTML = '<span>➕</span>';
           trackThisPageBtn.disabled = false;
-          return;
+          return; // Exit here - service worker already handled it
         }
 
-        debug('[Popup]', 'Permission granted for:', tab.url);
-
-        // If the popup is still open (didn't close from permission dialog),
-        // the service worker's permissions.onAdded listener will handle auto-detection
-        // But we can also proceed with manual detection here as a fallback
+        debug('[Popup]', 'Permission already exists, proceeding with detection');
+        // Permission already exists - continue with normal detection flow below
       }
 
       // Execute product detection (we have permission at this point)
