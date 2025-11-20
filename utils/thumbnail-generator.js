@@ -1,5 +1,6 @@
+import { debug, debugWarn, debugError } from './debug.js';
+
 /**
-import { debug, debugWarn, debugError } from '../utils/debug.js';
  * Thumbnail Generator - Image compression utility
  *
  * Creates small, compressed thumbnails for local caching
