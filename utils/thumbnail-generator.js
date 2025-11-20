@@ -29,6 +29,14 @@ export async function createOptimizedThumbnail(imageUrl, width = 80, height = 80
     // Required for canvas export when image is from different origin
     img.crossOrigin = "Anonymous";
 
+    // Add cache-busting parameter to prevent Chrome cache conflict
+    // When page preloads image without CORS, and we request with CORS,
+    // Chrome throws "credentials mode does not match" error
+    // Cache-busting forces a unique request that can use CORS properly
+    const cacheBustUrl = imageUrl.includes('?')
+      ? `${imageUrl}&_cb=${Date.now()}`
+      : `${imageUrl}?_cb=${Date.now()}`;
+
     img.onload = () => {
       try {
         const canvas = document.createElement('canvas');
@@ -94,6 +102,7 @@ export async function createOptimizedThumbnail(imageUrl, width = 80, height = 80
       }
     }, 5000);
 
-    img.src = imageUrl;
+    // Use cache-busted URL to avoid CORS cache conflicts
+    img.src = cacheBustUrl;
   });
 }
