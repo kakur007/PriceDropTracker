@@ -507,7 +507,7 @@ async function executeProductDetection(tabId) {
           // Dynamically import the detector module
           const { detectProduct } = await import(scriptUrl);
 
-          debug('[popup]', '[Price Drop Tracker] Manual detection started...');
+          console.log('[Price Drop Tracker] Manual detection started...');
 
           // Wait for page to be fully loaded
           await new Promise(resolve => setTimeout(resolve, 1000));
@@ -516,7 +516,7 @@ async function executeProductDetection(tabId) {
           const productData = await detectProduct();
 
           if (productData) {
-            debug('[popup]', '[Price Drop Tracker] Product detected, sending to background...');
+            console.log('[Price Drop Tracker] Product detected, sending to background...');
 
             // Send to background for storage using callback-style for Chrome compatibility
             const response = await new Promise((resolve, reject) => {
@@ -532,10 +532,10 @@ async function executeProductDetection(tabId) {
               });
             });
 
-            debug('[popup]', '[Price Drop Tracker] Background response:', response);
+            console.log('[Price Drop Tracker] Background response:', response);
 
             if (response && response.success && !response.data.alreadyTracked) {
-              debug('[popup]', '[Price Drop Tracker] ✓ Product tracked:', productData.title);
+              console.log('[Price Drop Tracker] ✓ Product tracked:', productData.title);
 
               // Show on-page confirmation with brand colors
               const badge = document.createElement('div');
@@ -596,11 +596,11 @@ async function executeProductDetection(tabId) {
               return { success: false, error: response.error || 'Unable to track product' };
             }
           } else {
-            debug('[popup]', '[Price Drop Tracker] No product detected');
+            console.log('[Price Drop Tracker] No product detected');
             return { success: false, error: 'No product found on this page' };
           }
         } catch (error) {
-          debugError('[popup]', '[Price Drop Tracker] Detection error:', error);
+          console.error('[Price Drop Tracker] Detection error:', error);
           return { success: false, error: error.message };
         }
       },
