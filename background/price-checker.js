@@ -266,6 +266,38 @@ async function setupOffscreenDocument() {
 }
 
 /**
+ * Close the offscreen document to free resources (Manifest V3 only)
+ * CRITICAL FIX: Offscreen documents consume memory like an invisible tab.
+ * They should be closed when not in use to prevent memory leaks.
+ * @returns {Promise<void>}
+ */
+async function closeOffscreenDocument() {
+  // Offscreen API only available in Manifest V3
+  if (!browser.offscreen || !browser.offscreen.closeDocument) {
+    return;
+  }
+
+  try {
+    // Check if offscreen document exists
+    if (browser.runtime.getContexts) {
+      const existingContexts = await browser.runtime.getContexts({
+        contextTypes: ['OFFSCREEN_DOCUMENT']
+      });
+
+      if (existingContexts.length === 0) {
+        return; // Already closed
+      }
+    }
+
+    // Close the offscreen document
+    await browser.offscreen.closeDocument();
+    debug('[PriceChecker]', 'Offscreen document closed to free resources');
+  } catch (error) {
+    debugWarn('[PriceChecker]', 'Could not close offscreen document:', error);
+  }
+}
+
+/**
  * Parse HTML using the offscreen document or fallback parser
  * @param {string} html - The HTML string to parse
  * @param {Object} contextData - Context information (domain, locale, currency)
@@ -634,10 +666,15 @@ async function checkAllProducts(options = {}) {
 
     debug('[PriceChecker]', `All batches complete: ${results.success} successful, ${results.errors} errors, ${results.priceDrops} drops, ${results.priceIncreases} increases.`);
 
+    // CRITICAL FIX: Close offscreen document after batch processing to free memory
+    await closeOffscreenDocument();
+
     return results;
 
   } catch (error) {
     debugError('[PriceChecker]', 'Error in checkAllProducts:', error);
+    // Make sure to close offscreen document even on error
+    await closeOffscreenDocument();
     throw error;
   }
 }
@@ -797,13 +834,26 @@ async function checkSingleProduct(productId) {
       const product = await StorageManager.getProduct(productId);
       if (product) {
         product.tracking = product.tracking || {};
-        product.tracking.failedChecks = (product.tracking.failedChecks || 0) + 1;
-        product.tracking.lastChecked = Date.now();
 
-        if (product.tracking.failedChecks >= 3) {
-          product.tracking.status = 'stale';
+        // Check if this is a CAPTCHA error
+        const isCaptcha = error.message && error.message.includes('CAPTCHA_DETECTED');
+
+        if (isCaptcha) {
+          // CAPTCHA detected - mark product but don't increment failed checks as aggressively
+          product.tracking.status = 'captcha_detected';
+          product.tracking.lastCaptcha = Date.now();
+          // Don't increment failedChecks for CAPTCHA - it's not the product's fault
+          debugWarn('[PriceChecker]', `CAPTCHA detected for ${productId}, will retry later`);
+        } else {
+          // Regular error - increment failed checks
+          product.tracking.failedChecks = (product.tracking.failedChecks || 0) + 1;
+
+          if (product.tracking.failedChecks >= 3) {
+            product.tracking.status = 'stale';
+          }
         }
 
+        product.tracking.lastChecked = Date.now();
         await StorageManager.saveProduct(product);
       }
     } catch (updateError) {
@@ -812,7 +862,8 @@ async function checkSingleProduct(productId) {
 
     return {
       status: PriceCheckResult.ERROR,
-      error: error.message
+      error: error.message,
+      isCaptcha: error.message && error.message.includes('CAPTCHA_DETECTED')
     };
   }
 }
@@ -840,7 +891,16 @@ async function getProductsNeedingCheck(maxAge = 60 * 60 * 1000) {
  */
 async function forceCheckProduct(productId) {
   debug('[PriceChecker]', `Force checking product: ${productId}`);
-  return checkSingleProduct(productId);
+  try {
+    const result = await checkSingleProduct(productId);
+    // Close offscreen document after single check to free resources
+    await closeOffscreenDocument();
+    return result;
+  } catch (error) {
+    // Close offscreen document even on error
+    await closeOffscreenDocument();
+    throw error;
+  }
 }
 
 // Export functions
