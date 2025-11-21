@@ -319,6 +319,10 @@ async function fetchWithRetry(url, options = {}) {
  * Detect if HTML content contains a CAPTCHA challenge
  * Checks for common CAPTCHA patterns from major retailers
  *
+ * IMPORTANT: This function must be CONSERVATIVE to avoid false positives.
+ * False positive = marking a valid product page as CAPTCHA = extension stops working.
+ * False negative = missing a CAPTCHA = retry later, less critical.
+ *
  * @param {string} html - HTML content to check
  * @param {string} url - Original URL (for context)
  * @returns {boolean} - True if CAPTCHA detected
@@ -329,62 +333,79 @@ function detectCaptcha(html, url) {
   // Convert to lowercase for case-insensitive matching
   const lowerHtml = html.toLowerCase();
 
-  // Amazon CAPTCHA indicators
+  // Check for common product page indicators first (if present, likely NOT a CAPTCHA page)
+  const hasProductIndicators =
+    lowerHtml.includes('add to cart') ||
+    lowerHtml.includes('buy now') ||
+    lowerHtml.includes('product-price') ||
+    lowerHtml.includes('"price"') ||
+    lowerHtml.includes('add to bag') ||
+    lowerHtml.includes('addtocart');
+
+  // If product indicators exist, be MUCH more conservative about CAPTCHA detection
+  const requireStrongEvidence = hasProductIndicators;
+
+  // Amazon CAPTCHA indicators (highly specific, low false positive rate)
   if (url.includes('amazon')) {
     if (lowerHtml.includes('api.captcha.amazon.com') ||
         lowerHtml.includes('sorry, we just need to make sure you\'re not a robot') ||
         lowerHtml.includes('enter the characters you see below') ||
         lowerHtml.includes('type the characters you see in this image')) {
+      debug('[fetch-helper]', 'CAPTCHA: Amazon-specific pattern detected');
       return true;
     }
   }
 
-  // Walmart CAPTCHA indicators
+  // Walmart CAPTCHA indicators (highly specific)
   if (url.includes('walmart')) {
     if (lowerHtml.includes('robot or human') ||
         lowerHtml.includes('please verify you are a human') ||
-        lowerHtml.includes('security check') ||
         lowerHtml.includes('blocked by walmart')) {
+      debug('[fetch-helper]', 'CAPTCHA: Walmart-specific pattern detected');
       return true;
     }
   }
 
-  // Target CAPTCHA indicators
+  // Target CAPTCHA indicators (highly specific)
   if (url.includes('target')) {
-    if (lowerHtml.includes('security challenge') ||
-        lowerHtml.includes('verify you\'re human')) {
+    if (lowerHtml.includes('security challenge') && lowerHtml.includes('target')) {
+      debug('[fetch-helper]', 'CAPTCHA: Target-specific pattern detected');
       return true;
     }
   }
 
-  // Generic CAPTCHA patterns (Google reCAPTCHA, hCaptcha, etc.)
-  const captchaPatterns = [
-    'google.com/recaptcha',
-    'recaptcha',
-    'hcaptcha',
-    'cloudflare challenge',
-    'cf-challenge',
-    'please complete the security check',
-    'verify you are human',
-    'are you a robot',
-    'captcha'
-  ];
+  // Generic CAPTCHA detection (VERY conservative to avoid false positives)
+  // Only trigger if we have STRONG evidence of an active CAPTCHA challenge
 
-  for (const pattern of captchaPatterns) {
-    if (lowerHtml.includes(pattern)) {
-      // Additional check: ensure it's not just a mention in comments or documentation
-      // Look for actual challenge forms or scripts
-      if (lowerHtml.includes('<form') || lowerHtml.includes('challenge') || lowerHtml.includes('verification')) {
-        return true;
-      }
-    }
-  }
-
-  // Check for suspiciously short responses (often redirect pages to CAPTCHA)
-  if (html.length < 500 && (lowerHtml.includes('redirect') || lowerHtml.includes('blocked'))) {
+  // Cloudflare challenge page (very distinctive)
+  if (lowerHtml.includes('cf-challenge-running') ||
+      (lowerHtml.includes('cloudflare') && lowerHtml.includes('checking your browser'))) {
+    debug('[fetch-helper]', 'CAPTCHA: Cloudflare challenge detected');
     return true;
   }
 
+  // Check for suspiciously short responses (< 500 chars) that mention blocking
+  // This catches redirect pages to CAPTCHA
+  if (html.length < 500 && (lowerHtml.includes('blocked') || lowerHtml.includes('access denied'))) {
+    debug('[fetch-helper]', 'CAPTCHA: Suspicious short response with blocking');
+    return true;
+  }
+
+  // Google reCAPTCHA / hCaptcha - only if ACTUALLY loaded (not just referenced)
+  // AND no product indicators present
+  if (!requireStrongEvidence) {
+    const hasActiveCaptcha =
+      (lowerHtml.includes('google.com/recaptcha/api.js') ||
+       lowerHtml.includes('hcaptcha.com/1/api.js')) &&
+      (lowerHtml.includes('g-recaptcha') || lowerHtml.includes('h-captcha'));
+
+    if (hasActiveCaptcha) {
+      debug('[fetch-helper]', 'CAPTCHA: Active reCAPTCHA/hCaptcha detected');
+      return true;
+    }
+  }
+
+  // No CAPTCHA detected
   return false;
 }
 
