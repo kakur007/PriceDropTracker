@@ -54,6 +54,14 @@ function parseHTMLForPrice(html, contextData = {}) {
             const offers = Array.isArray(item.offers) ? item.offers : [item.offers];
 
             for (const offer of offers) {
+              // EBAY FIX: Check if any text field in the offer contains "approximately"
+              // This filters out approximate currency conversions (e.g., AU → US)
+              const offerText = JSON.stringify(offer).toLowerCase();
+              if (offerText.includes('approximately') || offerText.includes('approx.')) {
+                console.log('[Offscreen]', 'Skipping approximate offer in JSON-LD');
+                continue; // Skip this offer
+              }
+
               const priceString = offer.price || offer.lowPrice;
               if (priceString) {
                 newPrice = parseNumericPrice(String(priceString), contextData);

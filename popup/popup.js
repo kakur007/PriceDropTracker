@@ -662,19 +662,31 @@ function setupEventListeners() {
         // Detect browser to handle differently
         const isChrome = typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id;
 
-        // CHROME: Fire-and-forget storage save (no await to preserve user gesture)
-        // FIREFOX: Await the save (popup doesn't close, no issue with user gesture)
-        if (isChrome) {
-          // Chrome: Don't await to keep synchronous chain
-          browser.storage.local.set({ pendingPermissionUrl: tab.url }).catch(err => {
-            debugError('[Popup]', 'Failed to save pending URL:', err);
-          });
-        } else {
-          // Firefox: Await to ensure service worker can read it
-          try {
-            await browser.storage.local.set({ pendingPermissionUrl: tab.url });
-          } catch (err) {
-            debugError('[Popup]', 'Failed to save pending URL:', err);
+        // FIREFOX: Check permission first to decide flow
+        // CHROME: Skip check to preserve user gesture chain
+        let alreadyHasPermission = false;
+        if (!isChrome) {
+          alreadyHasPermission = await hasPermissionForUrl(tab.url);
+          debug('[Popup]', 'Firefox - already has permission:', alreadyHasPermission);
+        }
+
+        // Only save to storage if we haven't checked or if permission doesn't exist
+        // (If it exists, we don't need service worker coordination)
+        if (isChrome || !alreadyHasPermission) {
+          // CHROME: Fire-and-forget storage save (no await to preserve user gesture)
+          // FIREFOX: Await the save (popup doesn't close, no issue with user gesture)
+          if (isChrome) {
+            // Chrome: Don't await to keep synchronous chain
+            browser.storage.local.set({ pendingPermissionUrl: tab.url }).catch(err => {
+              debugError('[Popup]', 'Failed to save pending URL:', err);
+            });
+          } else {
+            // Firefox: Await to ensure service worker can read it
+            try {
+              await browser.storage.local.set({ pendingPermissionUrl: tab.url });
+            } catch (err) {
+              debugError('[Popup]', 'Failed to save pending URL:', err);
+            }
           }
         }
 
@@ -697,18 +709,21 @@ function setupEventListeners() {
         debug('[Popup]', 'Permission granted for:', tab.url);
 
         // If we reach here, popup didn't close (Firefox or permission already granted in Chrome)
-        if (!isChrome) {
-          // Firefox: Service worker will handle it via permissions.onAdded
+        // FIREFOX FIX: Only exit early if permission was NEWLY granted
+        // If permission already existed, continue with detection here (permissions.onAdded won't fire)
+        if (!isChrome && !alreadyHasPermission) {
+          // Firefox: Permission was just granted, service worker will handle it via permissions.onAdded
           // Don't run detection here to avoid duplicate injection
-          debug('[Popup]', 'Firefox: Letting service worker handle detection');
+          debug('[Popup]', 'Firefox: New permission granted, letting service worker handle detection');
           showTemporaryMessage('Permission granted! Detecting product...', 'info');
           trackThisPageBtn.innerHTML = '<span>➕</span>';
           trackThisPageBtn.disabled = false;
           return;
         }
 
-        // Chrome: Permission already granted (no dialog), clear pending and continue
+        // Chrome/Firefox: Permission already existed, clear pending and continue with detection
         await browser.storage.local.remove('pendingPermissionUrl');
+        debug('[Popup]', 'Permission already existed, continuing with detection in popup');
         // Fall through to detection below
       }
 
