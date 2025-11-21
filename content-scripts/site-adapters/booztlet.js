@@ -32,7 +32,16 @@ export class BooztletAdapter extends BaseAdapter {
   }
 
   extractPrice() {
-    // 1. Define selectors for the wrapper that holds the price
+    // PRIORITY 1: Try JSON-LD structured data first
+    // This works for both initial detection AND background refreshes
+    // Boozt.com includes price in JSON-LD even when visual elements are empty
+    const jsonLdPrice = this.extractPriceFromJsonLd();
+    if (jsonLdPrice && jsonLdPrice.confidence >= 0.70) {
+      return this.validateCurrency(jsonLdPrice);
+    }
+
+    // PRIORITY 2: Visual elements (works for initial detection only)
+    // Define selectors for the wrapper that holds the price
     const selectors = [
       '.price-container',
       '.product-price',
@@ -42,10 +51,10 @@ export class BooztletAdapter extends BaseAdapter {
     for (const selector of selectors) {
       const element = this.querySelector(selector);
       if (element) {
-        // 2. CLONE the element to manipulate it without affecting the page
+        // CLONE the element to manipulate it without affecting the page
         const clone = element.cloneNode(true);
 
-        // 3. REMOVE "noise" elements from the clone
+        // REMOVE "noise" elements from the clone
         // Remove original/strikethrough prices
         const oldPrices = clone.querySelectorAll('.price-original, .original-price, .prev-price, span[style*="line-through"]');
         oldPrices.forEach(el => el.remove());
@@ -54,10 +63,10 @@ export class BooztletAdapter extends BaseAdapter {
         const discounts = clone.querySelectorAll('.discount-tag, .percentage, .sale-label');
         discounts.forEach(el => el.remove());
 
-        // 4. Extract text from what's left
+        // Extract text from what's left
         let text = clone.textContent.trim();
 
-        // 5. Regex Cleanup: Booztlet sometimes puts the currency *between* numbers or has weird spacing
+        // Regex Cleanup: Booztlet sometimes puts the currency *between* numbers or has weird spacing
         // Look for the first valid price pattern (e.g., "27.99")
         // Matches: digits, dot/comma, digits
         const priceMatch = text.match(/(\d+[.,]\d+)/);
@@ -65,7 +74,7 @@ export class BooztletAdapter extends BaseAdapter {
           text = priceMatch[0];
         }
 
-        // 6. Parse
+        // Parse
         const parsed = this.parsePriceWithContext(text);
         if (parsed && parsed.confidence >= 0.70) {
           return this.validateCurrency(parsed);
@@ -73,7 +82,7 @@ export class BooztletAdapter extends BaseAdapter {
       }
     }
 
-    // Fallback: Look for specific "current price" classes directly
+    // PRIORITY 3: Fallback - specific "current price" classes
     const directPrice = this.querySelector('.current-price, .price.campaign');
     if (directPrice) {
         return this.parsePriceWithContext(directPrice.textContent.trim());
