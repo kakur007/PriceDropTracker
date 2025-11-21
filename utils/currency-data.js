@@ -96,6 +96,12 @@ export const CURRENCIES = {
     decimals: 2,
     format: 'value_symbol' // 99,99 lei
   },
+  BGN: {
+    symbol: 'лв',
+    name: 'Bulgarian Lev',
+    decimals: 2,
+    format: 'value_symbol' // 99,99 лв
+  },
 
   // Asia-Pacific
   JPY: {
@@ -242,15 +248,26 @@ export const CURRENCIES = {
 export const CURRENCY_SYMBOLS = {
   // Dollar sign - highly ambiguous!
   '$': ['USD', 'CAD', 'AUD', 'NZD', 'SGD', 'HKD', 'MXN'],
+  'USD': ['USD'],  // ISO code
+  'CAD': ['CAD'],  // ISO code
+  'AUD': ['AUD'],  // ISO code
+  'NZD': ['NZD'],  // ISO code
+  'SGD': ['SGD'],  // ISO code
+  'HKD': ['HKD'],  // ISO code
+  'MXN': ['MXN'],  // ISO code
 
   // Yen - ambiguous between Japan and China
   '¥': ['JPY', 'CNY'],
+  'JPY': ['JPY'],  // ISO code
+  'CNY': ['CNY'],  // ISO code
 
   // Euro - unambiguous
   '€': ['EUR'],
+  'EUR': ['EUR'],  // ISO code
 
   // Pound - ambiguous between UK and Egypt
   '£': ['GBP', 'EGP'],
+  'GBP': ['GBP'],  // ISO code
 
   // Krona/Krone - ambiguous between Nordic countries
   'kr': ['SEK', 'NOK', 'DKK'],
@@ -301,6 +318,10 @@ export const CURRENCY_SYMBOLS = {
   // Leu
   'lei': ['RON'],
 
+  // Lev
+  'лв': ['BGN'],
+  'lv': ['BGN'],
+
   // Swiss Franc
   'CHF': ['CHF'],
 
@@ -346,6 +367,14 @@ export const DOMAIN_CURRENCY = {
   '.ie': 'EUR',
   '.fi': 'EUR',
   '.gr': 'EUR',
+  '.ee': 'EUR',  // Estonia
+  '.lv': 'EUR',  // Latvia
+  '.lt': 'EUR',  // Lithuania
+  '.sk': 'EUR',  // Slovakia
+  '.si': 'EUR',  // Slovenia
+  '.cy': 'EUR',  // Cyprus
+  '.mt': 'EUR',  // Malta
+  '.lu': 'EUR',  // Luxembourg
   '.ch': 'CHF',
   '.se': 'SEK',
   '.no': 'NOK',
@@ -354,6 +383,7 @@ export const DOMAIN_CURRENCY = {
   '.cz': 'CZK',
   '.hu': 'HUF',
   '.ro': 'RON',
+  '.bg': 'BGN',  // Bulgaria (Lev, not EUR yet but common in EU)
 
   // Asia-Pacific
   '.co.jp': 'JPY',
@@ -426,6 +456,18 @@ export const LOCALE_CURRENCY = {
   'en-IE': 'EUR',
   'fi-FI': 'EUR',
   'el-GR': 'EUR',
+  'et-EE': 'EUR',  // Estonian
+  'lv-LV': 'EUR',  // Latvian
+  'lt-LT': 'EUR',  // Lithuanian
+  'sk-SK': 'EUR',  // Slovak
+  'sl-SI': 'EUR',  // Slovenian
+  'el-CY': 'EUR',  // Greek (Cyprus)
+  'tr-CY': 'EUR',  // Turkish (Cyprus)
+  'mt-MT': 'EUR',  // Maltese
+  'lb-LU': 'EUR',  // Luxembourgish
+  'de-LU': 'EUR',  // German (Luxembourg)
+  'fr-LU': 'EUR',  // French (Luxembourg)
+  'bg-BG': 'BGN',  // Bulgarian
   'de-CH': 'CHF',
   'fr-CH': 'CHF',
   'it-CH': 'CHF',
@@ -514,7 +556,7 @@ export const NUMBER_FORMATS = {
   'uk-UA': { decimal: ',', thousands: '.' },
   'id-ID': { decimal: ',', thousands: '.' },
 
-  // French/Nordic format: 1 299,99 (space = thousands, comma = decimal)
+  // French/Nordic/Baltic format: 1 299,99 (space = thousands, comma = decimal)
   'fr-FR': { decimal: ',', thousands: ' ' },
   'fr-BE': { decimal: ',', thousands: ' ' },
   'fr-CH': { decimal: ',', thousands: ' ' },
@@ -523,6 +565,16 @@ export const NUMBER_FORMATS = {
   'nb-NO': { decimal: ',', thousands: ' ' },
   'da-DK': { decimal: ',', thousands: ' ' },
   'fi-FI': { decimal: ',', thousands: ' ' },
+  'et-EE': { decimal: ',', thousands: ' ' },  // Estonian
+  'lv-LV': { decimal: ',', thousands: ' ' },  // Latvian
+  'lt-LT': { decimal: ',', thousands: ' ' },  // Lithuanian
+  'sk-SK': { decimal: ',', thousands: ' ' },  // Slovak
+  'sl-SI': { decimal: ',', thousands: '.' },  // Slovenian
+  'bg-BG': { decimal: ',', thousands: ' ' },  // Bulgarian
+  'mt-MT': { decimal: ',', thousands: ' ' },  // Maltese
+  'lb-LU': { decimal: ',', thousands: ' ' },  // Luxembourgish
+  'de-LU': { decimal: ',', thousands: '.' },  // German (Luxembourg)
+  'fr-LU': { decimal: ',', thousands: ' ' },  // French (Luxembourg)
 
   // Other
   'vi-VN': { decimal: ',', thousands: '.' },

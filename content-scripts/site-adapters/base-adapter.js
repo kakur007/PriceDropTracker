@@ -174,4 +174,60 @@ export class BaseAdapter {
       }, timeout);
     });
   }
+
+  /**
+   * Extracts price from Schema.org JSON-LD structured data
+   * This is the most reliable method for dynamic sites (boozt.com, etc.)
+   * Works in both content scripts AND background fetches
+   *
+   * @returns {Object|null} Parsed price object or null
+   */
+  extractPriceFromJsonLd() {
+    try {
+      const scripts = this.querySelectorAll('script[type="application/ld+json"]');
+
+      for (const script of scripts) {
+        try {
+          const data = JSON.parse(script.textContent);
+
+          // Handle @graph array format
+          const items = data['@graph'] || (Array.isArray(data) ? data : [data]);
+
+          for (const item of items) {
+            // Check if this is a Product with offers
+            if (item['@type'] === 'Product' && item.offers) {
+              const offers = Array.isArray(item.offers) ? item.offers : [item.offers];
+
+              for (const offer of offers) {
+                // Skip approximate/conversion prices (eBay fix)
+                const offerText = JSON.stringify(offer).toLowerCase();
+                if (offerText.includes('approximately') || offerText.includes('approx.')) {
+                  debug('[base-adapter]', '[Adapter] Skipping approximate offer in JSON-LD');
+                  continue;
+                }
+
+                // Extract price
+                const priceValue = offer.price || offer.lowPrice;
+                if (priceValue) {
+                  // Parse the price with context
+                  const parsed = this.parsePriceWithContext(String(priceValue));
+                  if (parsed) {
+                    debug('[base-adapter]', '[Adapter] ✓ Extracted price from JSON-LD:', parsed.numeric, parsed.currency);
+                    return parsed;
+                  }
+                }
+              }
+            }
+          }
+        } catch (e) {
+          // Ignore JSON parse errors for individual scripts
+          debugWarn('[base-adapter]', '[Adapter] Failed to parse JSON-LD script:', e.message);
+        }
+      }
+    } catch (e) {
+      debugError('[base-adapter]', '[Adapter] Error extracting JSON-LD:', e);
+    }
+
+    return null;
+  }
 }
