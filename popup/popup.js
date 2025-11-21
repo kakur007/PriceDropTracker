@@ -659,14 +659,26 @@ function setupEventListeners() {
       if (!isDefaultSupported) {
         debug('[Popup]', 'Custom site detected, requesting permission:', tab.url);
 
-        // CHROME FIX: Save pending URL in background (don't await to preserve user gesture)
-        // Service worker will read this and handle detection automatically
-        // Fire-and-forget storage save (no await to keep synchronous call chain)
-        browser.storage.local.set({ pendingPermissionUrl: tab.url }).catch(err => {
-          debugError('[Popup]', 'Failed to save pending URL:', err);
-        });
+        // Detect browser to handle differently
+        const isChrome = typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id;
 
-        // THIS MUST BE CALLED SYNCHRONOUSLY - directly calling permission request
+        // CHROME: Fire-and-forget storage save (no await to preserve user gesture)
+        // FIREFOX: Await the save (popup doesn't close, no issue with user gesture)
+        if (isChrome) {
+          // Chrome: Don't await to keep synchronous chain
+          browser.storage.local.set({ pendingPermissionUrl: tab.url }).catch(err => {
+            debugError('[Popup]', 'Failed to save pending URL:', err);
+          });
+        } else {
+          // Firefox: Await to ensure service worker can read it
+          try {
+            await browser.storage.local.set({ pendingPermissionUrl: tab.url });
+          } catch (err) {
+            debugError('[Popup]', 'Failed to save pending URL:', err);
+          }
+        }
+
+        // THIS MUST BE CALLED SYNCHRONOUSLY (or right after await in Firefox)
         // Request permission - this will return true if already granted
         // IMPORTANT: In Chrome, requesting permission WILL close the popup!
         // The service worker's permissions.onAdded listener will handle detection
@@ -684,12 +696,20 @@ function setupEventListeners() {
 
         debug('[Popup]', 'Permission granted for:', tab.url);
 
-        // If we reach here, popup didn't close (Firefox or permission already granted)
-        // Clear pending URL since we'll handle it ourselves
-        await browser.storage.local.remove('pendingPermissionUrl');
+        // If we reach here, popup didn't close (Firefox or permission already granted in Chrome)
+        if (!isChrome) {
+          // Firefox: Service worker will handle it via permissions.onAdded
+          // Don't run detection here to avoid duplicate injection
+          debug('[Popup]', 'Firefox: Letting service worker handle detection');
+          showTemporaryMessage('Permission granted! Detecting product...', 'info');
+          trackThisPageBtn.innerHTML = '<span>➕</span>';
+          trackThisPageBtn.disabled = false;
+          return;
+        }
 
-        // For Firefox/already-granted case: execute detection here
-        // For Chrome new permission: service worker handles it (popup already closed)
+        // Chrome: Permission already granted (no dialog), clear pending and continue
+        await browser.storage.local.remove('pendingPermissionUrl');
+        // Fall through to detection below
       }
 
       // Execute product detection (we have permission at this point)
