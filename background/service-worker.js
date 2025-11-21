@@ -616,7 +616,14 @@ async function executeProductDetectionOnTab(tabId, tabUrl) {
       target: { tabId: tabId },
       func: async (scriptUrl) => {
         // Define API wrapper for Chrome/Firefox compatibility
-        const api = window.chrome || window.browser;
+        // FIREFOX FIX: Use globals directly, not window.chrome/window.browser
+        // In Firefox MV3 content script context, browser APIs are globals, not on window
+        const api = typeof chrome !== 'undefined' ? chrome : (typeof browser !== 'undefined' ? browser : null);
+
+        if (!api) {
+          console.error('[Price Drop Tracker] ❌ Browser API not available');
+          return { success: false, error: 'Browser API not available in injected context' };
+        }
 
         try {
           console.log('[Price Drop Tracker] 🚀 Starting product detection...');
