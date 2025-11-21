@@ -16,17 +16,17 @@ import { isFirefox } from './browser-polyfill.js';
 import { debug, debugWarn, debugError } from '../utils/debug.js';
 
 /**
- * Notification cooldown tracking
- * Prevents spamming the same notification multiple times
- * Format: { productId: timestamp }
- */
-const notificationCooldowns = new Map();
-
-/**
  * Default cooldown period (30 minutes)
  * Won't show the same notification for a product within this time
  */
 const DEFAULT_COOLDOWN_MS = 30 * 60 * 1000;
+
+/**
+ * CRITICAL FIX: Store cooldowns in chrome.storage instead of memory
+ * Service workers are ephemeral and shut down after 30 seconds of inactivity.
+ * An in-memory Map would be reset, causing notification spam.
+ * Storage key: 'notificationCooldowns' -> { productId: timestamp }
+ */
 
 /**
  * Show a price drop notification
@@ -319,45 +319,88 @@ function formatPrice(amount, currency = 'USD', locale = 'en-US') {
  * @param {string} productId - Product ID
  * @returns {boolean} - True if on cooldown
  */
-function isOnCooldown(productId) {
-  const lastNotification = notificationCooldowns.get(productId);
+async function isOnCooldown(productId) {
+  try {
+    const result = await browser.storage.local.get('notificationCooldowns');
+    const cooldowns = result.notificationCooldowns || {};
 
-  if (!lastNotification) {
+    const lastNotification = cooldowns[productId];
+
+    if (!lastNotification) {
+      return false;
+    }
+
+    const timeSinceLastNotification = Date.now() - lastNotification;
+    return timeSinceLastNotification < DEFAULT_COOLDOWN_MS;
+  } catch (error) {
+    debugWarn('[notification-manager]', '[Notifications] Error checking cooldown:', error);
+    // On error, assume not on cooldown (better to notify than to miss)
     return false;
   }
-
-  const timeSinceLastNotification = Date.now() - lastNotification;
-  return timeSinceLastNotification < DEFAULT_COOLDOWN_MS;
 }
 
 /**
- * Set cooldown for a product
+ * Set cooldown for a product (storage-based to survive service worker restarts)
  *
  * @param {string} productId - Product ID
+ * @returns {Promise<void>}
  */
-function setCooldown(productId) {
-  notificationCooldowns.set(productId, Date.now());
+async function setCooldown(productId) {
+  try {
+    // Get existing cooldowns
+    const result = await browser.storage.local.get('notificationCooldowns');
+    const cooldowns = result.notificationCooldowns || {};
 
-  // Clean up old cooldowns after they expire
-  setTimeout(() => {
-    notificationCooldowns.delete(productId);
-  }, DEFAULT_COOLDOWN_MS + 1000);
+    // Set this product's cooldown
+    cooldowns[productId] = Date.now();
+
+    // Clean up expired cooldowns while we're here (don't let object grow forever)
+    const now = Date.now();
+    Object.keys(cooldowns).forEach(id => {
+      if (now - cooldowns[id] > DEFAULT_COOLDOWN_MS) {
+        delete cooldowns[id];
+      }
+    });
+
+    // Save back to storage
+    await browser.storage.local.set({ notificationCooldowns: cooldowns });
+
+    debug('[notification-manager]', `[Notifications] Cooldown set for product: ${productId}`);
+  } catch (error) {
+    debugError('[notification-manager]', '[Notifications] Error setting cooldown:', error);
+    // Continue execution even if cooldown fails
+  }
 }
 
 /**
  * Clear cooldown for a product (useful for testing)
  *
  * @param {string} productId - Product ID
+ * @returns {Promise<void>}
  */
-export function clearCooldown(productId) {
-  notificationCooldowns.delete(productId);
+export async function clearCooldown(productId) {
+  try {
+    const result = await browser.storage.local.get('notificationCooldowns');
+    const cooldowns = result.notificationCooldowns || {};
+
+    delete cooldowns[productId];
+
+    await browser.storage.local.set({ notificationCooldowns: cooldowns });
+  } catch (error) {
+    debugError('[notification-manager]', '[Notifications] Error clearing cooldown:', error);
+  }
 }
 
 /**
  * Clear all cooldowns (useful for testing)
+ * @returns {Promise<void>}
  */
-export function clearAllCooldowns() {
-  notificationCooldowns.clear();
+export async function clearAllCooldowns() {
+  try {
+    await browser.storage.local.set({ notificationCooldowns: {} });
+  } catch (error) {
+    debugError('[notification-manager]', '[Notifications] Error clearing all cooldowns:', error);
+  }
 }
 
 /**

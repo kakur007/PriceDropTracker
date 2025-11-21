@@ -471,6 +471,9 @@ async function updateBadge() {
 /**
  * Listen for new permissions being granted
  * Automatically run product detection when user grants permission for a custom site
+ *
+ * CRITICAL FIX: Chrome closes popup during permission request. The popup saves a
+ * pendingPermissionUrl before requesting. We read that here to know which tab to track.
  */
 browser.permissions.onAdded.addListener(async (permissions) => {
   debug('[ServiceWorker]', '=================================================');
@@ -479,78 +482,157 @@ browser.permissions.onAdded.addListener(async (permissions) => {
   debug('[ServiceWorker]', '=================================================');
 
   try {
-    // Get the currently active tab
-    const [activeTab] = await browser.tabs.query({ active: true, currentWindow: true });
+    // CRITICAL: Check if there's a pending permission URL from popup
+    const result = await browser.storage.local.get('pendingPermissionUrl');
+    const pendingUrl = result.pendingPermissionUrl;
 
-    debug('[ServiceWorker]', '[ServiceWorker] Active tab info:', {
-      id: activeTab?.id,
-      url: activeTab?.url,
-      title: activeTab?.title
-    });
+    debug('[ServiceWorker]', '[ServiceWorker] Pending permission URL from storage:', pendingUrl);
 
-    if (!activeTab || !activeTab.id || !activeTab.url) {
-      debug('[ServiceWorker]', '[ServiceWorker] ❌ No active tab found after permission grant');
+    if (!pendingUrl) {
+      debug('[ServiceWorker]', '[ServiceWorker] ⚠️ No pending URL found, checking active tab as fallback');
+      // Fallback to active tab (less reliable but better than nothing)
+      const [activeTab] = await browser.tabs.query({ active: true, currentWindow: true });
+
+      if (!activeTab || !activeTab.url) {
+        debug('[ServiceWorker]', '[ServiceWorker] ❌ No active tab found either, aborting');
+        return;
+      }
+
+      // Verify permission matches active tab
+      const permissionMatches = verifyPermissionMatches(permissions.origins, activeTab.url);
+      if (!permissionMatches) {
+        debug('[ServiceWorker]', '[ServiceWorker] ❌ Permission doesn\'t match active tab, aborting');
+        return;
+      }
+
+      // Proceed with active tab
+      await executeProductDetectionOnTab(activeTab.id, activeTab.url);
       return;
     }
 
-    // Check if the permission matches the active tab's domain
-    const tabHostname = new URL(activeTab.url).hostname;
-    debug('[ServiceWorker]', '[ServiceWorker] Checking if permission matches active tab hostname:', tabHostname);
+    // BETTER PATH: We have a pending URL from popup - find the matching tab
+    debug('[ServiceWorker]', '[ServiceWorker] ✓ Found pending URL, searching for matching tab...');
 
-    const permissionMatches = permissions.origins.some(origin => {
-      // Convert origin pattern to regex
-      // *://example.com/* or *://*.example.com/*
-      const pattern = origin
-        .replace(/\*/g, '.*')
-        .replace(/\./g, '\\.');
-      const regex = new RegExp(pattern);
-      const matches = regex.test(activeTab.url);
-      debug('[ServiceWorker]', `[ServiceWorker] Testing pattern "${origin}" against "${activeTab.url}": ${matches}`);
-      return matches;
-    });
+    // Clear the pending URL immediately to prevent duplicate processing
+    await browser.storage.local.remove('pendingPermissionUrl');
 
+    // Verify the permission actually matches the pending URL
+    const permissionMatches = verifyPermissionMatches(permissions.origins, pendingUrl);
     if (!permissionMatches) {
-      debug('[ServiceWorker]', '[ServiceWorker] ❌ Permission granted for different site, ignoring automatic tracking');
+      debug('[ServiceWorker]', '[ServiceWorker] ❌ Permission doesn\'t match pending URL, aborting');
       return;
     }
 
-    debug('[ServiceWorker]', '[ServiceWorker] ✓ Permission granted for active tab, starting auto-detection...');
+    // Find the tab with the pending URL
+    const tabs = await browser.tabs.query({});
+    const matchingTab = tabs.find(tab => tab.url === pendingUrl);
 
-    // Wait a moment for page to be ready after reload (if it was reloaded)
-    debug('[ServiceWorker]', '[ServiceWorker] Waiting 1.5s for page to be ready...');
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    if (!matchingTab) {
+      debug('[ServiceWorker]', '[ServiceWorker] ❌ No tab found matching pending URL');
+      return;
+    }
 
-    // Calculate detector URL in service worker context where browser polyfill exists
-    const detectorUrl = browser.runtime.getURL('content-scripts/product-detector.js');
+    debug('[ServiceWorker]', '[ServiceWorker] ✓ Found matching tab:', matchingTab.id, matchingTab.url);
 
+    // Wait for page to be ready (permissions grant might cause reload)
+    debug('[ServiceWorker]', '[ServiceWorker] Waiting for page to be ready...');
+    await waitForTabReady(matchingTab.id);
+
+    // Execute product detection
+    await executeProductDetectionOnTab(matchingTab.id, matchingTab.url);
+
+  } catch (error) {
+    debugError('[ServiceWorker]', '[ServiceWorker] ❌ Error during auto-detection after permission grant:', error);
+    debugError('[ServiceWorker]', '[ServiceWorker] Error stack:', error.stack);
+    debug('[ServiceWorker]', '=================================================');
+  }
+});
+
+/**
+ * Verify if granted permissions match a URL
+ * @param {Array<string>} origins - Permission origins (e.g., "*://example.com/*")
+ * @param {string} url - URL to check
+ * @returns {boolean} - True if permission matches URL
+ */
+function verifyPermissionMatches(origins, url) {
+  return origins.some(origin => {
+    // Convert origin pattern to regex (*://example.com/* -> .*://example\.com/.*)
+    const pattern = origin
+      .replace(/\*/g, '.*')
+      .replace(/\./g, '\\.');
+    const regex = new RegExp(pattern);
+    const matches = regex.test(url);
+    debug('[ServiceWorker]', `[ServiceWorker] Testing pattern "${origin}" against "${url}": ${matches}`);
+    return matches;
+  });
+}
+
+/**
+ * Wait for tab to be ready (loaded) before injecting scripts
+ * @param {number} tabId - Tab ID
+ * @param {number} maxWait - Maximum wait time in ms (default: 5000)
+ * @returns {Promise<void>}
+ */
+async function waitForTabReady(tabId, maxWait = 5000) {
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < maxWait) {
+    try {
+      const tab = await browser.tabs.get(tabId);
+
+      // Check if tab is loaded
+      if (tab.status === 'complete') {
+        debug('[ServiceWorker]', '[ServiceWorker] ✓ Tab is ready (status: complete)');
+        return;
+      }
+
+      debug('[ServiceWorker]', `[ServiceWorker] Tab status: ${tab.status}, waiting...`);
+      await new Promise(resolve => setTimeout(resolve, 200));
+    } catch (error) {
+      debugWarn('[ServiceWorker]', '[ServiceWorker] Error checking tab status:', error);
+      break;
+    }
+  }
+
+  debug('[ServiceWorker]', '[ServiceWorker] ⚠️ Max wait time reached or error, proceeding anyway');
+}
+
+/**
+ * Execute product detection on a specific tab
+ * @param {number} tabId - Tab ID
+ * @param {string} tabUrl - Tab URL (for logging)
+ * @returns {Promise<void>}
+ */
+async function executeProductDetectionOnTab(tabId, tabUrl) {
+  debug('[ServiceWorker]', '[ServiceWorker] ✓ Starting product detection on tab:', tabId);
+  debug('[ServiceWorker]', '[ServiceWorker] Tab URL:', tabUrl);
+
+  // Calculate detector URL in service worker context
+  const detectorUrl = browser.runtime.getURL('content-scripts/product-detector.js');
+
+  try {
     // Inject and run product detection
-    debug('[ServiceWorker]', '[ServiceWorker] Injecting product detection script into tab:', activeTab.id);
     const results = await executeScript({
-      target: { tabId: activeTab.id },
+      target: { tabId: tabId },
       func: async (scriptUrl) => {
         // Define API wrapper for Chrome/Firefox compatibility
-        // In injected functions, we don't have access to browser polyfill
         const api = window.chrome || window.browser;
 
         try {
-          debug('[ServiceWorker]', '[Price Drop Tracker] 🚀 Starting auto-detection after permission grant...');
-          debug('[ServiceWorker]', '[Price Drop Tracker] Loading detector module from:', scriptUrl);
+          console.log('[Price Drop Tracker] 🚀 Starting product detection...');
+
+          // Set manual mode to prevent auto-IIFE execution
+          window.__PRICE_TRACKER_MANUAL_MODE__ = true;
+
           const { detectProduct } = await import(scriptUrl);
 
-          debug('[ServiceWorker]', '[Price Drop Tracker] Detector module loaded, waiting 1s for page readiness...');
-          // Wait for page to be fully loaded
-          await new Promise(resolve => setTimeout(resolve, 1000));
-
-          debug('[ServiceWorker]', '[Price Drop Tracker] Running product detection...');
+          console.log('[Price Drop Tracker] Detector loaded, running detection...');
           const productData = await detectProduct();
 
           if (productData) {
-            debug('[ServiceWorker]', '[Price Drop Tracker] ✅ Product detected:', productData.title);
-            debug('[ServiceWorker]', '[Price Drop Tracker] Product ID:', productData.productId);
-            debug('[ServiceWorker]', '[Price Drop Tracker] Price:', productData.price.formatted);
-            debug('[ServiceWorker]', '[Price Drop Tracker] Sending to background for storage...');
+            console.log('[Price Drop Tracker] ✅ Product detected:', productData.title);
 
-            // Use callback-style messaging for Chrome compatibility
+            // Send to background for storage
             const response = await new Promise((resolve, reject) => {
               api.runtime.sendMessage({
                 type: 'PRODUCT_DETECTED',
@@ -564,49 +646,39 @@ browser.permissions.onAdded.addListener(async (permissions) => {
               });
             });
 
-            debug('[ServiceWorker]', '[Price Drop Tracker] Background response:', response);
-
             if (response && response.success && !response.data.alreadyTracked) {
-              debug('[ServiceWorker]', '[Price Drop Tracker] ✓ Product auto-tracked successfully!');
-              return { success: true };
+              console.log('[Price Drop Tracker] ✓ Product tracked successfully!');
+              return { success: true, product: productData };
             } else if (response && response.success && response.data.alreadyTracked) {
-              debug('[ServiceWorker]', '[Price Drop Tracker] ℹ️ Product was already being tracked');
-              return { success: false, alreadyTracked: true };
+              console.log('[Price Drop Tracker] ℹ️ Product already tracked');
+              return { success: true, alreadyTracked: true };
             }
 
-            return { success: false, alreadyTracked: response?.data?.alreadyTracked };
+            return { success: false, error: response?.error || 'Unknown error' };
           } else {
-            debug('[ServiceWorker]', '[Price Drop Tracker] ⚠️ No product detected on this page');
+            console.log('[Price Drop Tracker] ⚠️ No product detected');
             return { success: false, error: 'No product found' };
           }
         } catch (error) {
-          debugError('[ServiceWorker]', '[Price Drop Tracker] ❌ Auto-detection error:', error);
-          debugError('[ServiceWorker]', '[Price Drop Tracker] Error stack:', error.stack);
+          console.error('[Price Drop Tracker] ❌ Detection error:', error);
           return { success: false, error: error.message };
         }
       },
       args: [detectorUrl]
     });
 
-    debug('[ServiceWorker]', '[ServiceWorker] Script execution completed, results:', results);
-
     const result = results?.[0]?.result;
     if (result && result.success) {
-      debug('[ServiceWorker]', '[ServiceWorker] ✅ Product auto-tracked successfully after permission grant!');
-      debug('[ServiceWorker]', '=================================================');
-    } else if (result && result.alreadyTracked) {
-      debug('[ServiceWorker]', '[ServiceWorker] ℹ️ Product was already being tracked');
-      debug('[ServiceWorker]', '=================================================');
+      debug('[ServiceWorker]', '[ServiceWorker] ✅ Product auto-tracked successfully!');
     } else {
-      debug('[ServiceWorker]', '[ServiceWorker] ⚠️ Auto-detection completed but no product added:', result);
-      debug('[ServiceWorker]', '=================================================');
+      debug('[ServiceWorker]', '[ServiceWorker] ⚠️ Detection completed but no product added:', result);
     }
 
   } catch (error) {
-    debugError('[ServiceWorker]', '[ServiceWorker] ❌ Error during auto-detection after permission grant:', error);
-    debugError('[ServiceWorker]', '[ServiceWorker] Error stack:', error.stack);
-    debug('[ServiceWorker]', '=================================================');
+    debugError('[ServiceWorker]', '[ServiceWorker] ❌ Error executing product detection:', error);
   }
-});
+
+  debug('[ServiceWorker]', '=================================================');
+}
 
 debug('[ServiceWorker]', '[ServiceWorker] Service worker ready');

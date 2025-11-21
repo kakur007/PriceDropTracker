@@ -12,26 +12,43 @@ let isDebugEnabled = false;
 // 1. Initialize from storage immediately
 // Note: This is async, so the very first milliseconds of logs might be missed.
 // That is acceptable for a production extension.
+// CRITICAL FIX: Wrap in try/catch for content script safety
+// Content scripts may load this before browser context is fully ready
 if (browser && browser.storage) {
-  browser.storage.local.get('settings').then((data) => {
-    if (data.settings?.advanced?.debugMode) {
-      isDebugEnabled = true;
-      console.log('🐞 [Price Genius] Debug Mode Enabled');
-    }
-  }).catch(() => {}); // Ignore errors in tests/offline
+  try {
+    browser.storage.local.get('settings').then((data) => {
+      if (data.settings?.advanced?.debugMode) {
+        isDebugEnabled = true;
+        console.log('🐞 [Price Genius] Debug Mode Enabled');
+      }
+    }).catch(() => {
+      // Silently ignore errors (content scripts, offline, restricted contexts)
+    });
+  } catch (err) {
+    // Catch synchronous errors (e.g., in restricted injection contexts)
+  }
 }
 
 // 2. Listen for live changes (e.g., user toggles switch in Options)
+// CRITICAL FIX: Wrap in try/catch for content script safety
 if (browser && browser.storage) {
-  browser.storage.onChanged.addListener((changes) => {
-    if (changes.settings) {
-      const newDebugState = changes.settings.newValue?.advanced?.debugMode || false;
-      if (newDebugState !== isDebugEnabled) {
-        isDebugEnabled = newDebugState;
-        console.log(`🐞 [Price Genius] Debug Mode ${isDebugEnabled ? 'Enabled' : 'Disabled'}`);
+  try {
+    browser.storage.onChanged.addListener((changes) => {
+      try {
+        if (changes.settings) {
+          const newDebugState = changes.settings.newValue?.advanced?.debugMode || false;
+          if (newDebugState !== isDebugEnabled) {
+            isDebugEnabled = newDebugState;
+            console.log(`🐞 [Price Genius] Debug Mode ${isDebugEnabled ? 'Enabled' : 'Disabled'}`);
+          }
+        }
+      } catch (err) {
+        // Silently ignore listener errors
       }
-    }
-  });
+    });
+  } catch (err) {
+    // Catch errors when adding listener (restricted contexts)
+  }
 }
 
 /**
