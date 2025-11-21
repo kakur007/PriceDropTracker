@@ -670,14 +670,18 @@ function setupEventListeners() {
       // If not in default list, request permission immediately
       // CRITICAL: No await operations before this point!
       // Firefox requires permissions.request() to be called directly from user gesture
+      // Chrome requires permissions.request() to be called SYNCHRONOUSLY without ANY awaits before it
       if (!isDefaultSupported) {
         debug('[Popup]', 'Custom site detected, requesting permission:', tab.url);
 
-        // CHROME FIX: Save pending URL before requesting permission
+        // CHROME FIX: Save pending URL in background (don't await to preserve user gesture)
         // Chrome will close popup during permission request, we'll resume after reopen
-        await browser.storage.local.set({ pendingPermissionUrl: tab.url });
+        // Fire-and-forget storage save (no await to keep synchronous call chain)
+        browser.storage.local.set({ pendingPermissionUrl: tab.url }).catch(err => {
+          debugError('[Popup]', 'Failed to save pending URL:', err);
+        });
 
-        // THIS IS THE FIRST AWAIT - directly calling permission request
+        // THIS MUST BE CALLED SYNCHRONOUSLY - directly calling permission request
         // Request permission - this will return true if already granted
         // IMPORTANT: In Firefox, requesting permission may close the popup!
         // IMPORTANT: In Chrome, requesting permission WILL close the popup!
