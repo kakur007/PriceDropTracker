@@ -530,6 +530,18 @@ function guessLocale(domain, currencyCode) {
     if (domain.includes('.co.jp') || domain.includes('.jp')) return 'ja-JP';
     if (domain.includes('.in')) return 'en-IN';
     if (domain.includes('.com.br') || domain.includes('.br')) return 'pt-BR';
+    if (domain.includes('.ee')) return 'et-EE';  // Estonia
+    if (domain.includes('.lv')) return 'lv-LV';  // Latvia
+    if (domain.includes('.lt')) return 'lt-LT';  // Lithuania
+    if (domain.includes('.fi')) return 'fi-FI';  // Finland
+    if (domain.includes('.pl')) return 'pl-PL';  // Poland
+    if (domain.includes('.nl')) return 'nl-NL';  // Netherlands
+    if (domain.includes('.be')) return 'nl-BE';  // Belgium
+    if (domain.includes('.at')) return 'de-AT';  // Austria
+    if (domain.includes('.ch')) return 'de-CH';  // Switzerland
+    if (domain.includes('.se')) return 'sv-SE';  // Sweden
+    if (domain.includes('.no')) return 'nb-NO';  // Norway
+    if (domain.includes('.dk')) return 'da-DK';  // Denmark
   }
 
   // Fallback to currency-based guess
@@ -537,7 +549,7 @@ function guessLocale(domain, currencyCode) {
     'USD': 'en-US',
     'CAD': 'en-CA',
     'GBP': 'en-GB',
-    'EUR': 'de-DE',
+    'EUR': 'de-DE',  // Default EUR locale (could be any Eurozone country)
     'JPY': 'ja-JP',
     'CNY': 'zh-CN',
     'KRW': 'ko-KR',
@@ -553,7 +565,8 @@ function guessLocale(domain, currencyCode) {
     'DKK': 'da-DK',
     'PLN': 'pl-PL',
     'RUB': 'ru-RU',
-    'TRY': 'tr-TR'
+    'TRY': 'tr-TR',
+    'BGN': 'bg-BG'
   };
 
   return currencyToLocale[currencyCode] || 'en-US';
