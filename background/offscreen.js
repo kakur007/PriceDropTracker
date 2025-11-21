@@ -54,10 +54,10 @@ function parseHTMLForPrice(html, contextData = {}) {
             const offers = Array.isArray(item.offers) ? item.offers : [item.offers];
 
             for (const offer of offers) {
-              // EBAY FIX: Check if any text field in the offer contains "approximately"
+              // EBAY FIX: Check if any text field in the offer contains "approximately" or "approx"
               // This filters out approximate currency conversions (e.g., AU → US)
               const offerText = JSON.stringify(offer).toLowerCase();
-              if (offerText.includes('approximately') || offerText.includes('approx.')) {
+              if (offerText.includes('approximately') || offerText.includes('approx.') || offerText.includes('approx ')) {
                 console.log('[Offscreen]', 'Skipping approximate offer in JSON-LD');
                 continue; // Skip this offer
               }
@@ -134,7 +134,7 @@ function parseHTMLForPrice(html, contextData = {}) {
           if (priceText) {
             // EBAY FIX: Skip "Approximately" prices (shipping estimates, not actual prices)
             const lowerText = priceText.toLowerCase();
-            if (lowerText.includes('approximately') || lowerText.includes('approx.')) {
+            if (lowerText.includes('approximately') || lowerText.includes('approx.') || lowerText.includes('approx ')) {
               debug('[offscreen]', `Skipping approximate price: ${priceText.substring(0, 50)}`);
               continue; // Skip this selector and try next one
             }

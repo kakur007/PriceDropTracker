@@ -140,13 +140,21 @@ export class EbayAdapter extends BaseAdapter {
         text = text.replace(/\s+/g, ' ').trim();
 
         // Filter out conversion/approximate prices (eBay shows these on regional sites)
-        // For example: "AU $25.00 Approximately US $16.50"
-        // We want the first price (AU $25.00), not the conversion (US $16.50)
-        if (text.toLowerCase().includes('approximately')) {
-          // Split on "approximately" and take the first part
-          const parts = text.split(/approximately/i);
-          if (parts.length > 1) {
+        // For example: "AU $25.00 Approximately US $16.50" or "Approx. US $16.50"
+        // We want the actual price, not the conversion
+        const lowerText = text.toLowerCase();
+        if (lowerText.includes('approximately') || lowerText.includes('approx.') || lowerText.includes('approx ')) {
+          // If text starts with approximately/approx, skip this element entirely
+          if (lowerText.trim().startsWith('approximately') || lowerText.trim().startsWith('approx')) {
+            debugWarn('[ebay]', `[eBay] Skipping approximate-only price: "${text.substring(0, 50)}"`);
+            continue; // Skip this selector and try the next one
+          }
+
+          // Otherwise, split on "approximately"/"approx." and take the first part
+          const parts = text.split(/approximately|approx\.?/i);
+          if (parts.length > 1 && parts[0].trim()) {
             text = parts[0].trim();
+            debug('[ebay]', `[eBay] Removed approximate suffix, using: "${text}"`);
           }
         }
 

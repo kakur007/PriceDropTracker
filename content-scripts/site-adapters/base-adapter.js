@@ -200,8 +200,9 @@ export class BaseAdapter {
 
               for (const offer of offers) {
                 // Skip approximate/conversion prices (eBay fix)
+                // Check for "approximately", "approx.", and "approx " (with space)
                 const offerText = JSON.stringify(offer).toLowerCase();
-                if (offerText.includes('approximately') || offerText.includes('approx.')) {
+                if (offerText.includes('approximately') || offerText.includes('approx.') || offerText.includes('approx ')) {
                   debug('[base-adapter]', '[Adapter] Skipping approximate offer in JSON-LD');
                   continue;
                 }

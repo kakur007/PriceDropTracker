@@ -121,10 +121,10 @@ function extractPriceFromDocument(doc, contextData = {}) {
           const offers = Array.isArray(item.offers) ? item.offers : [item.offers];
 
           for (const offer of offers) {
-            // EBAY FIX: Check if any text field in the offer contains "approximately"
+            // EBAY FIX: Check if any text field in the offer contains "approximately" or "approx"
             // This filters out approximate currency conversions (e.g., AU → US)
             const offerText = JSON.stringify(offer).toLowerCase();
-            if (offerText.includes('approximately') || offerText.includes('approx.')) {
+            if (offerText.includes('approximately') || offerText.includes('approx.') || offerText.includes('approx ')) {
               debug('[PriceChecker]', 'Skipping approximate offer in JSON-LD');
               continue; // Skip this offer
             }
@@ -208,7 +208,7 @@ function extractPriceFromDocument(doc, contextData = {}) {
         if (priceText) {
           // EBAY FIX: Skip "Approximately" prices (shipping estimates, not actual prices)
           const lowerText = priceText.toLowerCase();
-          if (lowerText.includes('approximately') || lowerText.includes('approx.')) {
+          if (lowerText.includes('approximately') || lowerText.includes('approx.') || lowerText.includes('approx ')) {
             debug('[PriceChecker]', `Skipping approximate price: ${priceText.substring(0, 50)}`);
             continue; // Skip this selector and try next one
           }
@@ -401,10 +401,10 @@ function extractPriceFromRawHTML(html, contextData) {
         if (item['@type'] === 'Product' && item.offers) {
           const offers = Array.isArray(item.offers) ? item.offers : [item.offers];
           for (const offer of offers) {
-            // EBAY FIX: Check if any text field in the offer contains "approximately"
+            // EBAY FIX: Check if any text field in the offer contains "approximately" or "approx"
             // This filters out approximate currency conversions (e.g., AU → US)
             const offerText = JSON.stringify(offer).toLowerCase();
-            if (offerText.includes('approximately') || offerText.includes('approx.')) {
+            if (offerText.includes('approximately') || offerText.includes('approx.') || offerText.includes('approx ')) {
               debug('[PriceChecker]', 'Skipping approximate offer in regex JSON-LD');
               continue; // Skip this offer
             }
@@ -469,10 +469,16 @@ function extractPriceFromRawHTML(html, contextData) {
     // Amazon offscreen
     /<span class="a-offscreen">([^<]+)<\/span>/i,
 
-    // eBay - multiple patterns for different layouts
-    /<span[^>]*class="[^"]*x-price-primary[^"]*"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>/i,
-    /<div[^>]*class="[^"]*x-price-primary[^"]*"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>/i,
+    // eBay - multiple patterns for different layouts and Chrome/Firefox differences
+    // Modern eBay design with x-price-primary class
+    /<div[^>]*class="[^"]*x-price-primary[^"]*"[^>]*>[\s\S]{0,300}?<span[^>]*class="[^"]*ux-textspans[^"]*"[^>]*>([^<]+)<\/span>/i,
+    /<span[^>]*class="[^"]*x-price-primary[^"]*"[^>]*>[\s\S]{0,300}?<span[^>]*>([^<]+)<\/span>/i,
+    /<div[^>]*class="[^"]*x-price-primary[^"]*"[^>]*>[\s\S]{0,200}?<span[^>]*>([^<]+)<\/span>/i,
+    // Classic eBay IDs
     /<span[^>]*id="prcIsum"[^>]*>([^<]+)<\/span>/i,
+    /<span[^>]*id="mm-saleDscPrc"[^>]*>([^<]+)<\/span>/i,
+    // eBay with itemprop
+    /<span[^>]*itemprop="price"[^>]*>([^<]+)<\/span>/i,
 
     // Target
     /<span[^>]*data-test="product-price"[^>]*>([^<]+)<\/span>/i,
@@ -504,7 +510,7 @@ function extractPriceFromRawHTML(html, contextData) {
 
       // EBAY FIX: Skip "Approximately" prices (shipping estimates, not actual prices)
       const lowerText = text.toLowerCase();
-      if (lowerText.includes('approximately') || lowerText.includes('approx.')) {
+      if (lowerText.includes('approximately') || lowerText.includes('approx.') || lowerText.includes('approx ')) {
         debug('[PriceChecker]', `Skipping approximate price in regex: ${text.substring(0, 50)}`);
         continue; // Skip this pattern and try next one
       }

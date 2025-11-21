@@ -61,7 +61,8 @@ export function getAdapter(document, url) {
     return new AliExpressAdapter(document, url);
   }
 
-  if (domain.includes('booztlet')) {
+  // Match both boozt.com and booztlet.com
+  if (domain.includes('boozt')) {
     return new BooztletAdapter(document, url);
   }
 
