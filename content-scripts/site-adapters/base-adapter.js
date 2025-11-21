@@ -197,6 +197,11 @@ export class BaseAdapter {
             // Check if this is a Product with offers
             if (item['@type'] === 'Product' && item.offers) {
               const offers = Array.isArray(item.offers) ? item.offers : [item.offers];
+              const expectedCurrency = this.getExpectedCurrency();
+
+              // Strategy: Collect all valid offers, prioritize by currency match
+              let matchingCurrencyOffer = null;
+              let fallbackOffer = null;
 
               for (const offer of offers) {
                 // Skip approximate/conversion prices (eBay fix)
@@ -213,10 +218,32 @@ export class BaseAdapter {
                   // Parse the price with context
                   const parsed = this.parsePriceWithContext(String(priceValue));
                   if (parsed) {
-                    debug('[base-adapter]', '[Adapter] ✓ Extracted price from JSON-LD:', parsed.numeric, parsed.currency);
-                    return parsed;
+                    // Check if offer has explicit priceCurrency that doesn't match expected
+                    const offerCurrency = offer.priceCurrency || parsed.currency;
+
+                    if (expectedCurrency && offerCurrency !== expectedCurrency) {
+                      // Currency mismatch - this might be a conversion price
+                      debug('[base-adapter]', `[Adapter] Skipping offer with mismatched currency: ${offerCurrency} (expected ${expectedCurrency})`);
+                      if (!fallbackOffer) {
+                        fallbackOffer = parsed; // Keep as fallback
+                      }
+                      continue;
+                    }
+
+                    // Currency matches or no expected currency - prioritize this
+                    if (!matchingCurrencyOffer) {
+                      matchingCurrencyOffer = parsed;
+                      debug('[base-adapter]', '[Adapter] ✓ Found matching currency offer:', parsed.numeric, parsed.currency);
+                    }
                   }
                 }
+              }
+
+              // Return the best offer we found
+              const bestOffer = matchingCurrencyOffer || fallbackOffer;
+              if (bestOffer) {
+                debug('[base-adapter]', '[Adapter] ✓ Extracted price from JSON-LD:', bestOffer.numeric, bestOffer.currency);
+                return bestOffer;
               }
             }
           }

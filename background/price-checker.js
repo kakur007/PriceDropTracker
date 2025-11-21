@@ -119,6 +119,11 @@ function extractPriceFromDocument(doc, contextData = {}) {
       for (const item of items) {
         if (item['@type'] === 'Product' && item.offers) {
           const offers = Array.isArray(item.offers) ? item.offers : [item.offers];
+          const expectedCurrency = contextData.expectedCurrency || getExpectedCurrencyFromDomain(contextData.domain || '');
+
+          // Strategy: Collect all valid offers, prioritize by currency match
+          let matchingCurrencyPrice = null;
+          let fallbackPrice = null;
 
           for (const offer of offers) {
             // EBAY FIX: Check if any text field in the offer contains "approximately" or "approx"
@@ -131,12 +136,34 @@ function extractPriceFromDocument(doc, contextData = {}) {
 
             const priceString = offer.price || offer.lowPrice;
             if (priceString) {
-              newPrice = parseNumericPrice(String(priceString), contextData);
-              if (newPrice !== null) {
-                detectionMethod = 'schema.org';
-                break;
+              const parsed = parsePrice(String(priceString), contextData);
+              if (parsed && parsed.numeric !== null) {
+                // Check if offer has explicit priceCurrency that doesn't match expected
+                const offerCurrency = offer.priceCurrency || parsed.currency;
+
+                if (expectedCurrency && offerCurrency !== expectedCurrency) {
+                  // Currency mismatch - this might be a conversion price
+                  debug('[PriceChecker]', `Skipping offer with mismatched currency: ${offerCurrency} (expected ${expectedCurrency})`);
+                  if (fallbackPrice === null) {
+                    fallbackPrice = parsed.numeric; // Keep as fallback
+                  }
+                  continue;
+                }
+
+                // Currency matches or no expected currency - prioritize this
+                if (matchingCurrencyPrice === null) {
+                  matchingCurrencyPrice = parsed.numeric;
+                  debug('[PriceChecker]', `Found matching currency offer: ${parsed.numeric} ${parsed.currency}`);
+                }
               }
             }
+          }
+
+          // Use the best price we found
+          newPrice = matchingCurrencyPrice !== null ? matchingCurrencyPrice : fallbackPrice;
+          if (newPrice !== null) {
+            detectionMethod = 'schema.org';
+            break;
           }
         }
         if (newPrice !== null) break;
@@ -400,6 +427,12 @@ function extractPriceFromRawHTML(html, contextData) {
       for (const item of items) {
         if (item['@type'] === 'Product' && item.offers) {
           const offers = Array.isArray(item.offers) ? item.offers : [item.offers];
+          const expectedCurrency = contextData.expectedCurrency || getExpectedCurrencyFromDomain(contextData.domain || '');
+
+          // Strategy: Collect all valid offers, prioritize by currency match
+          let matchingCurrencyPrice = null;
+          let fallbackPrice = null;
+
           for (const offer of offers) {
             // EBAY FIX: Check if any text field in the offer contains "approximately" or "approx"
             // This filters out approximate currency conversions (e.g., AU → US)
@@ -411,16 +444,38 @@ function extractPriceFromRawHTML(html, contextData) {
 
             const priceString = offer.price || offer.lowPrice;
             if (priceString) {
-              const price = parseNumericPrice(String(priceString), contextData);
-              if (price !== null) {
-                debug('[PriceChecker]', '✓ Extracted price via regex:schema.org:', price);
-                return {
-                  success: true,
-                  price: price,
-                  detectionMethod: 'regex:schema.org'
-                };
+              const parsed = parsePrice(String(priceString), contextData);
+              if (parsed && parsed.numeric !== null) {
+                // Check if offer has explicit priceCurrency that doesn't match expected
+                const offerCurrency = offer.priceCurrency || parsed.currency;
+
+                if (expectedCurrency && offerCurrency !== expectedCurrency) {
+                  // Currency mismatch - this might be a conversion price
+                  debug('[PriceChecker]', `Skipping regex offer with mismatched currency: ${offerCurrency} (expected ${expectedCurrency})`);
+                  if (fallbackPrice === null) {
+                    fallbackPrice = parsed.numeric;
+                  }
+                  continue;
+                }
+
+                // Currency matches or no expected currency - prioritize this
+                if (matchingCurrencyPrice === null) {
+                  matchingCurrencyPrice = parsed.numeric;
+                  debug('[PriceChecker]', `Found matching currency in regex: ${parsed.numeric} ${parsed.currency}`);
+                }
               }
             }
+          }
+
+          // Return the best price we found
+          const bestPrice = matchingCurrencyPrice !== null ? matchingCurrencyPrice : fallbackPrice;
+          if (bestPrice !== null) {
+            debug('[PriceChecker]', '✓ Extracted price via regex:schema.org:', bestPrice);
+            return {
+              success: true,
+              price: bestPrice,
+              detectionMethod: 'regex:schema.org'
+            };
           }
         }
       }
