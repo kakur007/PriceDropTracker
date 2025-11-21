@@ -24,22 +24,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     currentTab = tab;
     debug('[Popup]', 'Current tab cached:', currentTab?.url);
 
-    // CHROME FIX: Check if we just granted permission for this site
-    // Chrome closes popup during permission request, so we need to resume on reopen
-    const result = await browser.storage.local.get('pendingPermissionUrl');
-    if (result.pendingPermissionUrl && result.pendingPermissionUrl === tab.url) {
-      debug('[Popup]', 'Resuming detection after permission grant:', tab.url);
-      // Clear the pending state
-      await browser.storage.local.remove('pendingPermissionUrl');
-      // Wait a moment for popup to fully initialize
-      setTimeout(async () => {
-        const trackBtn = document.getElementById('trackThisPageBtn');
-        if (trackBtn) {
-          // Trigger the detection automatically
-          trackBtn.click();
-        }
-      }, 100);
-    }
+    // NOTE: No auto-resume logic needed here. Service worker handles it via permissions.onAdded
   } catch (error) {
     debugError('[Popup]', 'Error getting current tab:', error);
   }
@@ -675,7 +660,7 @@ function setupEventListeners() {
         debug('[Popup]', 'Custom site detected, requesting permission:', tab.url);
 
         // CHROME FIX: Save pending URL in background (don't await to preserve user gesture)
-        // Chrome will close popup during permission request, we'll resume after reopen
+        // Service worker will read this and handle detection automatically
         // Fire-and-forget storage save (no await to keep synchronous call chain)
         browser.storage.local.set({ pendingPermissionUrl: tab.url }).catch(err => {
           debugError('[Popup]', 'Failed to save pending URL:', err);
@@ -683,8 +668,8 @@ function setupEventListeners() {
 
         // THIS MUST BE CALLED SYNCHRONOUSLY - directly calling permission request
         // Request permission - this will return true if already granted
-        // IMPORTANT: In Firefox, requesting permission may close the popup!
         // IMPORTANT: In Chrome, requesting permission WILL close the popup!
+        // The service worker's permissions.onAdded listener will handle detection
         const granted = await requestPermissionForUrl(tab.url);
 
         if (!granted) {
@@ -698,9 +683,13 @@ function setupEventListeners() {
         }
 
         debug('[Popup]', 'Permission granted for:', tab.url);
-        // Clear pending state if we got here (Firefox path - popup didn't close)
+
+        // If we reach here, popup didn't close (Firefox or permission already granted)
+        // Clear pending URL since we'll handle it ourselves
         await browser.storage.local.remove('pendingPermissionUrl');
-        // Proceed with detection below - no early return!
+
+        // For Firefox/already-granted case: execute detection here
+        // For Chrome new permission: service worker handles it (popup already closed)
       }
 
       // Execute product detection (we have permission at this point)
