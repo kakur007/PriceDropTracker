@@ -23,6 +23,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
     currentTab = tab;
     debug('[Popup]', 'Current tab cached:', currentTab?.url);
+
+    // CHROME FIX: Check if we just granted permission for this site
+    // Chrome closes popup during permission request, so we need to resume on reopen
+    const result = await browser.storage.local.get('pendingPermissionUrl');
+    if (result.pendingPermissionUrl && result.pendingPermissionUrl === tab.url) {
+      debug('[Popup]', 'Resuming detection after permission grant:', tab.url);
+      // Clear the pending state
+      await browser.storage.local.remove('pendingPermissionUrl');
+      // Wait a moment for popup to fully initialize
+      setTimeout(async () => {
+        const trackBtn = document.getElementById('trackThisPageBtn');
+        if (trackBtn) {
+          // Trigger the detection automatically
+          trackBtn.click();
+        }
+      }, 100);
+    }
   } catch (error) {
     debugError('[Popup]', 'Error getting current tab:', error);
   }
@@ -656,13 +673,20 @@ function setupEventListeners() {
       if (!isDefaultSupported) {
         debug('[Popup]', 'Custom site detected, requesting permission:', tab.url);
 
+        // CHROME FIX: Save pending URL before requesting permission
+        // Chrome will close popup during permission request, we'll resume after reopen
+        await browser.storage.local.set({ pendingPermissionUrl: tab.url });
+
         // THIS IS THE FIRST AWAIT - directly calling permission request
         // Request permission - this will return true if already granted
         // IMPORTANT: In Firefox, requesting permission may close the popup!
+        // IMPORTANT: In Chrome, requesting permission WILL close the popup!
         const granted = await requestPermissionForUrl(tab.url);
 
         if (!granted) {
           debug('[Popup]', 'Permission denied by user');
+          // Clear pending state if denied
+          await browser.storage.local.remove('pendingPermissionUrl');
           showTemporaryMessage('Permission denied. Cannot track products on this site.', 'error');
           trackThisPageBtn.innerHTML = '<span>➕</span>';
           trackThisPageBtn.disabled = false;
@@ -670,6 +694,8 @@ function setupEventListeners() {
         }
 
         debug('[Popup]', 'Permission granted for:', tab.url);
+        // Clear pending state if we got here (Firefox path - popup didn't close)
+        await browser.storage.local.remove('pendingPermissionUrl');
         // Proceed with detection below - no early return!
       }
 

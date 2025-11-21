@@ -85,10 +85,12 @@ function parseHTMLForPrice(html, contextData = {}) {
         { sel: '#priceblock_ourprice', attr: 'textContent' },
 
         // eBay - IMPORTANT: Use textContent, not content attribute (which has price in cents)
+        // Be specific to avoid "Approximately" prices
         { sel: '.x-price-primary [itemprop="price"]', attr: 'textContent' },
-        { sel: '.x-price-primary span', attr: 'textContent' },
+        { sel: '.x-price-primary .ux-textspans--BOLD', attr: 'textContent' },
         { sel: '#prcIsum', attr: 'textContent' },
         { sel: '#mm-saleDscPrc', attr: 'textContent' },
+        { sel: '.x-price-primary span[class*="price"]', attr: 'textContent' },
 
         // Target
         { sel: '[data-test="product-price"]', attr: 'textContent' },
@@ -122,6 +124,13 @@ function parseHTMLForPrice(html, contextData = {}) {
           }
 
           if (priceText) {
+            // EBAY FIX: Skip "Approximately" prices (shipping estimates, not actual prices)
+            const lowerText = priceText.toLowerCase();
+            if (lowerText.includes('approximately') || lowerText.includes('approx.')) {
+              debug('[offscreen]', `Skipping approximate price: ${priceText.substring(0, 50)}`);
+              continue; // Skip this selector and try next one
+            }
+
             newPrice = parseNumericPrice(priceText, contextData);
             if (newPrice !== null) {
               detectionMethod = `selector: ${sel}`;
