@@ -486,6 +486,13 @@ function extractPriceFromRawHTML(html, contextData) {
         .replace(/\s+/g, ' ') // Normalize whitespace
         .trim();
 
+      // EBAY FIX: Skip "Approximately" prices (shipping estimates, not actual prices)
+      const lowerText = text.toLowerCase();
+      if (lowerText.includes('approximately') || lowerText.includes('approx.')) {
+        debug('[PriceChecker]', `Skipping approximate price in regex: ${text.substring(0, 50)}`);
+        continue; // Skip this pattern and try next one
+      }
+
       // Additional sanitization for Booztlet/SportsDirect:
       // Remove any text in parentheses (e.g., "(was 49.99)")
       text = text.replace(/\([^)]*\)/g, '').trim();
