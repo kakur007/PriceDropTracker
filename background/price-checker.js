@@ -109,6 +109,44 @@ function extractPriceFromDocument(doc, contextData = {}) {
   let newPrice = null;
   let detectionMethod = 'none';
 
+  // Helper function to extract price from offers array
+  const extractPriceFromOffers = (offers, contextData) => {
+    const expectedCurrency = contextData.expectedCurrency || getExpectedCurrencyFromDomain(contextData.domain || '');
+    let matchingCurrencyPrice = null;
+    let fallbackPrice = null;
+
+    for (const offer of offers) {
+      const offerText = JSON.stringify(offer).toLowerCase();
+      if (offerText.includes('approximately') || offerText.includes('approx.') || offerText.includes('approx ')) {
+        debug('[PriceChecker]', 'Skipping approximate offer in JSON-LD');
+        continue;
+      }
+
+      const priceString = offer.price || offer.lowPrice;
+      if (priceString) {
+        const parsed = parsePrice(String(priceString), contextData);
+        if (parsed && parsed.numeric !== null) {
+          const offerCurrency = offer.priceCurrency || parsed.currency;
+
+          if (expectedCurrency && offerCurrency !== expectedCurrency) {
+            debug('[PriceChecker]', `Skipping offer with mismatched currency: ${offerCurrency} (expected ${expectedCurrency})`);
+            if (fallbackPrice === null) {
+              fallbackPrice = parsed.numeric;
+            }
+            continue;
+          }
+
+          if (matchingCurrencyPrice === null) {
+            matchingCurrencyPrice = parsed.numeric;
+            debug('[PriceChecker]', `Found matching currency offer: ${parsed.numeric} ${parsed.currency}`);
+          }
+        }
+      }
+    }
+
+    return matchingCurrencyPrice !== null ? matchingCurrencyPrice : fallbackPrice;
+  };
+
   // 1. Try to find price via Schema.org JSON-LD (most reliable)
   const schemaScripts = doc.querySelectorAll('script[type="application/ld+json"]');
   for (const script of schemaScripts) {
@@ -117,55 +155,33 @@ function extractPriceFromDocument(doc, contextData = {}) {
       const items = schema['@graph'] || (Array.isArray(schema) ? schema : [schema]);
 
       for (const item of items) {
+        // Handle Product with offers
         if (item['@type'] === 'Product' && item.offers) {
           const offers = Array.isArray(item.offers) ? item.offers : [item.offers];
-          const expectedCurrency = contextData.expectedCurrency || getExpectedCurrencyFromDomain(contextData.domain || '');
-
-          // Strategy: Collect all valid offers, prioritize by currency match
-          let matchingCurrencyPrice = null;
-          let fallbackPrice = null;
-
-          for (const offer of offers) {
-            // EBAY FIX: Check if any text field in the offer contains "approximately" or "approx"
-            // This filters out approximate currency conversions (e.g., AU → US)
-            const offerText = JSON.stringify(offer).toLowerCase();
-            if (offerText.includes('approximately') || offerText.includes('approx.') || offerText.includes('approx ')) {
-              debug('[PriceChecker]', 'Skipping approximate offer in JSON-LD');
-              continue; // Skip this offer
-            }
-
-            const priceString = offer.price || offer.lowPrice;
-            if (priceString) {
-              const parsed = parsePrice(String(priceString), contextData);
-              if (parsed && parsed.numeric !== null) {
-                // Check if offer has explicit priceCurrency that doesn't match expected
-                const offerCurrency = offer.priceCurrency || parsed.currency;
-
-                if (expectedCurrency && offerCurrency !== expectedCurrency) {
-                  // Currency mismatch - this might be a conversion price
-                  debug('[PriceChecker]', `Skipping offer with mismatched currency: ${offerCurrency} (expected ${expectedCurrency})`);
-                  if (fallbackPrice === null) {
-                    fallbackPrice = parsed.numeric; // Keep as fallback
-                  }
-                  continue;
-                }
-
-                // Currency matches or no expected currency - prioritize this
-                if (matchingCurrencyPrice === null) {
-                  matchingCurrencyPrice = parsed.numeric;
-                  debug('[PriceChecker]', `Found matching currency offer: ${parsed.numeric} ${parsed.currency}`);
-                }
-              }
-            }
-          }
-
-          // Use the best price we found
-          newPrice = matchingCurrencyPrice !== null ? matchingCurrencyPrice : fallbackPrice;
+          newPrice = extractPriceFromOffers(offers, contextData);
           if (newPrice !== null) {
             detectionMethod = 'schema.org';
             break;
           }
         }
+
+        // BOOZT FIX: Handle ProductGroup with hasVariant
+        if (item['@type'] === 'ProductGroup' && item.hasVariant) {
+          debug('[PriceChecker]', 'Found ProductGroup, checking variants...');
+          const variants = Array.isArray(item.hasVariant) ? item.hasVariant : [item.hasVariant];
+
+          for (const variant of variants) {
+            if (variant['@type'] === 'Product' && variant.offers) {
+              const offers = Array.isArray(variant.offers) ? variant.offers : [variant.offers];
+              newPrice = extractPriceFromOffers(offers, contextData);
+              if (newPrice !== null) {
+                detectionMethod = 'schema.org';
+                break;
+              }
+            }
+          }
+        }
+
         if (newPrice !== null) break;
       }
     } catch (e) {
@@ -415,6 +431,44 @@ async function parseHTMLForPrice(html, contextData = {}) {
 function extractPriceFromRawHTML(html, contextData) {
   debug('[PriceChecker]', 'Attempting regex-based price extraction...');
 
+  // Helper function to extract price from offers array (regex version)
+  const extractPriceFromOffersRegex = (offers, contextData) => {
+    const expectedCurrency = contextData.expectedCurrency || getExpectedCurrencyFromDomain(contextData.domain || '');
+    let matchingCurrencyPrice = null;
+    let fallbackPrice = null;
+
+    for (const offer of offers) {
+      const offerText = JSON.stringify(offer).toLowerCase();
+      if (offerText.includes('approximately') || offerText.includes('approx.') || offerText.includes('approx ')) {
+        debug('[PriceChecker]', 'Skipping approximate offer in regex JSON-LD');
+        continue;
+      }
+
+      const priceString = offer.price || offer.lowPrice;
+      if (priceString) {
+        const parsed = parsePrice(String(priceString), contextData);
+        if (parsed && parsed.numeric !== null) {
+          const offerCurrency = offer.priceCurrency || parsed.currency;
+
+          if (expectedCurrency && offerCurrency !== expectedCurrency) {
+            debug('[PriceChecker]', `Skipping regex offer with mismatched currency: ${offerCurrency} (expected ${expectedCurrency})`);
+            if (fallbackPrice === null) {
+              fallbackPrice = parsed.numeric;
+            }
+            continue;
+          }
+
+          if (matchingCurrencyPrice === null) {
+            matchingCurrencyPrice = parsed.numeric;
+            debug('[PriceChecker]', `Found matching currency in regex: ${parsed.numeric} ${parsed.currency}`);
+          }
+        }
+      }
+    }
+
+    return matchingCurrencyPrice !== null ? matchingCurrencyPrice : fallbackPrice;
+  };
+
   // Try to find Schema.org JSON-LD in raw HTML
   const jsonLdRegex = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/gi;
   let match;
@@ -425,50 +479,10 @@ function extractPriceFromRawHTML(html, contextData) {
       const items = schema['@graph'] || (Array.isArray(schema) ? schema : [schema]);
 
       for (const item of items) {
+        // Handle Product with offers
         if (item['@type'] === 'Product' && item.offers) {
           const offers = Array.isArray(item.offers) ? item.offers : [item.offers];
-          const expectedCurrency = contextData.expectedCurrency || getExpectedCurrencyFromDomain(contextData.domain || '');
-
-          // Strategy: Collect all valid offers, prioritize by currency match
-          let matchingCurrencyPrice = null;
-          let fallbackPrice = null;
-
-          for (const offer of offers) {
-            // EBAY FIX: Check if any text field in the offer contains "approximately" or "approx"
-            // This filters out approximate currency conversions (e.g., AU → US)
-            const offerText = JSON.stringify(offer).toLowerCase();
-            if (offerText.includes('approximately') || offerText.includes('approx.') || offerText.includes('approx ')) {
-              debug('[PriceChecker]', 'Skipping approximate offer in regex JSON-LD');
-              continue; // Skip this offer
-            }
-
-            const priceString = offer.price || offer.lowPrice;
-            if (priceString) {
-              const parsed = parsePrice(String(priceString), contextData);
-              if (parsed && parsed.numeric !== null) {
-                // Check if offer has explicit priceCurrency that doesn't match expected
-                const offerCurrency = offer.priceCurrency || parsed.currency;
-
-                if (expectedCurrency && offerCurrency !== expectedCurrency) {
-                  // Currency mismatch - this might be a conversion price
-                  debug('[PriceChecker]', `Skipping regex offer with mismatched currency: ${offerCurrency} (expected ${expectedCurrency})`);
-                  if (fallbackPrice === null) {
-                    fallbackPrice = parsed.numeric;
-                  }
-                  continue;
-                }
-
-                // Currency matches or no expected currency - prioritize this
-                if (matchingCurrencyPrice === null) {
-                  matchingCurrencyPrice = parsed.numeric;
-                  debug('[PriceChecker]', `Found matching currency in regex: ${parsed.numeric} ${parsed.currency}`);
-                }
-              }
-            }
-          }
-
-          // Return the best price we found
-          const bestPrice = matchingCurrencyPrice !== null ? matchingCurrencyPrice : fallbackPrice;
+          const bestPrice = extractPriceFromOffersRegex(offers, contextData);
           if (bestPrice !== null) {
             debug('[PriceChecker]', '✓ Extracted price via regex:schema.org:', bestPrice);
             return {
@@ -476,6 +490,27 @@ function extractPriceFromRawHTML(html, contextData) {
               price: bestPrice,
               detectionMethod: 'regex:schema.org'
             };
+          }
+        }
+
+        // BOOZT FIX: Handle ProductGroup with hasVariant
+        if (item['@type'] === 'ProductGroup' && item.hasVariant) {
+          debug('[PriceChecker]', 'Found ProductGroup in regex, checking variants...');
+          const variants = Array.isArray(item.hasVariant) ? item.hasVariant : [item.hasVariant];
+
+          for (const variant of variants) {
+            if (variant['@type'] === 'Product' && variant.offers) {
+              const offers = Array.isArray(variant.offers) ? variant.offers : [variant.offers];
+              const bestPrice = extractPriceFromOffersRegex(offers, contextData);
+              if (bestPrice !== null) {
+                debug('[PriceChecker]', '✓ Extracted price via regex:schema.org (ProductGroup):', bestPrice);
+                return {
+                  success: true,
+                  price: bestPrice,
+                  detectionMethod: 'regex:schema.org'
+                };
+              }
+            }
           }
         }
       }
