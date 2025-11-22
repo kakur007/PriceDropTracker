@@ -119,24 +119,51 @@ function extractPriceFromDocument(doc, contextData = {}) {
       for (const item of items) {
         if (item['@type'] === 'Product' && item.offers) {
           const offers = Array.isArray(item.offers) ? item.offers : [item.offers];
+          const expectedCurrency = contextData.expectedCurrency || getExpectedCurrencyFromDomain(contextData.domain || '');
+
+          // Strategy: Collect all valid offers, prioritize by currency match
+          let matchingCurrencyPrice = null;
+          let fallbackPrice = null;
 
           for (const offer of offers) {
-            // EBAY FIX: Check if any text field in the offer contains "approximately"
+            // EBAY FIX: Check if any text field in the offer contains "approximately" or "approx"
             // This filters out approximate currency conversions (e.g., AU → US)
             const offerText = JSON.stringify(offer).toLowerCase();
-            if (offerText.includes('approximately') || offerText.includes('approx.')) {
+            if (offerText.includes('approximately') || offerText.includes('approx.') || offerText.includes('approx ')) {
               debug('[PriceChecker]', 'Skipping approximate offer in JSON-LD');
               continue; // Skip this offer
             }
 
             const priceString = offer.price || offer.lowPrice;
             if (priceString) {
-              newPrice = parseNumericPrice(String(priceString), contextData);
-              if (newPrice !== null) {
-                detectionMethod = 'schema.org';
-                break;
+              const parsed = parsePrice(String(priceString), contextData);
+              if (parsed && parsed.numeric !== null) {
+                // Check if offer has explicit priceCurrency that doesn't match expected
+                const offerCurrency = offer.priceCurrency || parsed.currency;
+
+                if (expectedCurrency && offerCurrency !== expectedCurrency) {
+                  // Currency mismatch - this might be a conversion price
+                  debug('[PriceChecker]', `Skipping offer with mismatched currency: ${offerCurrency} (expected ${expectedCurrency})`);
+                  if (fallbackPrice === null) {
+                    fallbackPrice = parsed.numeric; // Keep as fallback
+                  }
+                  continue;
+                }
+
+                // Currency matches or no expected currency - prioritize this
+                if (matchingCurrencyPrice === null) {
+                  matchingCurrencyPrice = parsed.numeric;
+                  debug('[PriceChecker]', `Found matching currency offer: ${parsed.numeric} ${parsed.currency}`);
+                }
               }
             }
+          }
+
+          // Use the best price we found
+          newPrice = matchingCurrencyPrice !== null ? matchingCurrencyPrice : fallbackPrice;
+          if (newPrice !== null) {
+            detectionMethod = 'schema.org';
+            break;
           }
         }
         if (newPrice !== null) break;
@@ -208,7 +235,7 @@ function extractPriceFromDocument(doc, contextData = {}) {
         if (priceText) {
           // EBAY FIX: Skip "Approximately" prices (shipping estimates, not actual prices)
           const lowerText = priceText.toLowerCase();
-          if (lowerText.includes('approximately') || lowerText.includes('approx.')) {
+          if (lowerText.includes('approximately') || lowerText.includes('approx.') || lowerText.includes('approx ')) {
             debug('[PriceChecker]', `Skipping approximate price: ${priceText.substring(0, 50)}`);
             continue; // Skip this selector and try next one
           }
@@ -400,27 +427,55 @@ function extractPriceFromRawHTML(html, contextData) {
       for (const item of items) {
         if (item['@type'] === 'Product' && item.offers) {
           const offers = Array.isArray(item.offers) ? item.offers : [item.offers];
+          const expectedCurrency = contextData.expectedCurrency || getExpectedCurrencyFromDomain(contextData.domain || '');
+
+          // Strategy: Collect all valid offers, prioritize by currency match
+          let matchingCurrencyPrice = null;
+          let fallbackPrice = null;
+
           for (const offer of offers) {
-            // EBAY FIX: Check if any text field in the offer contains "approximately"
+            // EBAY FIX: Check if any text field in the offer contains "approximately" or "approx"
             // This filters out approximate currency conversions (e.g., AU → US)
             const offerText = JSON.stringify(offer).toLowerCase();
-            if (offerText.includes('approximately') || offerText.includes('approx.')) {
+            if (offerText.includes('approximately') || offerText.includes('approx.') || offerText.includes('approx ')) {
               debug('[PriceChecker]', 'Skipping approximate offer in regex JSON-LD');
               continue; // Skip this offer
             }
 
             const priceString = offer.price || offer.lowPrice;
             if (priceString) {
-              const price = parseNumericPrice(String(priceString), contextData);
-              if (price !== null) {
-                debug('[PriceChecker]', '✓ Extracted price via regex:schema.org:', price);
-                return {
-                  success: true,
-                  price: price,
-                  detectionMethod: 'regex:schema.org'
-                };
+              const parsed = parsePrice(String(priceString), contextData);
+              if (parsed && parsed.numeric !== null) {
+                // Check if offer has explicit priceCurrency that doesn't match expected
+                const offerCurrency = offer.priceCurrency || parsed.currency;
+
+                if (expectedCurrency && offerCurrency !== expectedCurrency) {
+                  // Currency mismatch - this might be a conversion price
+                  debug('[PriceChecker]', `Skipping regex offer with mismatched currency: ${offerCurrency} (expected ${expectedCurrency})`);
+                  if (fallbackPrice === null) {
+                    fallbackPrice = parsed.numeric;
+                  }
+                  continue;
+                }
+
+                // Currency matches or no expected currency - prioritize this
+                if (matchingCurrencyPrice === null) {
+                  matchingCurrencyPrice = parsed.numeric;
+                  debug('[PriceChecker]', `Found matching currency in regex: ${parsed.numeric} ${parsed.currency}`);
+                }
               }
             }
+          }
+
+          // Return the best price we found
+          const bestPrice = matchingCurrencyPrice !== null ? matchingCurrencyPrice : fallbackPrice;
+          if (bestPrice !== null) {
+            debug('[PriceChecker]', '✓ Extracted price via regex:schema.org:', bestPrice);
+            return {
+              success: true,
+              price: bestPrice,
+              detectionMethod: 'regex:schema.org'
+            };
           }
         }
       }
@@ -469,10 +524,16 @@ function extractPriceFromRawHTML(html, contextData) {
     // Amazon offscreen
     /<span class="a-offscreen">([^<]+)<\/span>/i,
 
-    // eBay - multiple patterns for different layouts
-    /<span[^>]*class="[^"]*x-price-primary[^"]*"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>/i,
-    /<div[^>]*class="[^"]*x-price-primary[^"]*"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>/i,
+    // eBay - multiple patterns for different layouts and Chrome/Firefox differences
+    // Modern eBay design with x-price-primary class
+    /<div[^>]*class="[^"]*x-price-primary[^"]*"[^>]*>[\s\S]{0,300}?<span[^>]*class="[^"]*ux-textspans[^"]*"[^>]*>([^<]+)<\/span>/i,
+    /<span[^>]*class="[^"]*x-price-primary[^"]*"[^>]*>[\s\S]{0,300}?<span[^>]*>([^<]+)<\/span>/i,
+    /<div[^>]*class="[^"]*x-price-primary[^"]*"[^>]*>[\s\S]{0,200}?<span[^>]*>([^<]+)<\/span>/i,
+    // Classic eBay IDs
     /<span[^>]*id="prcIsum"[^>]*>([^<]+)<\/span>/i,
+    /<span[^>]*id="mm-saleDscPrc"[^>]*>([^<]+)<\/span>/i,
+    // eBay with itemprop
+    /<span[^>]*itemprop="price"[^>]*>([^<]+)<\/span>/i,
 
     // Target
     /<span[^>]*data-test="product-price"[^>]*>([^<]+)<\/span>/i,
@@ -504,7 +565,7 @@ function extractPriceFromRawHTML(html, contextData) {
 
       // EBAY FIX: Skip "Approximately" prices (shipping estimates, not actual prices)
       const lowerText = text.toLowerCase();
-      if (lowerText.includes('approximately') || lowerText.includes('approx.')) {
+      if (lowerText.includes('approximately') || lowerText.includes('approx.') || lowerText.includes('approx ')) {
         debug('[PriceChecker]', `Skipping approximate price in regex: ${text.substring(0, 50)}`);
         continue; // Skip this pattern and try next one
       }

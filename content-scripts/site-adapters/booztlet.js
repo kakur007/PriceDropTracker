@@ -5,10 +5,10 @@ import { BaseAdapter } from './base-adapter.js';
 
 export class BooztletAdapter extends BaseAdapter {
   detectProduct() {
-    return this.url.includes('booztlet.com') && (
-      this.url.includes('/ee/et/') ||
-      /\/\d+\/\d+$/.test(this.url)
-    );
+    // Support both boozt.com and booztlet.com
+    const isBooztSite = this.url.includes('boozt.com') || this.url.includes('booztlet.com');
+    const isProductUrl = this.url.includes('/ee/et/') || /\/\d+\/\d+$/.test(this.url);
+    return isBooztSite && isProductUrl;
   }
 
   extractProductId() {

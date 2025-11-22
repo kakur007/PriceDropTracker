@@ -24,20 +24,25 @@ export async function createOptimizedThumbnail(imageUrl, width = 80, height = 80
   }
 
   return new Promise((resolve) => {
-    const img = new Image();
+    // Try without CORS first for better compatibility
+    const tryLoadImage = (useCors = false, cacheBust = false) => {
+      const img = new Image();
 
-    // Required for canvas export when image is from different origin
-    img.crossOrigin = "Anonymous";
+      // Only set crossOrigin if explicitly requested
+      // Some CDNs (like booztcdn.com) may not have proper CORS headers
+      if (useCors) {
+        img.crossOrigin = "Anonymous";
+      }
 
-    // Add cache-busting parameter to prevent Chrome cache conflict
-    // When page preloads image without CORS, and we request with CORS,
-    // Chrome throws "credentials mode does not match" error
-    // Cache-busting forces a unique request that can use CORS properly
-    const cacheBustUrl = imageUrl.includes('?')
-      ? `${imageUrl}&_cb=${Date.now()}`
-      : `${imageUrl}?_cb=${Date.now()}`;
+      // Add cache-busting parameter if requested
+      let targetUrl = imageUrl;
+      if (cacheBust) {
+        targetUrl = imageUrl.includes('?')
+          ? `${imageUrl}&_cb=${Date.now()}`
+          : `${imageUrl}?_cb=${Date.now()}`;
+      }
 
-    img.onload = () => {
+      img.onload = () => {
       try {
         const canvas = document.createElement('canvas');
         canvas.width = width;
@@ -89,20 +94,46 @@ export async function createOptimizedThumbnail(imageUrl, width = 80, height = 80
       }
     };
 
-    img.onerror = (error) => {
-      debugWarn('[thumbnail-generator]', '[ThumbnailGenerator] Error loading image:', imageUrl, error);
-      resolve(null);
+      img.onerror = (error) => {
+        debugWarn('[thumbnail-generator]', '[ThumbnailGenerator] Error loading image:', targetUrl, error);
+
+        // Retry strategies:
+        // 1st attempt: no CORS, no cache-bust (default, fastest)
+        // 2nd attempt: with CORS, no cache-bust (for cross-origin that supports CORS)
+        // 3rd attempt: with CORS, with cache-bust (avoid cache conflicts)
+        if (!useCors && !cacheBust) {
+          debugWarn('[thumbnail-generator]', '[ThumbnailGenerator] Retrying with CORS...');
+          tryLoadImage(true, false);
+        } else if (useCors && !cacheBust) {
+          debugWarn('[thumbnail-generator]', '[ThumbnailGenerator] Retrying with cache-busting...');
+          tryLoadImage(true, true);
+        } else {
+          // All attempts failed
+          debugWarn('[thumbnail-generator]', '[ThumbnailGenerator] All retry attempts failed');
+          resolve(null);
+        }
+      };
+
+      // Set timeout to avoid hanging
+      setTimeout(() => {
+        if (!img.complete) {
+          debugWarn('[thumbnail-generator]', '[ThumbnailGenerator] Image load timeout:', targetUrl);
+
+          // Try next strategy on timeout
+          if (!useCors && !cacheBust) {
+            tryLoadImage(true, false);
+          } else if (useCors && !cacheBust) {
+            tryLoadImage(true, true);
+          } else {
+            resolve(null);
+          }
+        }
+      }, 5000);
+
+      img.src = targetUrl;
     };
 
-    // Set timeout to avoid hanging
-    setTimeout(() => {
-      if (!img.complete) {
-        debugWarn('[thumbnail-generator]', '[ThumbnailGenerator] Image load timeout:', imageUrl);
-        resolve(null);
-      }
-    }, 5000);
-
-    // Use cache-busted URL to avoid CORS cache conflicts
-    img.src = cacheBustUrl;
+    // Start with no CORS and no cache-busting for best compatibility
+    tryLoadImage(false, false);
   });
 }

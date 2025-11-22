@@ -52,24 +52,51 @@ function parseHTMLForPrice(html, contextData = {}) {
         for (const item of items) {
           if (item['@type'] === 'Product' && item.offers) {
             const offers = Array.isArray(item.offers) ? item.offers : [item.offers];
+            const expectedCurrency = contextData.expectedCurrency;
+
+            // Strategy: Collect all valid offers, prioritize by currency match
+            let matchingCurrencyPrice = null;
+            let fallbackPrice = null;
 
             for (const offer of offers) {
-              // EBAY FIX: Check if any text field in the offer contains "approximately"
+              // EBAY FIX: Check if any text field in the offer contains "approximately" or "approx"
               // This filters out approximate currency conversions (e.g., AU → US)
               const offerText = JSON.stringify(offer).toLowerCase();
-              if (offerText.includes('approximately') || offerText.includes('approx.')) {
+              if (offerText.includes('approximately') || offerText.includes('approx.') || offerText.includes('approx ')) {
                 console.log('[Offscreen]', 'Skipping approximate offer in JSON-LD');
                 continue; // Skip this offer
               }
 
               const priceString = offer.price || offer.lowPrice;
               if (priceString) {
-                newPrice = parseNumericPrice(String(priceString), contextData);
-                if (newPrice !== null) {
-                  detectionMethod = 'schema.org';
-                  break;
+                const parsed = parsePrice(String(priceString), contextData);
+                if (parsed && parsed.numeric !== null) {
+                  // Check if offer has explicit priceCurrency that doesn't match expected
+                  const offerCurrency = offer.priceCurrency || parsed.currency;
+
+                  if (expectedCurrency && offerCurrency !== expectedCurrency) {
+                    // Currency mismatch - this might be a conversion price
+                    debug('[offscreen]', `Skipping offer with mismatched currency: ${offerCurrency} (expected ${expectedCurrency})`);
+                    if (fallbackPrice === null) {
+                      fallbackPrice = parsed.numeric; // Keep as fallback
+                    }
+                    continue;
+                  }
+
+                  // Currency matches or no expected currency - prioritize this
+                  if (matchingCurrencyPrice === null) {
+                    matchingCurrencyPrice = parsed.numeric;
+                    debug('[offscreen]', `Found matching currency offer: ${parsed.numeric} ${parsed.currency}`);
+                  }
                 }
               }
+            }
+
+            // Use the best price we found
+            newPrice = matchingCurrencyPrice !== null ? matchingCurrencyPrice : fallbackPrice;
+            if (newPrice !== null) {
+              detectionMethod = 'schema.org';
+              break;
             }
           }
           if (newPrice !== null) break;
@@ -134,7 +161,7 @@ function parseHTMLForPrice(html, contextData = {}) {
           if (priceText) {
             // EBAY FIX: Skip "Approximately" prices (shipping estimates, not actual prices)
             const lowerText = priceText.toLowerCase();
-            if (lowerText.includes('approximately') || lowerText.includes('approx.')) {
+            if (lowerText.includes('approximately') || lowerText.includes('approx.') || lowerText.includes('approx ')) {
               debug('[offscreen]', `Skipping approximate price: ${priceText.substring(0, 50)}`);
               continue; // Skip this selector and try next one
             }
