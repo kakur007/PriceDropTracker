@@ -194,18 +194,14 @@ export class BaseAdapter {
           const items = data['@graph'] || (Array.isArray(data) ? data : [data]);
 
           for (const item of items) {
-            // Check if this is a Product with offers
-            if (item['@type'] === 'Product' && item.offers) {
-              const offers = Array.isArray(item.offers) ? item.offers : [item.offers];
+            // Helper function to extract price from offers array
+            const extractFromOffers = (offers) => {
               const expectedCurrency = this.getExpectedCurrency();
-
-              // Strategy: Collect all valid offers, prioritize by currency match
               let matchingCurrencyOffer = null;
               let fallbackOffer = null;
 
               for (const offer of offers) {
                 // Skip approximate/conversion prices (eBay fix)
-                // Check for "approximately", "approx.", and "approx " (with space)
                 const offerText = JSON.stringify(offer).toLowerCase();
                 if (offerText.includes('approximately') || offerText.includes('approx.') || offerText.includes('approx ')) {
                   debug('[base-adapter]', '[Adapter] Skipping approximate offer in JSON-LD');
@@ -215,22 +211,18 @@ export class BaseAdapter {
                 // Extract price
                 const priceValue = offer.price || offer.lowPrice;
                 if (priceValue) {
-                  // Parse the price with context
                   const parsed = this.parsePriceWithContext(String(priceValue));
                   if (parsed) {
-                    // Check if offer has explicit priceCurrency that doesn't match expected
                     const offerCurrency = offer.priceCurrency || parsed.currency;
 
                     if (expectedCurrency && offerCurrency !== expectedCurrency) {
-                      // Currency mismatch - this might be a conversion price
                       debug('[base-adapter]', `[Adapter] Skipping offer with mismatched currency: ${offerCurrency} (expected ${expectedCurrency})`);
                       if (!fallbackOffer) {
-                        fallbackOffer = parsed; // Keep as fallback
+                        fallbackOffer = parsed;
                       }
                       continue;
                     }
 
-                    // Currency matches or no expected currency - prioritize this
                     if (!matchingCurrencyOffer) {
                       matchingCurrencyOffer = parsed;
                       debug('[base-adapter]', '[Adapter] ✓ Found matching currency offer:', parsed.numeric, parsed.currency);
@@ -239,11 +231,35 @@ export class BaseAdapter {
                 }
               }
 
-              // Return the best offer we found
-              const bestOffer = matchingCurrencyOffer || fallbackOffer;
+              return matchingCurrencyOffer || fallbackOffer;
+            };
+
+            // Check if this is a Product with offers
+            if (item['@type'] === 'Product' && item.offers) {
+              const offers = Array.isArray(item.offers) ? item.offers : [item.offers];
+              const bestOffer = extractFromOffers(offers);
               if (bestOffer) {
-                debug('[base-adapter]', '[Adapter] ✓ Extracted price from JSON-LD:', bestOffer.numeric, bestOffer.currency);
+                debug('[base-adapter]', '[Adapter] ✓ Extracted price from JSON-LD Product:', bestOffer.numeric, bestOffer.currency);
                 return bestOffer;
+              }
+            }
+
+            // BOOZT FIX: Handle ProductGroup with hasVariant array
+            // Boozt uses ProductGroup with multiple Product variants
+            if (item['@type'] === 'ProductGroup' && item.hasVariant) {
+              debug('[base-adapter]', '[Adapter] Found ProductGroup, checking variants...');
+              const variants = Array.isArray(item.hasVariant) ? item.hasVariant : [item.hasVariant];
+
+              // Try to extract price from first variant with offers
+              for (const variant of variants) {
+                if (variant['@type'] === 'Product' && variant.offers) {
+                  const offers = Array.isArray(variant.offers) ? variant.offers : [variant.offers];
+                  const bestOffer = extractFromOffers(offers);
+                  if (bestOffer) {
+                    debug('[base-adapter]', '[Adapter] ✓ Extracted price from JSON-LD ProductGroup variant:', bestOffer.numeric, bestOffer.currency);
+                    return bestOffer;
+                  }
+                }
               }
             }
           }
