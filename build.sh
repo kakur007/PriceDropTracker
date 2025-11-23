@@ -226,7 +226,8 @@ cat > build/firefox/manifest.json << 'EOF'
       "strict_min_version": "109.0",
       "data_collection_permissions": {
         "interaction_data": false,
-        "technical_data": false
+        "technical_data": false,
+        "required": []
       }
     }
   },
