@@ -227,7 +227,10 @@ cat > build/firefox/manifest.json << 'EOF'
       "data_collection_permissions": {
         "interaction_data": false,
         "technical_data": false,
-        "required": []
+        "required": [
+          "interaction_data",
+          "technical_data"
+        ]
       }
     }
   },
