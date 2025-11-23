@@ -225,8 +225,8 @@ cat > build/firefox/manifest.json << 'EOF'
       "id": "price-genius@gogonano.com",
       "strict_min_version": "109.0",
       "data_collection_permissions": {
-        "allows_data_collection": false,
-        "required": false
+        "interaction_data": false,
+        "technical_data": false
       }
     }
   },
