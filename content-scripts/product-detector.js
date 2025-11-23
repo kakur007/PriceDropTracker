@@ -1079,13 +1079,37 @@ function showTrackingBadge(product) {
     gap: 10px;
   `;
 
-  badge.innerHTML = `
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="10" cy="10" r="10" fill="white" fill-opacity="0.2"/>
-      <path d="M6 10L9 13L14 7" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-    <span>Now tracking: ${product.price.symbol}${product.price.numeric.toFixed(2)}</span>
-  `;
+  // Create SVG icon
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('width', '20');
+  svg.setAttribute('height', '20');
+  svg.setAttribute('viewBox', '0 0 20 20');
+  svg.setAttribute('fill', 'none');
+
+  const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  circle.setAttribute('cx', '10');
+  circle.setAttribute('cy', '10');
+  circle.setAttribute('r', '10');
+  circle.setAttribute('fill', 'white');
+  circle.setAttribute('fill-opacity', '0.2');
+
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', 'M6 10L9 13L14 7');
+  path.setAttribute('stroke', 'white');
+  path.setAttribute('stroke-width', '2');
+  path.setAttribute('stroke-linecap', 'round');
+  path.setAttribute('stroke-linejoin', 'round');
+
+  svg.appendChild(circle);
+  svg.appendChild(path);
+
+  // Create text span
+  const textSpan = document.createElement('span');
+  textSpan.textContent = `Now tracking: ${product.price.symbol}${product.price.numeric.toFixed(2)}`;
+
+  // Append to badge
+  badge.appendChild(svg);
+  badge.appendChild(textSpan);
 
   // Add animation styles
   const style = document.createElement('style');

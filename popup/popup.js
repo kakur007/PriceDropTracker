@@ -215,13 +215,30 @@ function displayProducts(products, filter) {
       showEmptyState();
     } else {
       hideEmptyState();  // Hide the global empty state
-      container.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-icon">🔍</div>
-          <h2>No products match this filter</h2>
-          <p>Try selecting a different tab to view more products.</p>
-        </div>
-      `;
+
+      // Clear container
+      container.textContent = '';
+
+      // Create empty state elements
+      const emptyState = document.createElement('div');
+      emptyState.className = 'empty-state';
+
+      const icon = document.createElement('div');
+      icon.className = 'empty-icon';
+      icon.textContent = '🔍';
+
+      const heading = document.createElement('h2');
+      heading.textContent = 'No products match this filter';
+
+      const paragraph = document.createElement('p');
+      paragraph.textContent = 'Try selecting a different tab to view more products.';
+
+      emptyState.appendChild(icon);
+      emptyState.appendChild(heading);
+      emptyState.appendChild(paragraph);
+
+      container.appendChild(emptyState);
+
       hideLoading();
       document.getElementById('productsList').style.display = 'block';  // Make sure list is visible
     }
@@ -241,8 +258,9 @@ function displayProducts(products, filter) {
   // Group products by domain
   const groupedProducts = groupProductsByDomain(filteredProducts);
 
-  // Create HTML for grouped products
-  container.innerHTML = Object.entries(groupedProducts).map(([domain, products]) => {
+  // Create HTML for grouped products using DOMParser for security
+  const parser = new DOMParser();
+  const htmlString = Object.entries(groupedProducts).map(([domain, products]) => {
     const storeName = getStoreName(domain);
     const productCards = products.map(product => createProductCard(product)).join('');
 
@@ -263,6 +281,13 @@ function displayProducts(products, filter) {
       </div>
     `;
   }).join('');
+
+  // Parse HTML safely and append to container
+  const doc = parser.parseFromString(`<div>${htmlString}</div>`, 'text/html');
+  container.textContent = ''; // Clear existing content
+  Array.from(doc.body.firstChild.children).forEach(child => {
+    container.appendChild(child);
+  });
 
   // Add event listeners to group headers for collapse/expand
   container.querySelectorAll('.group-header').forEach(header => {
@@ -506,7 +531,12 @@ async function executeProductDetection(tabId) {
           // Set manual mode flag to prevent auto-detection IIFE from running
           window.__PRICE_TRACKER_MANUAL_MODE__ = true;
 
-          // Dynamically import the detector module
+          // Validate that scriptUrl is a safe extension URL (security check for dynamic import)
+          if (!scriptUrl || !scriptUrl.startsWith(api.runtime.getURL(''))) {
+            return { success: false, error: 'Invalid script URL' };
+          }
+
+          // Dynamically import the detector module (URL is validated above)
           const { detectProduct } = await import(scriptUrl);
 
           console.log('[Price Drop Tracker] Manual detection started...');
@@ -559,13 +589,37 @@ async function executeProductDetection(tabId) {
                 align-items: center;
                 gap: 10px;
               `;
-              badge.innerHTML = `
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <circle cx="10" cy="10" r="10" fill="white" fill-opacity="0.2"/>
-                  <path d="M6 10L9 13L14 7" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                <span>Now tracking: ${productData.price.formatted}</span>
-              `;
+              // Create SVG icon
+              const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+              svg.setAttribute('width', '20');
+              svg.setAttribute('height', '20');
+              svg.setAttribute('viewBox', '0 0 20 20');
+              svg.setAttribute('fill', 'none');
+
+              const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+              circle.setAttribute('cx', '10');
+              circle.setAttribute('cy', '10');
+              circle.setAttribute('r', '10');
+              circle.setAttribute('fill', 'white');
+              circle.setAttribute('fill-opacity', '0.2');
+
+              const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+              path.setAttribute('d', 'M6 10L9 13L14 7');
+              path.setAttribute('stroke', 'white');
+              path.setAttribute('stroke-width', '2');
+              path.setAttribute('stroke-linecap', 'round');
+              path.setAttribute('stroke-linejoin', 'round');
+
+              svg.appendChild(circle);
+              svg.appendChild(path);
+
+              // Create text span
+              const badgeText = document.createElement('span');
+              badgeText.textContent = `Now tracking: ${productData.price.formatted}`;
+
+              // Append to badge
+              badge.appendChild(svg);
+              badge.appendChild(badgeText);
 
               const style = document.createElement('style');
               style.textContent = `
@@ -644,7 +698,7 @@ function setupEventListeners() {
 
       // Show loading state (after validation but before any async ops)
       trackThisPageBtn.disabled = true;
-      trackThisPageBtn.innerHTML = '<span>⏳</span>';
+      trackThisPageBtn.textContent = '⏳';
 
       debug('[Popup]', 'Track button clicked for URL:', tab.url);
 
@@ -701,7 +755,7 @@ function setupEventListeners() {
           // Clear pending state if denied
           await browser.storage.local.remove('pendingPermissionUrl');
           showTemporaryMessage('Permission denied. Cannot track products on this site.', 'error');
-          trackThisPageBtn.innerHTML = '<span>➕</span>';
+          trackThisPageBtn.textContent = '➕';
           trackThisPageBtn.disabled = false;
           return;
         }
@@ -716,7 +770,7 @@ function setupEventListeners() {
           // Don't run detection here to avoid duplicate injection
           debug('[Popup]', 'Firefox: New permission granted, letting service worker handle detection');
           showTemporaryMessage('Permission granted! Detecting product...', 'info');
-          trackThisPageBtn.innerHTML = '<span>➕</span>';
+          trackThisPageBtn.textContent = '➕';
           trackThisPageBtn.disabled = false;
           return;
         }
@@ -747,13 +801,13 @@ function setupEventListeners() {
       }
 
       // Reset button
-      trackThisPageBtn.innerHTML = '<span>➕</span>';
+      trackThisPageBtn.textContent = '➕';
       trackThisPageBtn.disabled = false;
 
     } catch (error) {
       debugError('[Popup] Error tracking page:', error);
       showTemporaryMessage('Failed to scan page. Make sure you\'re on a product page.', 'error');
-      trackThisPageBtn.innerHTML = '<span>➕</span>';
+      trackThisPageBtn.textContent = '➕';
       trackThisPageBtn.disabled = false;
     }
   });
@@ -930,13 +984,29 @@ function hideEmptyState() {
 function showError(message) {
   debugError('[Popup]', message);
   hideLoading();
-  document.getElementById('productsList').innerHTML = `
-    <div class="empty-state" role="alert">
-      <div class="empty-icon">⚠️</div>
-      <h2>Error</h2>
-      <p>${escapeHtml(message)}</p>
-    </div>
-  `;
+
+  const container = document.getElementById('productsList');
+  container.textContent = ''; // Clear existing content
+
+  const errorState = document.createElement('div');
+  errorState.className = 'empty-state';
+  errorState.setAttribute('role', 'alert');
+
+  const icon = document.createElement('div');
+  icon.className = 'empty-icon';
+  icon.textContent = '⚠️';
+
+  const heading = document.createElement('h2');
+  heading.textContent = 'Error';
+
+  const paragraph = document.createElement('p');
+  paragraph.textContent = message; // textContent auto-escapes
+
+  errorState.appendChild(icon);
+  errorState.appendChild(heading);
+  errorState.appendChild(paragraph);
+
+  container.appendChild(errorState);
 }
 
 /**
