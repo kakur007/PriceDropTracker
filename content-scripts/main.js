@@ -20,15 +20,10 @@ console.log('[Price Drop Tracker] Content script loaded on:', window.location.ho
     console.log('[Price Drop Tracker] Starting product detection initialization...');
 
     // Dynamically import the product detector module
-    const detectorUrl = browser.runtime.getURL('content-scripts/product-detector.js');
-    console.log('[Price Drop Tracker] Loading detector from:', detectorUrl);
+    // Using inline browser.runtime.getURL() to satisfy Firefox static analyzer
+    console.log('[Price Drop Tracker] Loading detector from:', browser.runtime.getURL('content-scripts/product-detector.js'));
 
-    // Validate extension URL before dynamic import (security check)
-    if (!detectorUrl || !detectorUrl.startsWith(browser.runtime.getURL(''))) {
-      throw new Error('Invalid detector URL');
-    }
-
-    const { detectProduct } = await import(detectorUrl);
+    const { detectProduct } = await import(browser.runtime.getURL('content-scripts/product-detector.js'));
 
     console.log('[Price Drop Tracker] ✓ Detector module loaded successfully');
     console.log('[Price Drop Tracker] Extension initialized on', window.location.hostname);

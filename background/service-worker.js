@@ -607,14 +607,11 @@ async function executeProductDetectionOnTab(tabId, tabUrl) {
   debug('[ServiceWorker]', '[ServiceWorker] ✓ Starting product detection on tab:', tabId);
   debug('[ServiceWorker]', '[ServiceWorker] Tab URL:', tabUrl);
 
-  // Calculate detector URL in service worker context
-  const detectorUrl = browser.runtime.getURL('content-scripts/product-detector.js');
-
   try {
     // Inject and run product detection
     const results = await executeScript({
       target: { tabId: tabId },
-      func: async (scriptUrl) => {
+      func: async () => {
         // Define API wrapper for Chrome/Firefox compatibility
         // FIREFOX FIX: Use globals directly, not window.chrome/window.browser
         // In Firefox MV3 content script context, browser APIs are globals, not on window
@@ -631,12 +628,8 @@ async function executeProductDetectionOnTab(tabId, tabUrl) {
           // Set manual mode to prevent auto-IIFE execution
           window.__PRICE_TRACKER_MANUAL_MODE__ = true;
 
-          // Validate extension URL before dynamic import (security check)
-          if (!scriptUrl || !scriptUrl.startsWith(api.runtime.getURL(''))) {
-            return { success: false, error: 'Invalid script URL' };
-          }
-
-          const { detectProduct } = await import(scriptUrl);
+          // Import detector using inline getURL() for Firefox static analyzer
+          const { detectProduct } = await import(api.runtime.getURL('content-scripts/product-detector.js'));
 
           console.log('[Price Drop Tracker] Detector loaded, running detection...');
           const productData = await detectProduct();
@@ -675,8 +668,7 @@ async function executeProductDetectionOnTab(tabId, tabUrl) {
           console.error('[Price Drop Tracker] ❌ Detection error:', error);
           return { success: false, error: error.message };
         }
-      },
-      args: [detectorUrl]
+      }
     });
 
     const result = results?.[0]?.result;

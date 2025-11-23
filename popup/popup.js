@@ -512,12 +512,9 @@ async function executeProductDetection(tabId) {
   try {
     debug('[Popup]', 'Executing script on tab:', tabId);
 
-    // Calculate detector URL in popup context where browser polyfill exists
-    const detectorUrl = browser.runtime.getURL('content-scripts/product-detector.js');
-
     const results = await executeScript({
       target: { tabId: tabId },
-      func: async (scriptUrl) => {
+      func: async () => {
         // Define API wrapper for Chrome/Firefox compatibility
         // In injected functions, we don't have access to browser polyfill
         // FIX: Check globals directly, not window properties
@@ -531,13 +528,8 @@ async function executeProductDetection(tabId) {
           // Set manual mode flag to prevent auto-detection IIFE from running
           window.__PRICE_TRACKER_MANUAL_MODE__ = true;
 
-          // Validate that scriptUrl is a safe extension URL (security check for dynamic import)
-          if (!scriptUrl || !scriptUrl.startsWith(api.runtime.getURL(''))) {
-            return { success: false, error: 'Invalid script URL' };
-          }
-
-          // Dynamically import the detector module (URL is validated above)
-          const { detectProduct } = await import(scriptUrl);
+          // Import detector using inline getURL() for Firefox static analyzer
+          const { detectProduct } = await import(api.runtime.getURL('content-scripts/product-detector.js'));
 
           console.log('[Price Drop Tracker] Manual detection started...');
 
@@ -659,8 +651,7 @@ async function executeProductDetection(tabId) {
           console.error('[Price Drop Tracker] Detection error:', error);
           return { success: false, error: error.message };
         }
-      },
-      args: [detectorUrl]
+      }
     });
 
     debug('[Popup]', 'Script execution results:', results);
