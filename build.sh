@@ -393,7 +393,7 @@ cat > build/firefox/manifest.json << 'EOF'
   "icons": {
     "16": "assets/icons/icon-16.png",
     "32": "assets/icons/icon-32.png",
-    "48": "assets/icons/icon-48.png",
+    "48": "assets/icons/icon-48x48.png",
     "128": "assets/icons/icon-128.png"
   },
 
