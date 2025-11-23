@@ -5,9 +5,11 @@
  * This works in both Chrome MV3 and modern Firefox MV3.
  */
 
-console.log('[Service Worker] Starting background script...');
+import { debug } from '../utils/debug.js';
+
+debug('[Service Worker]', 'Starting background script...');
 
 // Static import - works with type: "module" in manifest
 import './service-worker.js';
 
-console.log('[Service Worker] Module loaded successfully');
+debug('[Service Worker]', 'Module loaded successfully');

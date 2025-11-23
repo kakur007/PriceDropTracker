@@ -20,14 +20,11 @@
 const browserAPI = (() => {
   // Firefox and modern browsers have native 'browser' namespace with Promises
   if (typeof browser !== 'undefined' && browser.runtime) {
-    console.log('[BrowserPolyfill] Using native browser API (Firefox/Promise-based)');
     return browser;
   }
 
   // Chrome and Chromium-based browsers use 'chrome' namespace
   if (typeof chrome !== 'undefined' && chrome.runtime) {
-    console.log('[BrowserPolyfill] Using Chrome API (Chromium/Callback-based)');
-
     // Return chrome API as-is since modern Chrome also supports Promises
     // Chrome has been Promise-compatible since Manifest V3
     return chrome;
@@ -85,7 +82,6 @@ export async function executeScript(options) {
 
   // Manifest V3: Use scripting API (Chrome, newer Firefox)
   if (browserAPI.scripting && browserAPI.scripting.executeScript) {
-    console.log('[BrowserPolyfill] Using Manifest V3 scripting API');
     return await browserAPI.scripting.executeScript({
       target: target,
       func: func,
@@ -95,8 +91,6 @@ export async function executeScript(options) {
 
   // Manifest V2: Use tabs API (Firefox, older browsers)
   if (browserAPI.tabs && browserAPI.tabs.executeScript) {
-    console.log('[BrowserPolyfill] Using Manifest V2 tabs API');
-
     // Convert function to code string for tabs.executeScript
     // For MV2, we need to handle args manually by creating a wrapper
     let code;
@@ -118,5 +112,3 @@ export async function executeScript(options) {
 
   throw new Error('No script execution API available');
 }
-
-console.log(`[BrowserPolyfill] Initialized for ${getBrowserName()}`);
