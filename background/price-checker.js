@@ -126,7 +126,15 @@ function extractPriceFromDocument(doc, contextData = {}) {
       if (priceString) {
         const parsed = parsePrice(String(priceString), contextData);
         if (parsed && parsed.numeric !== null) {
-          const offerCurrency = offer.priceCurrency || parsed.currency;
+          // CRITICAL: Use explicit priceCurrency from JSON-LD offer
+          // The parser might guess wrong currency based on domain (.com = USD)
+          // but JSON-LD explicitly specifies the correct currency
+          if (offer.priceCurrency) {
+            parsed.currency = offer.priceCurrency;
+            debug('[PriceChecker]', `Using explicit currency from JSON-LD: ${offer.priceCurrency}`);
+          }
+
+          const offerCurrency = parsed.currency;
 
           if (expectedCurrency && offerCurrency !== expectedCurrency) {
             debug('[PriceChecker]', `Skipping offer with mismatched currency: ${offerCurrency} (expected ${expectedCurrency})`);
@@ -448,7 +456,15 @@ function extractPriceFromRawHTML(html, contextData) {
       if (priceString) {
         const parsed = parsePrice(String(priceString), contextData);
         if (parsed && parsed.numeric !== null) {
-          const offerCurrency = offer.priceCurrency || parsed.currency;
+          // CRITICAL: Use explicit priceCurrency from JSON-LD offer
+          // The parser might guess wrong currency based on domain (.com = USD)
+          // but JSON-LD explicitly specifies the correct currency
+          if (offer.priceCurrency) {
+            parsed.currency = offer.priceCurrency;
+            debug('[PriceChecker]', `Using explicit currency from JSON-LD (regex): ${offer.priceCurrency}`);
+          }
+
+          const offerCurrency = parsed.currency;
 
           if (expectedCurrency && offerCurrency !== expectedCurrency) {
             debug('[PriceChecker]', `Skipping regex offer with mismatched currency: ${offerCurrency} (expected ${expectedCurrency})`);

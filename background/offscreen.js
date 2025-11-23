@@ -59,7 +59,15 @@ function parseHTMLForPrice(html, contextData = {}) {
         if (priceString) {
           const parsed = parsePrice(String(priceString), contextData);
           if (parsed && parsed.numeric !== null) {
-            const offerCurrency = offer.priceCurrency || parsed.currency;
+            // CRITICAL: Use explicit priceCurrency from JSON-LD offer
+            // The parser might guess wrong currency based on domain (.com = USD)
+            // but JSON-LD explicitly specifies the correct currency
+            if (offer.priceCurrency) {
+              parsed.currency = offer.priceCurrency;
+              debug('[offscreen]', `Using explicit currency from JSON-LD: ${offer.priceCurrency}`);
+            }
+
+            const offerCurrency = parsed.currency;
 
             if (expectedCurrency && offerCurrency !== expectedCurrency) {
               debug('[offscreen]', `Skipping offer with mismatched currency: ${offerCurrency} (expected ${expectedCurrency})`);

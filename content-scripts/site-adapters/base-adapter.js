@@ -213,7 +213,15 @@ export class BaseAdapter {
                 if (priceValue) {
                   const parsed = this.parsePriceWithContext(String(priceValue));
                   if (parsed) {
-                    const offerCurrency = offer.priceCurrency || parsed.currency;
+                    // CRITICAL: Use explicit priceCurrency from JSON-LD offer
+                    // The parser might guess wrong currency based on domain (.com = USD)
+                    // but JSON-LD explicitly specifies the correct currency
+                    if (offer.priceCurrency) {
+                      parsed.currency = offer.priceCurrency;
+                      debug('[base-adapter]', `[Adapter] Using explicit currency from JSON-LD: ${offer.priceCurrency}`);
+                    }
+
+                    const offerCurrency = parsed.currency;
 
                     if (expectedCurrency && offerCurrency !== expectedCurrency) {
                       debug('[base-adapter]', `[Adapter] Skipping offer with mismatched currency: ${offerCurrency} (expected ${expectedCurrency})`);
