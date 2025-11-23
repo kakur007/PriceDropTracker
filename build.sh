@@ -223,7 +223,7 @@ cat > build/firefox/manifest.json << 'EOF'
   "browser_specific_settings": {
     "gecko": {
       "id": "price-genius@gogonano.com",
-      "strict_min_version": "109.0",
+      "strict_min_version": "128.0",
       "data_collection_permissions": {
         "required": [ "none" ]
       }
