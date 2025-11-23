@@ -631,6 +631,11 @@ async function executeProductDetectionOnTab(tabId, tabUrl) {
           // Set manual mode to prevent auto-IIFE execution
           window.__PRICE_TRACKER_MANUAL_MODE__ = true;
 
+          // Validate extension URL before dynamic import (security check)
+          if (!scriptUrl || !scriptUrl.startsWith(api.runtime.getURL(''))) {
+            return { success: false, error: 'Invalid script URL' };
+          }
+
           const { detectProduct } = await import(scriptUrl);
 
           console.log('[Price Drop Tracker] Detector loaded, running detection...');

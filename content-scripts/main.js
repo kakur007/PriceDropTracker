@@ -23,6 +23,11 @@ console.log('[Price Drop Tracker] Content script loaded on:', window.location.ho
     const detectorUrl = browser.runtime.getURL('content-scripts/product-detector.js');
     console.log('[Price Drop Tracker] Loading detector from:', detectorUrl);
 
+    // Validate extension URL before dynamic import (security check)
+    if (!detectorUrl || !detectorUrl.startsWith(browser.runtime.getURL(''))) {
+      throw new Error('Invalid detector URL');
+    }
+
     const { detectProduct } = await import(detectorUrl);
 
     console.log('[Price Drop Tracker] ✓ Detector module loaded successfully');

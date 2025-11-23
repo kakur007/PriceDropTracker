@@ -140,14 +140,28 @@ export function showToast(message, type = 'info', duration = 3000) {
   toast.className = `toast toast-${type}`;
   toast.setAttribute('role', 'alert');
 
-  toast.innerHTML = `
-    <span class="toast-icon">${icons[type] || icons.info}</span>
-    <span class="toast-message">${escapeHtml(message)}</span>
-    <button class="toast-close" aria-label="Close notification">×</button>
-  `;
+  // Create icon span
+  const iconSpan = document.createElement('span');
+  iconSpan.className = 'toast-icon';
+  iconSpan.textContent = icons[type] || icons.info;
+
+  // Create message span
+  const messageSpan = document.createElement('span');
+  messageSpan.className = 'toast-message';
+  messageSpan.textContent = message; // textContent auto-escapes
+
+  // Create close button
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'toast-close';
+  closeBtn.setAttribute('aria-label', 'Close notification');
+  closeBtn.textContent = '×';
+
+  // Append all elements
+  toast.appendChild(iconSpan);
+  toast.appendChild(messageSpan);
+  toast.appendChild(closeBtn);
 
   // Close button handler
-  const closeBtn = toast.querySelector('.toast-close');
   closeBtn.addEventListener('click', () => {
     dismissToast(toast);
   });
