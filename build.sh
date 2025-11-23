@@ -217,13 +217,16 @@ cat > build/firefox/manifest.json << 'EOF'
   "manifest_version": 3,
   "name": "Price Genius by GoGoNano",
   "version": "1.0.0",
-  "description": "Automatically track product prices and get notified when they drop. Works across Amazon, eBay, Walmart, Etsy, AliExpress, Shopify stores, Zalando, ASOS, MediaMarkt, and thousands more e-commerce sites.",
+  "description": "Track product prices and get notified when they drop. Works on Amazon, eBay, Walmart, Etsy, Shopify, and thousands more sites.",
   "author": "GoGoNano",
 
   "browser_specific_settings": {
     "gecko": {
       "id": "price-genius@gogonano.com",
-      "strict_min_version": "109.0"
+      "strict_min_version": "109.0",
+      "data_collection_permissions": {
+        "allows_data_collection": false
+      }
     }
   },
 
