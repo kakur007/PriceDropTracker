@@ -11,6 +11,40 @@ export class BooztletAdapter extends BaseAdapter {
     return isBooztSite && isProductUrl;
   }
 
+  getExpectedCurrency() {
+    // Boozt uses country codes in URL paths to determine currency
+    // Format: /[country-code]/[language-code]/
+    // Examples: /ee/et/ (Estonia), /se/sv/ (Sweden), /dk/da/ (Denmark)
+
+    // EUR countries (Eurozone)
+    if (this.url.includes('/ee/')) return 'EUR'; // Estonia
+    if (this.url.includes('/fi/')) return 'EUR'; // Finland
+    if (this.url.includes('/de/')) return 'EUR'; // Germany
+    if (this.url.includes('/nl/')) return 'EUR'; // Netherlands
+    if (this.url.includes('/be/')) return 'EUR'; // Belgium
+    if (this.url.includes('/at/')) return 'EUR'; // Austria
+    if (this.url.includes('/fr/')) return 'EUR'; // France
+    if (this.url.includes('/es/')) return 'EUR'; // Spain
+    if (this.url.includes('/it/')) return 'EUR'; // Italy
+    if (this.url.includes('/ie/')) return 'EUR'; // Ireland
+    if (this.url.includes('/pt/')) return 'EUR'; // Portugal
+    if (this.url.includes('/lu/')) return 'EUR'; // Luxembourg
+
+    // Nordic countries with own currencies
+    if (this.url.includes('/se/')) return 'SEK'; // Sweden
+    if (this.url.includes('/dk/')) return 'DKK'; // Denmark
+    if (this.url.includes('/no/')) return 'NOK'; // Norway
+
+    // Other European countries
+    if (this.url.includes('/ch/')) return 'CHF'; // Switzerland
+    if (this.url.includes('/gb/') || this.url.includes('/uk/')) return 'GBP'; // United Kingdom
+    if (this.url.includes('/pl/')) return 'PLN'; // Poland
+    if (this.url.includes('/cz/')) return 'CZK'; // Czech Republic
+
+    // Default: null (let parser decide)
+    return null;
+  }
+
   extractProductId() {
     // URL format: .../product-name_ID1/ID2
     const matches = this.url.match(/\/(\d+)$/);
