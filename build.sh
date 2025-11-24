@@ -29,7 +29,7 @@ cat > build/chrome/manifest.json << 'EOF'
   "manifest_version": 3,
   "name": "Price Genius by GoGoNano",
   "version": "1.0.0",
-  "description": "Track product prices and get notified when they drop. Works on Amazon, eBay, Walmart, Etsy, Shopify, and thousands more sites.",
+  "description": "Track product prices and get notified when they drop. Automatic monitoring across thousands of online stores.",
   "author": "GoGoNano",
 
   "permissions": [
@@ -217,7 +217,7 @@ cat > build/firefox/manifest.json << 'EOF'
   "manifest_version": 3,
   "name": "Price Genius by GoGoNano",
   "version": "1.0.0",
-  "description": "Track product prices and get notified when they drop. Works on Amazon, eBay, Walmart, Etsy, Shopify, and thousands more sites.",
+  "description": "Track product prices and get notified when they drop. Automatic monitoring across thousands of online stores.",
   "author": "GoGoNano",
 
   "browser_specific_settings": {
