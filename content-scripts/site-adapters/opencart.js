@@ -111,13 +111,26 @@ export class OpenCartAdapter extends BaseAdapter {
   /**
    * Extract product price
    * OpenCart typically uses .price-new for sale prices and .price for regular prices
-   * DOM extraction is prioritized to avoid parsing issues during initial page load
+   * Meta tag extraction is prioritized as it's most reliable (same as background checks)
    * @returns {Object|null} Parsed price data or null
    */
   extractPrice() {
     debug('[opencart]', '[OpenCart Adapter] Starting price extraction...');
 
-    // PRIORITY 1: Try sale price (.price-new) - most reliable for OpenCart
+    // PRIORITY 1: Extract from Open Graph meta tag (same method as background refresh)
+    const ogPriceMeta = this.querySelector('meta[property="og:price:amount"]');
+    if (ogPriceMeta) {
+      const priceValue = ogPriceMeta.getAttribute('content');
+      if (priceValue) {
+        const parsed = this.parsePriceWithContext(priceValue);
+        if (parsed && parsed.confidence >= 0.70) {
+          debug('[opencart]', `[OpenCart Adapter] ✓ Found price in meta tag: ${parsed.numeric} ${parsed.currency}`);
+          return this.validateCurrency(parsed);
+        }
+      }
+    }
+
+    // PRIORITY 2: Try sale price (.price-new)
     const newPriceElement = this.querySelector('.price-new');
     if (newPriceElement) {
       const priceText = newPriceElement.textContent?.trim();
@@ -142,7 +155,7 @@ export class OpenCartAdapter extends BaseAdapter {
       }
     }
 
-    // PRIORITY 2: Standard price (.price)
+    // PRIORITY 3: Standard price (.price)
     // Clone and clean to avoid getting old price mixed in
     const priceElement = this.querySelector('.price');
     if (priceElement) {
@@ -163,7 +176,7 @@ export class OpenCartAdapter extends BaseAdapter {
       }
     }
 
-    // PRIORITY 3: Try JSON-LD structured data (fallback)
+    // PRIORITY 4: Try JSON-LD structured data (fallback)
     const jsonLdPrice = this.extractPriceFromJsonLd();
     if (jsonLdPrice && jsonLdPrice.confidence >= 0.70) {
       debug('[opencart]', `[OpenCart Adapter] ✓ Found price in JSON-LD: ${jsonLdPrice.numeric} ${jsonLdPrice.currency}`);
