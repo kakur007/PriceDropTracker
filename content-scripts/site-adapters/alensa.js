@@ -6,7 +6,7 @@
  */
 
 import { BaseAdapter } from './base-adapter.js';
-import { debug } from '../../utils/debug.js';
+import { debug, debugError } from '../../utils/debug.js';
 
 export class AlensaAdapter extends BaseAdapter {
   /**
@@ -32,7 +32,13 @@ export class AlensaAdapter extends BaseAdapter {
     debug('[alensa]', `[Alensa Adapter] Detection checks: productClass=${hasProductClass}, productInput=${hasProductInput}`);
 
     const isProduct = hasProductClass || hasProductInput;
-    debug('[alensa]', `[Alensa Adapter] Product detected: ${isProduct}`);
+
+    // CRITICAL: Always log detection failures for troubleshooting
+    if (!isProduct) {
+      debugError('[alensa]', `[Alensa Adapter] ✗ Product NOT detected - productClass=${hasProductClass}, productInput=${hasProductInput}`);
+    } else {
+      debug('[alensa]', `[Alensa Adapter] ✓ Product detected`);
+    }
 
     return isProduct;
   }
@@ -138,7 +144,8 @@ export class AlensaAdapter extends BaseAdapter {
       }
     }
 
-    debug('[alensa]', '[Alensa Adapter] ✗ No valid price found');
+    // CRITICAL: Always log price extraction failures
+    debugError('[alensa]', '[Alensa Adapter] ✗ No valid price found - tried JSON-LD WebPage, JSON-LD Product, and DOM selectors');
     return null;
   }
 

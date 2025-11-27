@@ -8,7 +8,7 @@
  */
 
 import { BaseAdapter } from './base-adapter.js';
-import { debug } from '../../utils/debug.js';
+import { debug, debugError } from '../../utils/debug.js';
 
 export class OpenCartAdapter extends BaseAdapter {
   /**
@@ -32,7 +32,16 @@ export class OpenCartAdapter extends BaseAdapter {
       hasOpenCartUrlPattern
     ];
 
-    return indicators.some(indicator => indicator);
+    const isProduct = indicators.some(indicator => indicator);
+
+    // CRITICAL: Always log detection failures for troubleshooting
+    if (!isProduct) {
+      debugError('[opencart]', `[OpenCart Adapter] ✗ Product NOT detected - URL pattern: ${hasOpenCartUrlPattern}`);
+    } else {
+      debug('[opencart]', `[OpenCart Adapter] ✓ Product detected`);
+    }
+
+    return isProduct;
   }
 
   /**
@@ -183,7 +192,8 @@ export class OpenCartAdapter extends BaseAdapter {
       return this.validateCurrency(jsonLdPrice);
     }
 
-    debug('[opencart]', '[OpenCart Adapter] ✗ No valid price found.');
+    // CRITICAL: Always log price extraction failures
+    debugError('[opencart]', '[OpenCart Adapter] ✗ No valid price found - tried meta tag, .price-new, .price, and JSON-LD');
     return null;
   }
 
