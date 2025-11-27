@@ -47,45 +47,44 @@ export class AlensaAdapter extends BaseAdapter {
 
   /**
    * Detects if this is an Alensa product page
-   * Uses multiple detection methods with Product schema as primary signal
+   * Uses multiple detection methods - very lenient to catch all product pages
    * @returns {boolean} True if Alensa product page
    */
   detectProduct() {
     debug('[alensa]', `[Alensa Adapter] Detecting product on domain: ${this.domain}`);
 
-    // PRIORITY 1: Check for Product Schema (most reliable)
+    // Check 1: Basic page structure (most lenient)
+    const hasH1 = this.querySelector('h1') !== null;
+    const hasPrice = this.querySelector('.price') !== null || this.querySelector('[class*="price"]') !== null;
+
+    // Check 2: Product Schema
     const hasProductSchema = this.hasProductSchema();
-    if (hasProductSchema) {
-      debug('[alensa]', '[Alensa Adapter] ✓ Product detected via JSON-LD schema');
-      return true;
-    }
 
-    // PRIORITY 2: Check for specific Alensa product elements
+    // Check 3: Specific Alensa elements
     const hasPriceBox = this.querySelector('#price_box') !== null ||
-                        this.querySelector('.product-price-group') !== null;
+                        this.querySelector('.product-price-group') !== null ||
+                        this.querySelector('#price-value') !== null;
     const hasAddToCart = this.querySelector('#add_to_cart') !== null ||
-                        this.querySelector('button[name="add_to_cart"]') !== null;
+                        this.querySelector('button[name="add_to_cart"]') !== null ||
+                        this.querySelector('.add-to-cart') !== null;
 
-    debug('[alensa]', `[Alensa Adapter] Fallback detection: priceBox=${hasPriceBox}, addToCart=${hasAddToCart}`);
+    // Check 4: Form elements
+    const hasProductInput = this.querySelector('input[name="id_product"]') !== null ||
+                           this.querySelector('input[name="product"]') !== null;
 
-    if (hasPriceBox || hasAddToCart) {
-      debug('[alensa]', '[Alensa Adapter] ✓ Product detected via fallback elements');
-      return true;
-    }
+    // Check 5: Body class
+    const hasProductClass = this.document.body.classList.contains('product-page') ||
+                           this.document.body.classList.contains('product');
 
-    // PRIORITY 3: Original checks (CSS class and hidden input)
-    const hasProductClass = this.document.body.classList.contains('product-page');
-    const hasProductInput = this.querySelector('input[name="id_product"]') !== null;
+    debug('[alensa]', `[Alensa Adapter] Detection checks: h1=${hasH1}, price=${hasPrice}, schema=${hasProductSchema}, priceBox=${hasPriceBox}, addToCart=${hasAddToCart}, productInput=${hasProductInput}, productClass=${hasProductClass}`);
 
-    debug('[alensa]', `[Alensa Adapter] Final checks: productClass=${hasProductClass}, productInput=${hasProductInput}`);
+    // Be very lenient: if we have schema OR (h1 AND price) OR addToCart, it's a product
+    const isProduct = hasProductSchema || (hasH1 && hasPrice) || hasAddToCart || hasPriceBox || hasProductInput || hasProductClass;
 
-    const isProduct = hasProductClass || hasProductInput;
-
-    // CRITICAL: Always log detection failures for troubleshooting
     if (!isProduct) {
-      debugError('[alensa]', `[Alensa Adapter] ✗ Product NOT detected - schema=false, priceBox=${hasPriceBox}, addToCart=${hasAddToCart}, productClass=${hasProductClass}, productInput=${hasProductInput}`);
+      debugError('[alensa]', `[Alensa Adapter] ✗ Product NOT detected - No indicators found`);
     } else {
-      debug('[alensa]', `[Alensa Adapter] ✓ Product detected via CSS/input`);
+      debug('[alensa]', `[Alensa Adapter] ✓ Product detected`);
     }
 
     return isProduct;
