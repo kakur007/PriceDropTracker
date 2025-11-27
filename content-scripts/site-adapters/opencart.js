@@ -56,19 +56,29 @@ export class OpenCartAdapter extends BaseAdapter {
    * @returns {string|null} Product ID or null
    */
   extractProductId() {
-    // Extract ID from URL pattern like /product-name-290694
+    // Priority 1: Extract ID from URL pattern like /product-name-290694
     const matches = this.url.match(/-(\d+)$/);
     if (matches) {
+      debug('[opencart]', `[OpenCart Adapter] ✓ Extracted ID from URL: ${matches[1]}`);
       return matches[1];
     }
 
-    // Fallback: check for product_id in URL params
+    // Priority 2: Hidden input field
+    const productInput = this.querySelector('input[name="product_id"]');
+    if (productInput && productInput.value) {
+      debug('[opencart]', `[OpenCart Adapter] ✓ Extracted ID from input: ${productInput.value}`);
+      return productInput.value;
+    }
+
+    // Priority 3: URL params
     const urlParams = new URLSearchParams(new URL(this.url).search);
     const productId = urlParams.get('product_id');
     if (productId) {
+      debug('[opencart]', `[OpenCart Adapter] ✓ Extracted ID from URL param: ${productId}`);
       return productId;
     }
 
+    debug('[opencart]', '[OpenCart Adapter] ✗ No product ID found');
     return null;
   }
 
@@ -101,12 +111,20 @@ export class OpenCartAdapter extends BaseAdapter {
   /**
    * Extract product price
    * OpenCart typically uses .price-new for sale prices and .price for regular prices
+   * JSON-LD is prioritized as it works reliably for both initial and background checks
    * @returns {Object|null} Parsed price data or null
    */
   extractPrice() {
     debug('[opencart]', '[OpenCart Adapter] Starting price extraction...');
 
-    // PRIORITY 1: Try sale price first (.price-new)
+    // PRIORITY 1: Try JSON-LD structured data first (works for both initial and background)
+    const jsonLdPrice = this.extractPriceFromJsonLd();
+    if (jsonLdPrice && jsonLdPrice.confidence >= 0.70) {
+      debug('[opencart]', `[OpenCart Adapter] ✓ Found price in JSON-LD: ${jsonLdPrice.numeric} ${jsonLdPrice.currency}`);
+      return this.validateCurrency(jsonLdPrice);
+    }
+
+    // PRIORITY 2: Try sale price (.price-new)
     const newPriceElement = this.querySelector('.price-new');
     if (newPriceElement) {
       const priceText = newPriceElement.textContent?.trim();
@@ -131,10 +149,18 @@ export class OpenCartAdapter extends BaseAdapter {
       }
     }
 
-    // PRIORITY 2: Standard price (.price)
+    // PRIORITY 3: Standard price (.price)
+    // Clone and clean to avoid getting old price mixed in
     const priceElement = this.querySelector('.price');
     if (priceElement) {
-      const priceText = priceElement.textContent?.trim();
+      // Clone the element to avoid modifying the page
+      const clone = priceElement.cloneNode(true);
+
+      // Remove old price elements that might be children
+      const oldPrices = clone.querySelectorAll('.price-old, .price-tax, del, .text-danger');
+      oldPrices.forEach(el => el.remove());
+
+      const priceText = clone.textContent?.trim();
       if (priceText) {
         const parsed = this.parsePriceWithContext(priceText);
         if (parsed && parsed.confidence >= 0.70) {
@@ -142,13 +168,6 @@ export class OpenCartAdapter extends BaseAdapter {
           return this.validateCurrency(parsed);
         }
       }
-    }
-
-    // PRIORITY 3: Try JSON-LD structured data
-    const jsonLdPrice = this.extractPriceFromJsonLd();
-    if (jsonLdPrice && jsonLdPrice.confidence >= 0.70) {
-      debug('[opencart]', `[OpenCart Adapter] ✓ Found price in JSON-LD: ${jsonLdPrice.numeric} ${jsonLdPrice.currency}`);
-      return this.validateCurrency(jsonLdPrice);
     }
 
     debug('[opencart]', '[OpenCart Adapter] ✗ No valid price found.');
