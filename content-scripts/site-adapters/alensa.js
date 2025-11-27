@@ -19,25 +19,73 @@ export class AlensaAdapter extends BaseAdapter {
   }
 
   /**
+   * Helper to check if page has Product schema in JSON-LD
+   * @returns {boolean} True if Product schema exists
+   */
+  hasProductSchema() {
+    try {
+      const scripts = this.querySelectorAll('script[type="application/ld+json"]');
+      for (const script of scripts) {
+        try {
+          const data = JSON.parse(script.textContent);
+          const jsonString = JSON.stringify(data);
+
+          // Check for @type: "Product" anywhere in the structure
+          if (jsonString.includes('"@type":"Product"') || jsonString.includes('"@type": "Product"')) {
+            debug('[alensa]', '[Alensa Adapter] ✓ Found Product schema in JSON-LD');
+            return true;
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
+    } catch (e) {
+      // Ignore errors
+    }
+    return false;
+  }
+
+  /**
    * Detects if this is an Alensa product page
+   * Uses multiple detection methods with Product schema as primary signal
    * @returns {boolean} True if Alensa product page
    */
   detectProduct() {
     debug('[alensa]', `[Alensa Adapter] Detecting product on domain: ${this.domain}`);
 
-    // Check if page has product indicators
+    // PRIORITY 1: Check for Product Schema (most reliable)
+    const hasProductSchema = this.hasProductSchema();
+    if (hasProductSchema) {
+      debug('[alensa]', '[Alensa Adapter] ✓ Product detected via JSON-LD schema');
+      return true;
+    }
+
+    // PRIORITY 2: Check for specific Alensa product elements
+    const hasPriceBox = this.querySelector('#price_box') !== null ||
+                        this.querySelector('.product-price-group') !== null;
+    const hasAddToCart = this.querySelector('#add_to_cart') !== null ||
+                        this.querySelector('button[name="add_to_cart"]') !== null;
+
+    debug('[alensa]', `[Alensa Adapter] Fallback detection: priceBox=${hasPriceBox}, addToCart=${hasAddToCart}`);
+
+    if (hasPriceBox || hasAddToCart) {
+      debug('[alensa]', '[Alensa Adapter] ✓ Product detected via fallback elements');
+      return true;
+    }
+
+    // PRIORITY 3: Original checks (CSS class and hidden input)
     const hasProductClass = this.document.body.classList.contains('product-page');
     const hasProductInput = this.querySelector('input[name="id_product"]') !== null;
 
-    debug('[alensa]', `[Alensa Adapter] Detection checks: productClass=${hasProductClass}, productInput=${hasProductInput}`);
+    debug('[alensa]', `[Alensa Adapter] Final checks: productClass=${hasProductClass}, productInput=${hasProductInput}`);
 
     const isProduct = hasProductClass || hasProductInput;
 
     // CRITICAL: Always log detection failures for troubleshooting
     if (!isProduct) {
-      debugError('[alensa]', `[Alensa Adapter] ✗ Product NOT detected - productClass=${hasProductClass}, productInput=${hasProductInput}`);
+      debugError('[alensa]', `[Alensa Adapter] ✗ Product NOT detected - schema=false, priceBox=${hasPriceBox}, addToCart=${hasAddToCart}, productClass=${hasProductClass}, productInput=${hasProductInput}`);
     } else {
-      debug('[alensa]', `[Alensa Adapter] ✓ Product detected`);
+      debug('[alensa]', `[Alensa Adapter] ✓ Product detected via CSS/input`);
     }
 
     return isProduct;

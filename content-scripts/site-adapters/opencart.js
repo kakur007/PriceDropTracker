@@ -45,6 +45,27 @@ export class OpenCartAdapter extends BaseAdapter {
   }
 
   /**
+   * Sanity check for extracted prices
+   * Detects likely concatenation errors (e.g., 799999 instead of 799.99)
+   * @param {number} price - Numeric price value
+   * @returns {boolean} True if price seems reasonable
+   */
+  isPriceSane(price) {
+    // Prices over 50000 are suspicious for most consumer products
+    // (unless you're selling cars/luxury items, but OpenCart is rarely used for those)
+    if (price > 50000) {
+      debugError('[opencart]', `[OpenCart Adapter] Sanity check failed: price ${price} seems too high (likely concatenation error)`);
+      return false;
+    }
+    // Negative prices are obviously wrong
+    if (price < 0) {
+      debugError('[opencart]', `[OpenCart Adapter] Sanity check failed: negative price ${price}`);
+      return false;
+    }
+    return true;
+  }
+
+  /**
    * Gets the expected currency based on domain/locale
    * @returns {string|null} Currency code or null
    */
@@ -132,9 +153,11 @@ export class OpenCartAdapter extends BaseAdapter {
       const priceValue = ogPriceMeta.getAttribute('content');
       if (priceValue) {
         const parsed = this.parsePriceWithContext(priceValue);
-        if (parsed && parsed.confidence >= 0.70) {
+        if (parsed && parsed.confidence >= 0.70 && this.isPriceSane(parsed.numeric)) {
           debug('[opencart]', `[OpenCart Adapter] ✓ Found price in meta tag: ${parsed.numeric} ${parsed.currency}`);
           return this.validateCurrency(parsed);
+        } else if (parsed && !this.isPriceSane(parsed.numeric)) {
+          debugError('[opencart]', `[OpenCart Adapter] Meta tag price failed sanity check: ${parsed.numeric}`);
         }
       }
     }
@@ -145,7 +168,7 @@ export class OpenCartAdapter extends BaseAdapter {
       const priceText = newPriceElement.textContent?.trim();
       if (priceText) {
         const parsed = this.parsePriceWithContext(priceText);
-        if (parsed && parsed.confidence >= 0.70) {
+        if (parsed && parsed.confidence >= 0.70 && this.isPriceSane(parsed.numeric)) {
           debug('[opencart]', `[OpenCart Adapter] ✓ Found sale price: ${parsed.numeric} ${parsed.currency}`);
 
           // Check if there's an old price to track discount
@@ -153,33 +176,48 @@ export class OpenCartAdapter extends BaseAdapter {
           if (oldPriceElement) {
             const oldPriceText = oldPriceElement.textContent?.trim();
             const parsedOld = this.parsePriceWithContext(oldPriceText);
-            if (parsedOld && parsedOld.numeric > parsed.numeric) {
+            if (parsedOld && parsedOld.numeric > parsed.numeric && this.isPriceSane(parsedOld.numeric)) {
               parsed.regularPrice = parsedOld.numeric;
               parsed.isOnSale = true;
             }
           }
 
           return this.validateCurrency(parsed);
+        } else if (parsed && !this.isPriceSane(parsed.numeric)) {
+          debugError('[opencart]', `[OpenCart Adapter] .price-new failed sanity check: ${parsed.numeric}`);
         }
       }
     }
 
     // PRIORITY 3: Standard price (.price)
-    // Clone and clean to avoid getting old price mixed in
+    // Extract only direct text nodes to avoid concatenation issues
     const priceElement = this.querySelector('.price');
     if (priceElement) {
-      // Clone the element to avoid modifying the page
-      const clone = priceElement.cloneNode(true);
+      // Method 1: Try to get only direct text nodes (cleanest)
+      const textNodes = Array.from(priceElement.childNodes)
+        .filter(node => node.nodeType === Node.TEXT_NODE)
+        .map(node => node.textContent.trim())
+        .filter(text => text.length > 0)
+        .join(' ');
 
-      // Remove old price elements that might be children
-      const oldPrices = clone.querySelectorAll('.price-new, .price-old, .price-tax, del, .text-danger');
+      if (textNodes) {
+        const parsed = this.parsePriceWithContext(textNodes);
+        if (parsed && parsed.confidence >= 0.70 && this.isPriceSane(parsed.numeric)) {
+          debug('[opencart]', `[OpenCart Adapter] ✓ Found standard price (text nodes): ${parsed.numeric} ${parsed.currency}`);
+          return this.validateCurrency(parsed);
+        }
+      }
+
+      // Method 2: Clone and clean approach (fallback)
+      const clone = priceElement.cloneNode(true);
+      const oldPrices = clone.querySelectorAll('.price-new, .price-old, .price-tax, del, .text-danger, span[style*="text-decoration"]');
       oldPrices.forEach(el => el.remove());
 
       const priceText = clone.textContent?.trim();
       if (priceText) {
         const parsed = this.parsePriceWithContext(priceText);
-        if (parsed && parsed.confidence >= 0.70) {
-          debug('[opencart]', `[OpenCart Adapter] ✓ Found standard price: ${parsed.numeric} ${parsed.currency}`);
+        if (parsed && parsed.confidence >= 0.70 && this.isPriceSane(parsed.numeric)) {
+          debug('[opencart]', `[OpenCart Adapter] ✓ Found standard price (cleaned): ${parsed.numeric} ${parsed.currency}`);
           return this.validateCurrency(parsed);
         }
       }
