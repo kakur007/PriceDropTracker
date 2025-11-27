@@ -11,9 +11,11 @@ import { WalmartAdapter } from './walmart.js';
 import { TargetAdapter } from './target.js';
 import { BestBuyAdapter } from './bestbuy.js';
 import { WooCommerceAdapter } from './woocommerce.js';
+import { OpenCartAdapter } from './opencart.js';
 import { ZalandoAdapter } from './zalando.js';
 import { EtsyAdapter } from './etsy.js';
 import { AliExpressAdapter } from './aliexpress.js';
+import { AlensaAdapter } from './alensa.js';
 import { BooztletAdapter } from './booztlet.js';
 import { SportsDirectAdapter } from './sportsdirect.js';
 import { debug, debugWarn, debugError } from '../../utils/debug.js';
@@ -70,12 +72,22 @@ export function getAdapter(document, url) {
     return new SportsDirectAdapter(document, url);
   }
 
-  // Check for platform-based sites (WooCommerce, Shopify, etc.)
+  if (domain.includes('alensa')) {
+    return new AlensaAdapter(document, url);
+  }
+
+  // Check for platform-based sites (WooCommerce, OpenCart, etc.)
   // These need to be detected by page structure, not domain
   const wooAdapter = new WooCommerceAdapter(document, url);
   if (wooAdapter.detectProduct()) {
     debug('[adapter-factory]', '[Adapter Factory] Detected WooCommerce site');
     return wooAdapter;
+  }
+
+  const openCartAdapter = new OpenCartAdapter(document, url);
+  if (openCartAdapter.detectProduct()) {
+    debug('[adapter-factory]', '[Adapter Factory] Detected OpenCart site');
+    return openCartAdapter;
   }
 
   // Return null if no adapter found
