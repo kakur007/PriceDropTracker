@@ -111,20 +111,13 @@ export class OpenCartAdapter extends BaseAdapter {
   /**
    * Extract product price
    * OpenCart typically uses .price-new for sale prices and .price for regular prices
-   * JSON-LD is prioritized as it works reliably for both initial and background checks
+   * DOM extraction is prioritized to avoid parsing issues during initial page load
    * @returns {Object|null} Parsed price data or null
    */
   extractPrice() {
     debug('[opencart]', '[OpenCart Adapter] Starting price extraction...');
 
-    // PRIORITY 1: Try JSON-LD structured data first (works for both initial and background)
-    const jsonLdPrice = this.extractPriceFromJsonLd();
-    if (jsonLdPrice && jsonLdPrice.confidence >= 0.70) {
-      debug('[opencart]', `[OpenCart Adapter] ✓ Found price in JSON-LD: ${jsonLdPrice.numeric} ${jsonLdPrice.currency}`);
-      return this.validateCurrency(jsonLdPrice);
-    }
-
-    // PRIORITY 2: Try sale price (.price-new)
+    // PRIORITY 1: Try sale price (.price-new) - most reliable for OpenCart
     const newPriceElement = this.querySelector('.price-new');
     if (newPriceElement) {
       const priceText = newPriceElement.textContent?.trim();
@@ -149,7 +142,7 @@ export class OpenCartAdapter extends BaseAdapter {
       }
     }
 
-    // PRIORITY 3: Standard price (.price)
+    // PRIORITY 2: Standard price (.price)
     // Clone and clean to avoid getting old price mixed in
     const priceElement = this.querySelector('.price');
     if (priceElement) {
@@ -157,7 +150,7 @@ export class OpenCartAdapter extends BaseAdapter {
       const clone = priceElement.cloneNode(true);
 
       // Remove old price elements that might be children
-      const oldPrices = clone.querySelectorAll('.price-old, .price-tax, del, .text-danger');
+      const oldPrices = clone.querySelectorAll('.price-new, .price-old, .price-tax, del, .text-danger');
       oldPrices.forEach(el => el.remove());
 
       const priceText = clone.textContent?.trim();
@@ -168,6 +161,13 @@ export class OpenCartAdapter extends BaseAdapter {
           return this.validateCurrency(parsed);
         }
       }
+    }
+
+    // PRIORITY 3: Try JSON-LD structured data (fallback)
+    const jsonLdPrice = this.extractPriceFromJsonLd();
+    if (jsonLdPrice && jsonLdPrice.confidence >= 0.70) {
+      debug('[opencart]', `[OpenCart Adapter] ✓ Found price in JSON-LD: ${jsonLdPrice.numeric} ${jsonLdPrice.currency}`);
+      return this.validateCurrency(jsonLdPrice);
     }
 
     debug('[opencart]', '[OpenCart Adapter] ✗ No valid price found.');

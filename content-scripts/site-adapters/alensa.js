@@ -142,8 +142,8 @@ export class AlensaAdapter extends BaseAdapter {
   }
 
   /**
-   * Extract price from JSON-LD WebPage schema with Offer
-   * Alensa uses WebPage schema with Offer, not standard Product schema
+   * Extract price from JSON-LD WebPage schema with mainEntity
+   * Alensa uses @graph with WebPage that contains mainEntity.Product
    * @returns {Object|null} Parsed price object or null
    */
   extractPriceFromJsonLdWebPage() {
@@ -158,7 +158,32 @@ export class AlensaAdapter extends BaseAdapter {
           const items = data['@graph'] || (Array.isArray(data) ? data : [data]);
 
           for (const item of items) {
-            // Look for WebPage with offers
+            // Look for WebPage with mainEntity.Product (Alensa structure)
+            if (item['@type'] === 'WebPage' && item.mainEntity) {
+              const mainEntity = item.mainEntity;
+
+              // Check if mainEntity is a Product with offers
+              if (mainEntity['@type'] === 'Product' && mainEntity.offers) {
+                const offers = Array.isArray(mainEntity.offers) ? mainEntity.offers : [mainEntity.offers];
+
+                for (const offer of offers) {
+                  const priceValue = offer.price || offer.lowPrice;
+                  if (priceValue) {
+                    const parsed = this.parsePriceWithContext(String(priceValue));
+                    if (parsed) {
+                      // Use explicit priceCurrency from offer if available
+                      if (offer.priceCurrency) {
+                        parsed.currency = offer.priceCurrency;
+                      }
+                      debug('[alensa]', `[Alensa Adapter] Found price in WebPage.mainEntity offer: ${parsed.numeric} ${parsed.currency}`);
+                      return parsed;
+                    }
+                  }
+                }
+              }
+            }
+
+            // Look for WebPage with offers directly (fallback)
             if (item['@type'] === 'WebPage' && item.offers) {
               const offers = Array.isArray(item.offers) ? item.offers : [item.offers];
 
