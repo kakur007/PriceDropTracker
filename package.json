@@ -1,6 +1,6 @@
 {
   "name": "price-genius",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Automatically track product prices and get notified when they drop - Chrome & Firefox Extension",
   "private": true,
   "scripts": {
