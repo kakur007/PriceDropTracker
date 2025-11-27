@@ -23,17 +23,18 @@ export class AlensaAdapter extends BaseAdapter {
    * @returns {boolean} True if Alensa product page
    */
   detectProduct() {
-    // Check domain
-    const isAlensaSite = this.domain.includes('alensa.ee');
-    if (!isAlensaSite) {
-      return false;
-    }
+    debug('[alensa]', `[Alensa Adapter] Detecting product on domain: ${this.domain}`);
 
     // Check if page has product indicators
     const hasProductClass = this.document.body.classList.contains('product-page');
     const hasProductInput = this.querySelector('input[name="id_product"]') !== null;
 
-    return hasProductClass || hasProductInput;
+    debug('[alensa]', `[Alensa Adapter] Detection checks: productClass=${hasProductClass}, productInput=${hasProductInput}`);
+
+    const isProduct = hasProductClass || hasProductInput;
+    debug('[alensa]', `[Alensa Adapter] Product detected: ${isProduct}`);
+
+    return isProduct;
   }
 
   /**
@@ -149,6 +150,7 @@ export class AlensaAdapter extends BaseAdapter {
   extractPriceFromJsonLdWebPage() {
     try {
       const scripts = this.querySelectorAll('script[type="application/ld+json"]');
+      debug('[alensa]', `[Alensa Adapter] Found ${scripts.length} JSON-LD script tags`);
 
       for (const script of scripts) {
         try {
@@ -156,18 +158,24 @@ export class AlensaAdapter extends BaseAdapter {
 
           // Handle different JSON-LD formats
           const items = data['@graph'] || (Array.isArray(data) ? data : [data]);
+          debug('[alensa]', `[Alensa Adapter] Processing ${items.length} items from JSON-LD`);
 
           for (const item of items) {
+            debug('[alensa]', `[Alensa Adapter] Checking item type: ${item['@type']}`);
+
             // Look for WebPage with mainEntity.Product (Alensa structure)
             if (item['@type'] === 'WebPage' && item.mainEntity) {
+              debug('[alensa]', '[Alensa Adapter] Found WebPage with mainEntity');
               const mainEntity = item.mainEntity;
 
               // Check if mainEntity is a Product with offers
               if (mainEntity['@type'] === 'Product' && mainEntity.offers) {
+                debug('[alensa]', '[Alensa Adapter] mainEntity is a Product with offers');
                 const offers = Array.isArray(mainEntity.offers) ? mainEntity.offers : [mainEntity.offers];
 
                 for (const offer of offers) {
                   const priceValue = offer.price || offer.lowPrice;
+                  debug('[alensa]', `[Alensa Adapter] Offer price value: ${priceValue}, currency: ${offer.priceCurrency}`);
                   if (priceValue) {
                     const parsed = this.parsePriceWithContext(String(priceValue));
                     if (parsed) {
@@ -175,7 +183,7 @@ export class AlensaAdapter extends BaseAdapter {
                       if (offer.priceCurrency) {
                         parsed.currency = offer.priceCurrency;
                       }
-                      debug('[alensa]', `[Alensa Adapter] Found price in WebPage.mainEntity offer: ${parsed.numeric} ${parsed.currency}`);
+                      debug('[alensa]', `[Alensa Adapter] ✓ Found price in WebPage.mainEntity offer: ${parsed.numeric} ${parsed.currency}`);
                       return parsed;
                     }
                   }
