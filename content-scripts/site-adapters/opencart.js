@@ -16,27 +16,29 @@ export class OpenCartAdapter extends BaseAdapter {
    * @returns {boolean} True if OpenCart product page
    */
   detectProduct() {
-    // OpenCart URLs typically end with -ID or have /product/ in the path
-    const hasOpenCartUrlPattern = /-(\d+)$/.test(this.url) || this.url.includes('/product/');
+    // OpenCart URLs can have localized paths
+    // Examples: /product/, /toode/ (Estonian), /produkt/ (German), /produit/ (French), /producto/ (Spanish)
+    const hasOpenCartUrlPattern =
+      /-(\d+)$/.test(this.url) || // Ends with -ID
+      this.url.includes('/product/') ||
+      this.url.includes('/toode/') ||    // Estonian
+      this.url.includes('/produkt/') ||  // German/Swedish
+      this.url.includes('/produit/') ||  // French
+      this.url.includes('/producto/');   // Spanish
 
-    // Check for OpenCart-specific indicators
-    const indicators = [
-      // Common OpenCart elements
-      this.querySelector('h1.product-title'),
-      this.querySelector('.price-new'),
-      this.querySelector('.price-old'),
-      this.querySelector('#product'),
-      this.querySelector('.product-info'),
+    // Check for OpenCart-specific elements
+    const hasProductTitle = this.querySelector('h1.product-title') || this.querySelector('h1');
+    const hasPriceElement = this.querySelector('.price-new') || this.querySelector('.price-old') || this.querySelector('.price');
+    const hasProductContainer = this.querySelector('#product') || this.querySelector('.product-info');
+    const hasOgPrice = this.querySelector('meta[property="og:price:amount"]');
 
-      // URL pattern
-      hasOpenCartUrlPattern
-    ];
+    debug('[opencart]', `[OpenCart Adapter] Detection checks: urlPattern=${hasOpenCartUrlPattern}, title=${!!hasProductTitle}, price=${!!hasPriceElement}, container=${!!hasProductContainer}, ogPrice=${!!hasOgPrice}`);
 
-    const isProduct = indicators.some(indicator => indicator);
+    // Be lenient: if we have URL pattern OR (title AND price), it's probably a product
+    const isProduct = hasOpenCartUrlPattern || (hasProductTitle && hasPriceElement) || hasOgPrice;
 
-    // CRITICAL: Always log detection failures for troubleshooting
     if (!isProduct) {
-      debugError('[opencart]', `[OpenCart Adapter] ✗ Product NOT detected - URL pattern: ${hasOpenCartUrlPattern}`);
+      debugError('[opencart]', `[OpenCart Adapter] ✗ Product NOT detected - No indicators found`);
     } else {
       debug('[opencart]', `[OpenCart Adapter] ✓ Product detected`);
     }
