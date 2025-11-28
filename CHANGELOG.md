@@ -51,14 +51,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Improved product detection using JavaScript variables (`"page":"product"`, `product_id`)
   - Enhanced product ID extraction from JavaScript data structures
   - Price sanity checks prevent concatenation errors (e.g., "799999" instead of "799.99")
+  - Check ALL price elements instead of just the first (querySelectorAll)
+  - Skip prices inside product listings (`.product-grid`, `.product-thumb`) to avoid wrong products
+  - Fallback to `<strong>` tags near h1 for non-standard themes
+  - Always-visible console logging for price extraction (works without debug mode)
+  - Log actual text content being parsed for easy troubleshooting
 - **Alensa adapter detection**:
   - More detailed error logging shows exactly which detection checks failed
   - Multiple independent detection checks (OR logic) for better reliability
   - Schema detection, price box, add-to-cart button, product input, and body class checks
+  - Check ALL matching elements for each selector (not just first)
+  - Added `[class*="price"]` and `strong` tag selectors as fallbacks
+  - Search h1 container for price patterns as last resort
+  - Show confidence scores for failed parsing attempts
 - **Both adapters**:
   - Comprehensive debug information logged for each detection attempt
   - Failures always visible via `debugError()` for production troubleshooting
   - More lenient detection to handle edge cases and page loading timing issues
+  - Multiple fallback strategies for non-standard e-commerce themes
+  - Always-visible diagnostic logging (console.log) for critical extraction steps
 
 ## [1.0.0] - 2025-11-XX
 
