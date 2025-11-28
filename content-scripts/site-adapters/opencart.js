@@ -192,6 +192,8 @@ export class OpenCartAdapter extends BaseAdapter {
     // PRIORITY 2: Try sale/special price (.special, .price-new)
     // Look for price elements, but exclude those in product listings/grids
     const specialPriceElements = this.querySelectorAll('.special, .price-new');
+    console.log(`[opencart] Found ${specialPriceElements.length} .special/.price-new elements`);
+
     for (const element of specialPriceElements) {
       // Skip prices that are inside product listings/grids (these are other products)
       const isInListing = element.closest('.product-grid, .product-list, .product-thumb, .product-item, .products-list');
@@ -201,7 +203,11 @@ export class OpenCartAdapter extends BaseAdapter {
       }
 
       const priceText = element.textContent?.trim();
-      debug('[opencart]', `[OpenCart Adapter] Checking .special/.price-new element with text: "${priceText}"`);
+
+      // Always log what we're checking (use debugError so it's visible without debug mode)
+      if (priceText && priceText.length > 0 && priceText.length < 100) {
+        console.log(`[opencart] Checking .special/.price-new element with text: "${priceText}"`);
+      }
 
       if (priceText) {
         const parsed = this.parsePriceWithContext(priceText);
@@ -283,10 +289,12 @@ export class OpenCartAdapter extends BaseAdapter {
 
         // Look for strong tags with prices (hawaii.ee structure)
         const strongElements = container.querySelectorAll('strong');
+        console.log(`[opencart] Searching ${strongElements.length} <strong> tags near h1 for prices`);
+
         for (const strong of strongElements) {
           const strongText = strong.textContent?.trim();
           if (strongText && (strongText.includes('€') || strongText.includes('EUR') || /\d+[.,]\d+/.test(strongText))) {
-            debug('[opencart]', `[OpenCart Adapter] Found <strong> with price-like content: "${strongText}"`);
+            console.log(`[opencart] Found <strong> with price-like content: "${strongText}"`);
             const parsed = this.parsePriceWithContext(strongText);
             if (parsed && parsed.confidence >= 0.70 && this.isPriceSane(parsed.numeric)) {
               debug('[opencart]', `[OpenCart Adapter] ✓ Found price in <strong> near h1: ${parsed.numeric} ${parsed.currency}`);
