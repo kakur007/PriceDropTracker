@@ -190,28 +190,42 @@ export class OpenCartAdapter extends BaseAdapter {
     }
 
     // PRIORITY 2: Try sale/special price (.special, .price-new)
-    const specialPriceElement = this.querySelector('.special, .price-new');
-    if (specialPriceElement) {
-      const priceText = specialPriceElement.textContent?.trim();
+    // Look for price elements, but exclude those in product listings/grids
+    const specialPriceElements = this.querySelectorAll('.special, .price-new');
+    for (const element of specialPriceElements) {
+      // Skip prices that are inside product listings/grids (these are other products)
+      const isInListing = element.closest('.product-grid, .product-list, .product-thumb, .product-item, .products-list');
+      if (isInListing) {
+        debug('[opencart]', '[OpenCart Adapter] Skipping price in product listing');
+        continue;
+      }
+
+      const priceText = element.textContent?.trim();
+      debug('[opencart]', `[OpenCart Adapter] Checking .special/.price-new element with text: "${priceText}"`);
+
       if (priceText) {
         const parsed = this.parsePriceWithContext(priceText);
         if (parsed && parsed.confidence >= 0.70 && this.isPriceSane(parsed.numeric)) {
           debug('[opencart]', `[OpenCart Adapter] ✓ Found sale price: ${parsed.numeric} ${parsed.currency}`);
 
           // Check if there's an old price to track discount
-          const oldPriceElement = this.querySelector('.old-price, .price-old');
-          if (oldPriceElement) {
-            const oldPriceText = oldPriceElement.textContent?.trim();
+          const oldPriceElements = this.querySelectorAll('.old-price, .price-old');
+          for (const oldElement of oldPriceElements) {
+            if (oldElement.closest('.product-grid, .product-list, .product-thumb, .product-item')) {
+              continue; // Skip listing prices
+            }
+            const oldPriceText = oldElement.textContent?.trim();
             const parsedOld = this.parsePriceWithContext(oldPriceText);
             if (parsedOld && parsedOld.numeric > parsed.numeric && this.isPriceSane(parsedOld.numeric)) {
               parsed.regularPrice = parsedOld.numeric;
               parsed.isOnSale = true;
+              break;
             }
           }
 
           return this.validateCurrency(parsed);
         } else if (parsed && !this.isPriceSane(parsed.numeric)) {
-          debugError('[opencart]', `[OpenCart Adapter] .special/.price-new failed sanity check: ${parsed.numeric}`);
+          debugError('[opencart]', `[OpenCart Adapter] .special/.price-new failed sanity check: ${parsed.numeric} (text was: "${priceText}")`);
         }
       }
     }
@@ -257,8 +271,34 @@ export class OpenCartAdapter extends BaseAdapter {
       return this.validateCurrency(jsonLdPrice);
     }
 
+    // PRIORITY 5: Last resort - look for price patterns near the h1 title
+    // Some OpenCart themes don't use standard classes
+    const h1Element = this.querySelector('h1');
+    if (h1Element) {
+      // Look for siblings or nearby elements containing currency symbols
+      const container = h1Element.parentElement;
+      if (container) {
+        const containerText = container.textContent || '';
+        debug('[opencart]', `[OpenCart Adapter] Searching in h1 container for price patterns...`);
+
+        // Look for strong tags with prices (hawaii.ee structure)
+        const strongElements = container.querySelectorAll('strong');
+        for (const strong of strongElements) {
+          const strongText = strong.textContent?.trim();
+          if (strongText && (strongText.includes('€') || strongText.includes('EUR') || /\d+[.,]\d+/.test(strongText))) {
+            debug('[opencart]', `[OpenCart Adapter] Found <strong> with price-like content: "${strongText}"`);
+            const parsed = this.parsePriceWithContext(strongText);
+            if (parsed && parsed.confidence >= 0.70 && this.isPriceSane(parsed.numeric)) {
+              debug('[opencart]', `[OpenCart Adapter] ✓ Found price in <strong> near h1: ${parsed.numeric} ${parsed.currency}`);
+              return this.validateCurrency(parsed);
+            }
+          }
+        }
+      }
+    }
+
     // CRITICAL: Always log price extraction failures
-    debugError('[opencart]', '[OpenCart Adapter] ✗ No valid price found - tried meta tag, .price-new, .price, and JSON-LD');
+    debugError('[opencart]', '[OpenCart Adapter] ✗ No valid price found - tried meta tag, .price-new/.special, .price, JSON-LD, and h1 container');
     return null;
   }
 

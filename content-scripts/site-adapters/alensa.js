@@ -161,6 +161,8 @@ export class AlensaAdapter extends BaseAdapter {
     if (jsonLdPrice && jsonLdPrice.confidence >= 0.70) {
       debug('[alensa]', `[Alensa Adapter] ✓ Extracted price from JSON-LD: ${jsonLdPrice.numeric} ${jsonLdPrice.currency}`);
       return this.validateCurrency(jsonLdPrice);
+    } else {
+      debug('[alensa]', '[Alensa Adapter] JSON-LD WebPage extraction failed or low confidence');
     }
 
     // PRIORITY 2: Try standard Product schema JSON-LD
@@ -168,23 +170,52 @@ export class AlensaAdapter extends BaseAdapter {
     if (productJsonLd && productJsonLd.confidence >= 0.70) {
       debug('[alensa]', `[Alensa Adapter] ✓ Extracted price from Product JSON-LD: ${productJsonLd.numeric} ${productJsonLd.currency}`);
       return this.validateCurrency(productJsonLd);
+    } else {
+      debug('[alensa]', '[Alensa Adapter] JSON-LD Product extraction failed or low confidence');
     }
 
-    // PRIORITY 3: DOM-based extraction
+    // PRIORITY 3: DOM-based extraction with detailed logging
     const priceSelectors = [
       '#price-value',
       '.price-final',
-      '.price'
+      '.price',
+      '[class*="price"]',
+      'strong' // Last resort - look for any strong tag with price
     ];
 
     for (const selector of priceSelectors) {
-      const element = this.querySelector(selector);
-      if (element) {
+      const elements = this.querySelectorAll(selector);
+      debug('[alensa]', `[Alensa Adapter] Found ${elements.length} elements matching "${selector}"`);
+
+      for (const element of elements) {
         const priceText = element.textContent?.trim();
-        if (priceText) {
+        debug('[alensa]', `[Alensa Adapter] Checking ${selector} with text: "${priceText}"`);
+
+        if (priceText && (priceText.includes('€') || priceText.includes('EUR') || /\d+[.,]\d+/.test(priceText))) {
           const parsed = this.parsePriceWithContext(priceText);
           if (parsed && parsed.confidence >= 0.70) {
             debug('[alensa]', `[Alensa Adapter] ✓ Extracted price from ${selector}: ${parsed.numeric} ${parsed.currency}`);
+            return this.validateCurrency(parsed);
+          } else if (parsed) {
+            debug('[alensa]', `[Alensa Adapter] Low confidence for ${selector}: ${parsed.confidence}`);
+          }
+        }
+      }
+    }
+
+    // PRIORITY 4: Look near h1 for price patterns
+    const h1Element = this.querySelector('h1');
+    if (h1Element) {
+      const container = h1Element.parentElement;
+      if (container) {
+        debug('[alensa]', `[Alensa Adapter] Searching in h1 container...`);
+        const allText = container.textContent || '';
+        const priceMatch = allText.match(/(\d+[.,]\d+)\s*€/);
+        if (priceMatch) {
+          debug('[alensa]', `[Alensa Adapter] Found price pattern near h1: "${priceMatch[0]}"`);
+          const parsed = this.parsePriceWithContext(priceMatch[0]);
+          if (parsed && parsed.confidence >= 0.70) {
+            debug('[alensa]', `[Alensa Adapter] ✓ Extracted price from h1 container: ${parsed.numeric} ${parsed.currency}`);
             return this.validateCurrency(parsed);
           }
         }
@@ -192,7 +223,7 @@ export class AlensaAdapter extends BaseAdapter {
     }
 
     // CRITICAL: Always log price extraction failures
-    debugError('[alensa]', '[Alensa Adapter] ✗ No valid price found - tried JSON-LD WebPage, JSON-LD Product, and DOM selectors');
+    debugError('[alensa]', '[Alensa Adapter] ✗ No valid price found - tried JSON-LD WebPage, JSON-LD Product, DOM selectors, and h1 container');
     return null;
   }
 
