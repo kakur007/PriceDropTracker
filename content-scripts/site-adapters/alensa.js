@@ -154,23 +154,28 @@ export class AlensaAdapter extends BaseAdapter {
    * @returns {Object|null} Parsed price data or null
    */
   extractPrice() {
+    console.log('[alensa] Starting price extraction...');
     debug('[alensa]', '[Alensa Adapter] Starting price extraction...');
 
     // PRIORITY 1: Try JSON-LD with WebPage/Offer schema
     const jsonLdPrice = this.extractPriceFromJsonLdWebPage();
     if (jsonLdPrice && jsonLdPrice.confidence >= 0.70) {
+      console.log(`[alensa] ✓ Extracted price from JSON-LD WebPage: ${jsonLdPrice.numeric} ${jsonLdPrice.currency}`);
       debug('[alensa]', `[Alensa Adapter] ✓ Extracted price from JSON-LD: ${jsonLdPrice.numeric} ${jsonLdPrice.currency}`);
       return this.validateCurrency(jsonLdPrice);
     } else {
+      console.log('[alensa] JSON-LD WebPage extraction failed or low confidence');
       debug('[alensa]', '[Alensa Adapter] JSON-LD WebPage extraction failed or low confidence');
     }
 
     // PRIORITY 2: Try standard Product schema JSON-LD
     const productJsonLd = this.extractPriceFromJsonLd();
     if (productJsonLd && productJsonLd.confidence >= 0.70) {
+      console.log(`[alensa] ✓ Extracted price from Product JSON-LD: ${productJsonLd.numeric} ${productJsonLd.currency}`);
       debug('[alensa]', `[Alensa Adapter] ✓ Extracted price from Product JSON-LD: ${productJsonLd.numeric} ${productJsonLd.currency}`);
       return this.validateCurrency(productJsonLd);
     } else {
+      console.log('[alensa] JSON-LD Product extraction failed or low confidence');
       debug('[alensa]', '[Alensa Adapter] JSON-LD Product extraction failed or low confidence');
     }
 
@@ -185,18 +190,26 @@ export class AlensaAdapter extends BaseAdapter {
 
     for (const selector of priceSelectors) {
       const elements = this.querySelectorAll(selector);
+      console.log(`[alensa] Found ${elements.length} elements matching "${selector}"`);
       debug('[alensa]', `[Alensa Adapter] Found ${elements.length} elements matching "${selector}"`);
 
       for (const element of elements) {
         const priceText = element.textContent?.trim();
+
+        // Only log first few to avoid spam
+        if (elements.length <= 5) {
+          console.log(`[alensa] Checking ${selector} with text: "${priceText?.substring(0, 50)}"`);
+        }
         debug('[alensa]', `[Alensa Adapter] Checking ${selector} with text: "${priceText}"`);
 
         if (priceText && (priceText.includes('€') || priceText.includes('EUR') || /\d+[.,]\d+/.test(priceText))) {
           const parsed = this.parsePriceWithContext(priceText);
           if (parsed && parsed.confidence >= 0.70) {
+            console.log(`[alensa] ✓ Extracted price from ${selector}: ${parsed.numeric} ${parsed.currency}`);
             debug('[alensa]', `[Alensa Adapter] ✓ Extracted price from ${selector}: ${parsed.numeric} ${parsed.currency}`);
             return this.validateCurrency(parsed);
           } else if (parsed) {
+            console.log(`[alensa] Low confidence for ${selector}: ${parsed.confidence}, parsed as ${parsed.numeric}`);
             debug('[alensa]', `[Alensa Adapter] Low confidence for ${selector}: ${parsed.confidence}`);
           }
         }
