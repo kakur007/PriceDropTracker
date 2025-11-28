@@ -18,6 +18,7 @@ import { AliExpressAdapter } from './aliexpress.js';
 import { AlensaAdapter } from './alensa.js';
 import { BooztletAdapter } from './booztlet.js';
 import { SportsDirectAdapter } from './sportsdirect.js';
+import { ThomannAdapter } from './thomann.js';
 import { debug, debugWarn, debugError } from '../../utils/debug.js';
 
 /**
@@ -74,6 +75,10 @@ export function getAdapter(document, url) {
 
   if (domain.includes('alensa')) {
     return new AlensaAdapter(document, url);
+  }
+
+  if (domain.includes('thomann')) {
+    return new ThomannAdapter(document, url);
   }
 
   // Check for platform-based sites (WooCommerce, OpenCart, etc.)

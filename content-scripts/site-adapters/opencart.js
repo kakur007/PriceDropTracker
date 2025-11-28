@@ -28,14 +28,18 @@ export class OpenCartAdapter extends BaseAdapter {
 
     // Check for OpenCart-specific elements
     const hasProductTitle = this.querySelector('h1.product-title') || this.querySelector('h1');
-    const hasPriceElement = this.querySelector('.price-new') || this.querySelector('.price-old') || this.querySelector('.price');
+    const hasPriceElement = this.querySelector('.price-new') || this.querySelector('.price-old') || this.querySelector('.price') || this.querySelector('.special') || this.querySelector('.old-price');
     const hasProductContainer = this.querySelector('#product') || this.querySelector('.product-info');
     const hasOgPrice = this.querySelector('meta[property="og:price:amount"]');
 
-    debug('[opencart]', `[OpenCart Adapter] Detection checks: urlPattern=${hasOpenCartUrlPattern}, title=${!!hasProductTitle}, price=${!!hasPriceElement}, container=${!!hasProductContainer}, ogPrice=${!!hasOgPrice}`);
+    // Check for OpenCart JavaScript variables (e.g., hawaii.ee uses is_ajax_data)
+    const hasProductData = this.document.documentElement.innerHTML.includes('"page":"product"') ||
+                          this.document.documentElement.innerHTML.includes('product_id');
 
-    // Be lenient: if we have URL pattern OR (title AND price), it's probably a product
-    const isProduct = hasOpenCartUrlPattern || (hasProductTitle && hasPriceElement) || hasOgPrice;
+    debug('[opencart]', `[OpenCart Adapter] Detection checks: urlPattern=${hasOpenCartUrlPattern}, title=${!!hasProductTitle}, price=${!!hasPriceElement}, container=${!!hasProductContainer}, ogPrice=${!!hasOgPrice}, productData=${hasProductData}`);
+
+    // Be lenient: if we have URL pattern OR (title AND price) OR productData, it's probably a product
+    const isProduct = hasOpenCartUrlPattern || (hasProductTitle && hasPriceElement) || hasOgPrice || (hasProductData && hasProductTitle);
 
     if (!isProduct) {
       debugError('[opencart]', `[OpenCart Adapter] ✗ Product NOT detected - No indicators found`);
@@ -83,8 +87,9 @@ export class OpenCartAdapter extends BaseAdapter {
   }
 
   /**
-   * Extracts the product ID from URL
+   * Extracts the product ID from URL or JavaScript variables
    * OpenCart typically uses -ID at the end of product URLs
+   * Some installations (e.g., hawaii.ee) use JavaScript variables
    * @returns {string|null} Product ID or null
    */
   extractProductId() {
@@ -95,14 +100,33 @@ export class OpenCartAdapter extends BaseAdapter {
       return matches[1];
     }
 
-    // Priority 2: Hidden input field
+    // Priority 2: JavaScript variables (e.g., hawaii.ee uses is_ajax_data.products[0].product_id)
+    try {
+      const htmlContent = this.document.documentElement.innerHTML;
+      const productIdMatch = htmlContent.match(/"product_id"[:\s]+(\d+)/);
+      if (productIdMatch) {
+        debug('[opencart]', `[OpenCart Adapter] ✓ Extracted ID from JavaScript: ${productIdMatch[1]}`);
+        return productIdMatch[1];
+      }
+
+      // Also check for $product_id variable
+      const varMatch = htmlContent.match(/\$product_id\s*=\s*['"](\d+)['"]/);
+      if (varMatch) {
+        debug('[opencart]', `[OpenCart Adapter] ✓ Extracted ID from $product_id variable: ${varMatch[1]}`);
+        return varMatch[1];
+      }
+    } catch (e) {
+      // Ignore errors
+    }
+
+    // Priority 3: Hidden input field
     const productInput = this.querySelector('input[name="product_id"]');
     if (productInput && productInput.value) {
       debug('[opencart]', `[OpenCart Adapter] ✓ Extracted ID from input: ${productInput.value}`);
       return productInput.value;
     }
 
-    // Priority 3: URL params
+    // Priority 4: URL params
     const urlParams = new URLSearchParams(new URL(this.url).search);
     const productId = urlParams.get('product_id');
     if (productId) {
@@ -143,6 +167,7 @@ export class OpenCartAdapter extends BaseAdapter {
   /**
    * Extract product price
    * OpenCart typically uses .price-new for sale prices and .price for regular prices
+   * Some installations use .special and .old-price (e.g., hawaii.ee)
    * Meta tag extraction is prioritized as it's most reliable (same as background checks)
    * @returns {Object|null} Parsed price data or null
    */
@@ -164,17 +189,17 @@ export class OpenCartAdapter extends BaseAdapter {
       }
     }
 
-    // PRIORITY 2: Try sale price (.price-new)
-    const newPriceElement = this.querySelector('.price-new');
-    if (newPriceElement) {
-      const priceText = newPriceElement.textContent?.trim();
+    // PRIORITY 2: Try sale/special price (.special, .price-new)
+    const specialPriceElement = this.querySelector('.special, .price-new');
+    if (specialPriceElement) {
+      const priceText = specialPriceElement.textContent?.trim();
       if (priceText) {
         const parsed = this.parsePriceWithContext(priceText);
         if (parsed && parsed.confidence >= 0.70 && this.isPriceSane(parsed.numeric)) {
           debug('[opencart]', `[OpenCart Adapter] ✓ Found sale price: ${parsed.numeric} ${parsed.currency}`);
 
           // Check if there's an old price to track discount
-          const oldPriceElement = this.querySelector('.price-old');
+          const oldPriceElement = this.querySelector('.old-price, .price-old');
           if (oldPriceElement) {
             const oldPriceText = oldPriceElement.textContent?.trim();
             const parsedOld = this.parsePriceWithContext(oldPriceText);
@@ -186,7 +211,7 @@ export class OpenCartAdapter extends BaseAdapter {
 
           return this.validateCurrency(parsed);
         } else if (parsed && !this.isPriceSane(parsed.numeric)) {
-          debugError('[opencart]', `[OpenCart Adapter] .price-new failed sanity check: ${parsed.numeric}`);
+          debugError('[opencart]', `[OpenCart Adapter] .special/.price-new failed sanity check: ${parsed.numeric}`);
         }
       }
     }
