@@ -82,7 +82,7 @@ export class AlensaAdapter extends BaseAdapter {
     const isProduct = hasProductSchema || (hasH1 && hasPrice) || hasAddToCart || hasPriceBox || hasProductInput || hasProductClass;
 
     if (!isProduct) {
-      debugError('[alensa]', `[Alensa Adapter] ✗ Product NOT detected - No indicators found`);
+      debugError('[alensa]', `[Alensa Adapter] ✗ Product NOT detected - schema=${hasProductSchema}, priceBox=${hasPriceBox}, addToCart=${hasAddToCart}, productClass=${hasProductClass}, productInput=${hasProductInput}, h1AndPrice=${hasH1 && hasPrice}`);
     } else {
       debug('[alensa]', `[Alensa Adapter] ✓ Product detected`);
     }
