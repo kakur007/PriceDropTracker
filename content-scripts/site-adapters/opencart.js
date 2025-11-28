@@ -210,28 +210,61 @@ export class OpenCartAdapter extends BaseAdapter {
       }
 
       if (priceText) {
-        const parsed = this.parsePriceWithContext(priceText);
-        if (parsed && parsed.confidence >= 0.70 && this.isPriceSane(parsed.numeric)) {
-          debug('[opencart]', `[OpenCart Adapter] ✓ Found sale price: ${parsed.numeric} ${parsed.currency}`);
+        // CRITICAL FIX: If the element contains child elements with line-through (old prices),
+        // extract only prices that are NOT crossed out
+        const childElements = element.querySelectorAll('*');
+        const activePrices = [];
+        const crossedOutPrices = [];
 
-          // Check if there's an old price to track discount
-          const oldPriceElements = this.querySelectorAll('.old-price, .price-old');
-          for (const oldElement of oldPriceElements) {
-            if (oldElement.closest('.product-grid, .product-list, .product-thumb, .product-item')) {
-              continue; // Skip listing prices
-            }
-            const oldPriceText = oldElement.textContent?.trim();
-            const parsedOld = this.parsePriceWithContext(oldPriceText);
-            if (parsedOld && parsedOld.numeric > parsed.numeric && this.isPriceSane(parsedOld.numeric)) {
-              parsed.regularPrice = parsedOld.numeric;
-              parsed.isOnSale = true;
-              break;
+        // Check all child elements for prices
+        for (const child of childElements) {
+          const computedStyle = window.getComputedStyle(child);
+          const childText = child.textContent?.trim();
+
+          if (childText && (childText.includes('€') || /\d+[.,]\d+/.test(childText))) {
+            if (computedStyle.textDecoration.includes('line-through')) {
+              crossedOutPrices.push(childText);
+              console.log(`[opencart] Skipping crossed-out price: "${childText}"`);
+            } else {
+              activePrices.push(childText);
             }
           }
+        }
 
-          return this.validateCurrency(parsed);
-        } else if (parsed && !this.isPriceSane(parsed.numeric)) {
-          debugError('[opencart]', `[OpenCart Adapter] .special/.price-new failed sanity check: ${parsed.numeric} (text was: "${priceText}")`);
+        // If no child elements, check the parent element itself
+        if (childElements.length === 0 || activePrices.length === 0) {
+          const computedStyle = window.getComputedStyle(element);
+          if (!computedStyle.textDecoration.includes('line-through')) {
+            activePrices.push(priceText);
+          } else {
+            console.log(`[opencart] Skipping crossed-out element: "${priceText}"`);
+            continue;
+          }
+        }
+
+        // Parse the first active (non-crossed-out) price
+        if (activePrices.length > 0) {
+          const activePrice = activePrices[0];
+          console.log(`[opencart] Using active price: "${activePrice}"`);
+          const parsed = this.parsePriceWithContext(activePrice);
+
+          if (parsed && parsed.confidence >= 0.70 && this.isPriceSane(parsed.numeric)) {
+            debug('[opencart]', `[OpenCart Adapter] ✓ Found sale price: ${parsed.numeric} ${parsed.currency}`);
+
+            // Try to extract old price from crossed-out prices
+            if (crossedOutPrices.length > 0) {
+              const parsedOld = this.parsePriceWithContext(crossedOutPrices[0]);
+              if (parsedOld && parsedOld.numeric > parsed.numeric && this.isPriceSane(parsedOld.numeric)) {
+                parsed.regularPrice = parsedOld.numeric;
+                parsed.isOnSale = true;
+                console.log(`[opencart] Found old price: ${parsedOld.numeric} ${parsedOld.currency}`);
+              }
+            }
+
+            return this.validateCurrency(parsed);
+          } else if (parsed && !this.isPriceSane(parsed.numeric)) {
+            debugError('[opencart]', `[OpenCart Adapter] Active price failed sanity check: ${parsed.numeric} (text was: "${activePrice}")`);
+          }
         }
       }
     }
