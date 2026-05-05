@@ -61,12 +61,12 @@ Automatically track product prices across major e-commerce sites and get notifie
 
 ## Installation
 
-### Chrome Web Store (Coming Soon)
+### Chrome Web Store
 1. Visit [Chrome Web Store](#) (link will be added after submission)
 2. Click "Add to Chrome"
 3. Start browsing - that's it!
 
-### Firefox Add-ons (Coming Soon)
+### Firefox Add-ons
 1. Visit [Firefox Add-ons](https://addons.mozilla.org) (link will be added after approval)
 2. Click "Add to Firefox"
 3. Approve permissions
@@ -630,7 +630,7 @@ A: A product marked as "stale" (⚠️) couldn't be updated. Usually means it's 
 A: No. Only when prices drop below your threshold percentage (default 5%).
 
 **Q: Can I set different thresholds for different products?**
-A: Not yet. Currently, the threshold applies to all products. Per-product thresholds are planned for Phase 2.
+A: Not yet. Currently, the threshold applies to all products. Per-product thresholds are planned next.
 
 ### Currency & International
 
@@ -664,7 +664,7 @@ A: No. Export your data before uninstalling if you want to keep it.
 ### Technical
 
 **Q: Does this work on Firefox/Safari?**
-A: Not yet. Currently Chrome, Edge, Brave, and Opera only. Firefox/Safari support planned.
+A: Chrome, Edge, Brave, Opera, and Firefox are supported. Safari is not supported yet.
 
 **Q: Is the code open source?**
 A: Yes. View the source on GitHub: [github.com/kakur007/PriceDropTracker](https://github.com/kakur007/PriceDropTracker)
@@ -736,12 +736,12 @@ We love feature requests! Please:
 | **Privacy Score** | 100/100 | No tracking, no analytics |
 | **User Rating Target** | 4.5+ | Goal for Chrome Web Store |
 
-## ✅ Version 1.0 - Feature Complete!
+## ✅ Version 1.2.1 - Current Status
 
 This extension has completed its initial development phase. All core features are implemented and tested:
 
 ### Core Functionality ✅
-- ✅ Automatic product detection on 5 major e-commerce sites
+- ✅ Automatic product detection on major retailers and common e-commerce platforms
 - ✅ Multi-currency support (30+ currencies)
 - ✅ Background price monitoring (configurable intervals)
 - ✅ Smart price drop notifications

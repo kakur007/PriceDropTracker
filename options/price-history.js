@@ -28,7 +28,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // Apply dark mode based on user preference
-  applyTheme();
+  await applyTheme();
 
   await loadProducts();
 
@@ -42,11 +42,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 /**
  * Apply theme (dark/light mode)
  */
-function applyTheme() {
-  browser.storage.local.get(['theme'], (result) => {
-    const theme = result.theme || 'light';
-    document.body.setAttribute('data-theme', theme);
-  });
+async function applyTheme() {
+  const result = await browser.storage.local.get(['theme']);
+  const theme = result.theme || 'light';
+  document.body.setAttribute('data-theme', theme);
 }
 
 /**

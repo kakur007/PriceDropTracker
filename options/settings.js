@@ -10,7 +10,7 @@ let currentSettings = null;
 // Initialize settings page
 document.addEventListener('DOMContentLoaded', async () => {
   // Apply dark mode based on user preference
-  applyTheme();
+  await applyTheme();
 
   await loadSettings();
   await loadStorageStats();
@@ -20,11 +20,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 /**
  * Apply theme (dark/light mode)
  */
-function applyTheme() {
-  browser.storage.local.get(['theme'], (result) => {
-    const theme = result.theme || 'light';
-    document.body.setAttribute('data-theme', theme);
-  });
+async function applyTheme() {
+  const result = await browser.storage.local.get(['theme']);
+  const theme = result.theme || 'light';
+  document.body.setAttribute('data-theme', theme);
 }
 
 /**
@@ -101,10 +100,8 @@ function setupEventListeners() {
     btn.disabled = true;
     btn.setAttribute('aria-busy', 'true');
 
-    browser.runtime.sendMessage({ type: 'CHECK_NOW' }, (response) => {
-      btn.textContent = 'Check All Prices Now';
-      btn.disabled = false;
-      btn.setAttribute('aria-busy', 'false');
+    try {
+      const response = await browser.runtime.sendMessage({ type: 'CHECK_NOW' });
 
       if (response && response.success) {
         showSuccess('Price check completed successfully!');
@@ -113,7 +110,14 @@ function setupEventListeners() {
         showError('Price check failed. Please try again.');
         debugError('[Settings]', 'Price check failed:', response);
       }
-    });
+    } catch (error) {
+      showError('Price check failed. Please try again.');
+      debugError('[Settings]', 'Price check failed:', error);
+    } finally {
+      btn.textContent = 'Check All Prices Now';
+      btn.disabled = false;
+      btn.setAttribute('aria-busy', 'false');
+    }
   });
 
   // Export data
@@ -237,7 +241,7 @@ async function handleSettingChange(e) {
 
     // If check interval changed, notify service worker to reschedule
     if (settingId === 'checkInterval') {
-      browser.runtime.sendMessage({
+      await browser.runtime.sendMessage({
         type: 'UPDATE_SETTINGS',
         data: { settings: newSettings }
       });

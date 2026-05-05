@@ -1,3 +1,4 @@
+import browser from './browser-polyfill.js';
 import { debug, debugWarn, debugError } from './debug.js';
 
 /**
@@ -79,12 +80,12 @@ class RateLimiter {
 }
 
 /**
- * Shared Rate Limiter - Uses chrome.storage to share state across contexts
+ * Shared Rate Limiter - Uses extension storage to share state across contexts
  * This ensures popup and service worker respect the same rate limits
  *
  * CRITICAL FIX: In Manifest V3, popup and service worker are separate processes.
  * Each has its own memory heap, so a local RateLimiter instance won't be shared.
- * This implementation uses chrome.storage.session (ephemeral, fast) to coordinate.
+ * This implementation uses storage.session when available (ephemeral, fast).
  */
 class SharedRateLimiter {
   /**
@@ -104,15 +105,15 @@ class SharedRateLimiter {
    */
   async getRequests() {
     try {
-      // Try chrome.storage.session first (Manifest V3, faster, ephemeral)
-      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.session) {
-        const result = await chrome.storage.session.get(this.storageKey);
+      // Try storage.session first (Manifest V3, faster, ephemeral)
+      if (browser?.storage?.session) {
+        const result = await browser.storage.session.get(this.storageKey);
         return result[this.storageKey] || [];
       }
 
       // Fallback to local storage (Manifest V2)
-      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-        const result = await chrome.storage.local.get(this.storageKey);
+      if (browser?.storage?.local) {
+        const result = await browser.storage.local.get(this.storageKey);
         return result[this.storageKey] || [];
       }
 
@@ -132,15 +133,15 @@ class SharedRateLimiter {
    */
   async saveRequests(requests) {
     try {
-      // Try chrome.storage.session first
-      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.session) {
-        await chrome.storage.session.set({ [this.storageKey]: requests });
+      // Try storage.session first
+      if (browser?.storage?.session) {
+        await browser.storage.session.set({ [this.storageKey]: requests });
         return;
       }
 
       // Fallback to local storage
-      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-        await chrome.storage.local.set({ [this.storageKey]: requests });
+      if (browser?.storage?.local) {
+        await browser.storage.local.set({ [this.storageKey]: requests });
         return;
       }
     } catch (error) {

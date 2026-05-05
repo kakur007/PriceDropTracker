@@ -446,7 +446,7 @@ async function handleProductDetected(productData, sender) {
 async function updateBadge() {
   try {
     const allProducts = await StorageManager.getAllProducts();
-    const count = allProducts.length;
+    const count = Object.keys(allProducts || {}).length;
 
     // Firefox MV2 uses browserAction, MV3 uses action
     const badgeAPI = browser.action || browser.browserAction;

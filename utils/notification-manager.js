@@ -54,7 +54,7 @@ export async function showPriceDropNotification(product, oldPrice, newPrice, dro
     }
 
     // Check cooldown
-    if (isOnCooldown(product.productId)) {
+    if (await isOnCooldown(product.productId)) {
       debug('[notification-manager]', `[Notifications] Product ${product.productId} is on cooldown`);
       return null;
     }
@@ -70,9 +70,9 @@ export async function showPriceDropNotification(product, oldPrice, newPrice, dro
 
     const message = `${truncatedTitle}
 
-Was: ${formatPrice(oldPrice, product.currency, product.locale)}
-Now: ${formatPrice(newPrice, product.currency, product.locale)}
-Save: ${formatPrice(parseFloat(dropAmount), product.currency, product.locale)} (${dropPercentage.toFixed(0)}% off)`;
+Was: ${formatPrice(oldPrice, product.price?.currency, product.price?.locale)}
+Now: ${formatPrice(newPrice, product.price?.currency, product.price?.locale)}
+Save: ${formatPrice(parseFloat(dropAmount), product.price?.currency, product.price?.locale)} (${dropPercentage.toFixed(0)}% off)`;
 
     // Create the notification
     // Firefox doesn't support requireInteraction and silent properties
@@ -95,7 +95,7 @@ Save: ${formatPrice(parseFloat(dropAmount), product.currency, product.locale)} (
     debug('[notification-manager]', `[Notifications] Created notification: ${notificationId} for product: ${product.title}`);
 
     // Set cooldown
-    setCooldown(product.productId);
+    await setCooldown(product.productId);
 
     // Auto-clear after 10 seconds
     setTimeout(() => {
@@ -186,7 +186,7 @@ export async function showBatchPriceDropNotifications(priceDrops) {
     debug('[notification-manager]', '[Notifications] Created batch notification');
 
     // Set cooldowns for all products
-    priceDrops.forEach(drop => setCooldown(drop.product.productId));
+    await Promise.all(priceDrops.map(drop => setCooldown(drop.product.productId)));
 
     return 1; // One summary notification
 
@@ -407,19 +407,25 @@ export async function clearAllCooldowns() {
  * Handle notification clicks
  * Opens the product page when user clicks the notification
  */
-if (typeof chrome !== 'undefined' && chrome.notifications) {
-  chrome.notifications.onClicked.addListener(async (notificationId) => {
+if (browser?.notifications?.onClicked) {
+  browser.notifications.onClicked.addListener(async (notificationId) => {
     try {
       debug('[notification-manager]', `[Notifications] Notification clicked: ${notificationId}`);
 
       // Handle batch notification clicks
       if (notificationId === 'batch-price-drops') {
         // Open the extension popup
-        chrome.action.openPopup().catch(() => {
+        const actionApi = browser.action || browser.browserAction;
+        if (actionApi?.openPopup) {
+          await actionApi.openPopup().catch(() => {
+            debug('[notification-manager]', '[Notifications] Could not open popup, opening in new tab');
+            browser.tabs.create({ url: browser.runtime.getURL('popup/popup.html') });
+          });
+        } else {
           debug('[notification-manager]', '[Notifications] Could not open popup, opening in new tab');
-          chrome.tabs.create({ url: chrome.runtime.getURL('popup/popup.html') });
-        });
-        chrome.notifications.clear(notificationId);
+          await browser.tabs.create({ url: browser.runtime.getURL('popup/popup.html') });
+        }
+        browser.notifications.clear(notificationId);
         return;
       }
 
@@ -428,14 +434,14 @@ if (typeof chrome !== 'undefined' && chrome.notifications) {
 
       if (product && product.url) {
         // Open product page in new tab
-        await chrome.tabs.create({ url: product.url });
+        await browser.tabs.create({ url: product.url });
         debug('[notification-manager]', `[Notifications] Opened product page: ${product.url}`);
       } else {
         debugWarn('[notification-manager]', `[Notifications] Product not found: ${notificationId}`);
       }
 
       // Clear the notification
-      chrome.notifications.clear(notificationId);
+      browser.notifications.clear(notificationId);
 
     } catch (error) {
       debugError('[notification-manager]', '[Notifications] Error handling notification click:', error);
@@ -443,7 +449,7 @@ if (typeof chrome !== 'undefined' && chrome.notifications) {
   });
 
   // Handle notification close events
-  chrome.notifications.onClosed.addListener((notificationId, byUser) => {
+  browser.notifications.onClosed.addListener((notificationId, byUser) => {
     if (byUser) {
       debug('[notification-manager]', `[Notifications] Notification closed by user: ${notificationId}`);
     }

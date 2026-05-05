@@ -5,6 +5,21 @@ All notable changes to Price Genius will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-05-05
+
+### Changed
+- Converted options-page storage and message calls to promise-style browser APIs
+- Updated user-facing version and browser-support references
+- Added package module type for Node-based ES module tests
+
+### Fixed
+- Extension badge count now correctly counts stored product objects
+- Data export now uses the shared browser polyfill instead of direct Chrome storage
+- Notification cooldown checks now await storage reads correctly
+- Notification price formatting now uses nested product price currency/locale data
+- Shared fetch rate limiter now uses cross-browser storage APIs
+- Notification click handling now uses cross-browser extension APIs
+
 ## [1.2.0] - 2026-05-05
 
 ### Added

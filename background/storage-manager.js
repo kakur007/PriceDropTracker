@@ -420,7 +420,7 @@ export async function getStorageStats() {
  */
 export async function exportData() {
   try {
-    const result = await chrome.storage.local.get(null);
+    const result = await browser.storage.local.get(null);
     return JSON.stringify(result, null, 2);
   } catch (error) {
     debugError('[storage-manager]', '[Storage] Error exporting data:', error);
