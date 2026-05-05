@@ -28,6 +28,117 @@ function parseNumericPrice(priceString, contextData = {}) {
 }
 
 /**
+ * Normalize Schema.org @type values to an array of strings.
+ * @param {Object} item - Schema node
+ * @returns {string[]} Schema type names
+ */
+function getSchemaTypes(item) {
+  const rawType = item?.['@type'];
+  if (!rawType) return [];
+
+  return (Array.isArray(rawType) ? rawType : [rawType])
+    .filter(type => typeof type === 'string')
+    .map(type => type.replace(/^https?:\/\/schema\.org\//i, ''));
+}
+
+/**
+ * Check if a Schema.org node has a specific type.
+ * @param {Object} item - Schema node
+ * @param {string} typeName - Type name, e.g. Product
+ * @returns {boolean}
+ */
+function isSchemaType(item, typeName) {
+  return getSchemaTypes(item).includes(typeName);
+}
+
+/**
+ * Recursively collect Product and ProductGroup entities from JSON-LD.
+ * @param {Object|Array} node - Parsed JSON-LD node
+ * @param {Array} matches - Accumulator
+ * @param {WeakSet<object>} seen - Cycle guard
+ * @returns {Array}
+ */
+function findProductSchemaNodes(node, matches = [], seen = new WeakSet()) {
+  if (!node || typeof node !== 'object' || seen.has(node)) {
+    return matches;
+  }
+
+  seen.add(node);
+
+  if (isSchemaType(node, 'Product') || isSchemaType(node, 'ProductGroup')) {
+    matches.push(node);
+  }
+
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      findProductSchemaNodes(item, matches, seen);
+    }
+    return matches;
+  }
+
+  for (const value of Object.values(node)) {
+    if (value && typeof value === 'object') {
+      findProductSchemaNodes(value, matches, seen);
+    }
+  }
+
+  return matches;
+}
+
+/**
+ * Normalize platform prices. Shopify stores integer minor units in product JSON.
+ * @param {string|number} rawPrice - Raw price value
+ * @returns {string|number}
+ */
+function normalizePlatformPrice(rawPrice) {
+  if (typeof rawPrice !== 'number') {
+    return rawPrice;
+  }
+
+  if (Number.isInteger(rawPrice) && rawPrice >= 1000) {
+    return (rawPrice / 100).toFixed(2);
+  }
+
+  return rawPrice;
+}
+
+/**
+ * Extract a price from embedded platform product JSON scripts.
+ * @param {Document} doc - Parsed DOM document
+ * @param {Object} contextData - Context information
+ * @returns {number|null}
+ */
+function extractPriceFromEmbeddedProductJson(doc, contextData = {}) {
+  const scripts = doc.querySelectorAll(
+    'script[type="application/json"][id*="ProductJson" i], script[type="application/json"][id*="product" i], script[type="application/json"][data-product-json]'
+  );
+
+  for (const script of scripts) {
+    try {
+      const data = JSON.parse(script.textContent);
+      const product = data.product || data;
+      const variants = Array.isArray(product.variants) ? product.variants : [];
+      const selectedVariant = variants.find(variant => variant.available !== false) || variants[0] || null;
+      const rawPrice = selectedVariant?.price ?? product.price ?? product.price_min;
+
+      if (!rawPrice) {
+        continue;
+      }
+
+      const normalizedPrice = normalizePlatformPrice(rawPrice);
+      const parsed = parseNumericPrice(String(normalizedPrice), contextData);
+      if (parsed !== null) {
+        return parsed;
+      }
+    } catch (error) {
+      debugWarn('[offscreen]', '[Offscreen] Failed to parse embedded product JSON:', error.message);
+    }
+  }
+
+  return null;
+}
+
+/**
  * Parse HTML and extract price information
  * @param {string} html - The HTML string to parse
  * @param {Object} contextData - Context information (domain, locale, currency)
@@ -55,7 +166,7 @@ function parseHTMLForPrice(html, contextData = {}) {
           continue;
         }
 
-        const priceString = offer.price || offer.lowPrice;
+        const priceString = offer.price || offer.lowPrice || offer.highPrice;
         if (priceString) {
           const parsed = parsePrice(String(priceString), contextData);
           if (parsed && parsed.numeric !== null) {
@@ -93,11 +204,12 @@ function parseHTMLForPrice(html, contextData = {}) {
     for (const script of schemaScripts) {
       try {
         const schema = JSON.parse(script.textContent);
-        const items = schema['@graph'] || (Array.isArray(schema) ? schema : [schema]);
+        const items = findProductSchemaNodes(schema);
 
         for (const item of items) {
-          // Handle Product with offers
-          if (item['@type'] === 'Product' && item.offers) {
+          // Handle Product/ProductGroup with offers. Product variants nested
+          // under hasVariant are already included by findProductSchemaNodes().
+          if ((isSchemaType(item, 'Product') || isSchemaType(item, 'ProductGroup')) && item.offers) {
             const offers = Array.isArray(item.offers) ? item.offers : [item.offers];
             newPrice = extractPriceFromOffers(offers, contextData);
             if (newPrice !== null) {
@@ -105,25 +217,6 @@ function parseHTMLForPrice(html, contextData = {}) {
               break;
             }
           }
-
-          // BOOZT FIX: Handle ProductGroup with hasVariant
-          if (item['@type'] === 'ProductGroup' && item.hasVariant) {
-            debug('[offscreen]', 'Found ProductGroup, checking variants...');
-            const variants = Array.isArray(item.hasVariant) ? item.hasVariant : [item.hasVariant];
-
-            for (const variant of variants) {
-              if (variant['@type'] === 'Product' && variant.offers) {
-                const offers = Array.isArray(variant.offers) ? variant.offers : [variant.offers];
-                newPrice = extractPriceFromOffers(offers, contextData);
-                if (newPrice !== null) {
-                  detectionMethod = 'schema.org';
-                  break;
-                }
-              }
-            }
-          }
-
-          if (newPrice !== null) break;
         }
       } catch (e) {
         // Ignore JSON parse errors
@@ -131,7 +224,15 @@ function parseHTMLForPrice(html, contextData = {}) {
       if (newPrice !== null) break;
     }
 
-    // 2. If Schema.org fails, try common meta tags and selectors
+    // 2. Try embedded platform product JSON (Shopify themes, etc.)
+    if (newPrice === null) {
+      newPrice = extractPriceFromEmbeddedProductJson(doc, contextData);
+      if (newPrice !== null) {
+        detectionMethod = 'embeddedProductJson';
+      }
+    }
+
+    // 3. If structured extraction fails, try common meta tags and selectors
     if (newPrice === null) {
       const selectors = [
         { sel: 'meta[property="og:price:amount"]', attr: 'content' },

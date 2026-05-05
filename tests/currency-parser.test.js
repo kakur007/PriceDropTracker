@@ -343,7 +343,7 @@ const tests = [
   {
     name: "Price with Was: prefix",
     input: "Was: £149.99 Now: £99.99",
-    expected: { numeric: 149.99, currency: "GBP", confidence: 0.85 },
+    expected: { numeric: 99.99, currency: "GBP", confidence: 0.85 },
     context: {}
   },
   {
@@ -414,6 +414,9 @@ console.log("=================================");
 if (failures.length > 0) {
   console.log("\nFailed tests:");
   failures.forEach(name => console.log(`  - ${name}`));
+  if (typeof process !== 'undefined') {
+    process.exitCode = 1;
+  }
 }
 
 // Export for use in other modules

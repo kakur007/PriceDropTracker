@@ -90,7 +90,14 @@ export async function detectProduct() {
     debug('[product-detector]', '[Price Drop Tracker] Product detected via Microdata (confidence:', microdataData.confidence + ')');
   }
 
-  // Layer 4: CSS Selectors (fallback)
+  // Layer 4: Embedded platform product JSON (Shopify themes, etc.)
+  const embeddedData = extractFromEmbeddedProductJson();
+  if (embeddedData && (!productData || embeddedData.confidence > productData.confidence)) {
+    productData = embeddedData;
+    debug('[product-detector]', '[Price Drop Tracker] Product detected via embedded product JSON (confidence:', embeddedData.confidence + ')');
+  }
+
+  // Layer 5: CSS Selectors (fallback)
   if (!productData || productData.confidence < 0.70) {
     const cssData = extractFromSelectors();
     if (cssData && (!productData || cssData.confidence > productData.confidence)) {
@@ -121,32 +128,50 @@ function isNonProductPage() {
   const url = window.location.href.toLowerCase();
   const pathname = window.location.pathname.toLowerCase();
 
-  // Expanded patterns for various e-commerce platforms
-  const nonProductPatterns = [
-    // Shopping cart and checkout
-    '/cart', '/basket', '/bag', '/checkout', '/payment', '/panier',
-
-    // Account pages
-    '/account', '/login', '/register', '/signin', '/signup', '/my-account',
-    '/profile', '/dashboard', '/orders', '/wishlist',
-
-    // Search and browsing
-    '/search', '/results', '/category', '/categories', '/browse', '/collections',
-    '/shop', '/all-products', '/catalog',
-
-    // Support and info pages
-    '/help', '/support', '/contact', '/about', '/faq', '/returns', '/shipping',
-    '/terms', '/privacy', '/policy',
-
-    // Blog and content
-    '/blog', '/news', '/articles', '/guides',
-
-    // Homepage indicators
-    '/index.html', '/index.php', '/home'
+  // Strong product URL signals should win over broad browsing words like
+  // "/shop"; many stores use paths such as /shop/product-name.
+  const productPathPatterns = [
+    /\/products?\/[^\/?]+/,
+    /\/product\/[^\/?]+/,
+    /\/item\/[^\/?]+/,
+    /\/items\/[^\/?]+/,
+    /\/itm\/[^\/?]+/,
+    /\/dp\/[a-z0-9]{6,}/,
+    /\/gp\/product\/[a-z0-9]{6,}/,
+    /\/p\/[^\/?]+/,
+    /\/pd\/[^\/?]+/,
+    /\/detail\/[^\/?]+/,
+    /\/collections\/[^\/]+\/products\/[^\/?]+/
   ];
 
-  // Check URL patterns
-  if (nonProductPatterns.some(pattern => url.includes(pattern))) {
+  if (productPathPatterns.some(pattern => pattern.test(pathname))) {
+    return false;
+  }
+
+  // Expanded patterns for various e-commerce platforms. Keep these scoped to
+  // the path start so product pages nested under /shop or /collections are not
+  // rejected before structured data and selector detection can run.
+  const nonProductPathPatterns = [
+    // Shopping cart and checkout
+    /^\/(cart|basket|bag|checkout|payment|panier)(\/|$)/,
+
+    // Account pages
+    /^\/(account|login|register|signin|signup|my-account|profile|dashboard|orders|wishlist)(\/|$)/,
+
+    // Search and browsing landing pages
+    /^\/(search|results|category|categories|browse|collections|shop|all-products|catalog)(\/)?$/,
+
+    // Support and info pages
+    /^\/(help|support|contact|about|faq|returns|shipping|terms|privacy|policy)(\/|$)/,
+
+    // Blog and content
+    /^\/(blog|news|articles|guides)(\/|$)/,
+
+    // Homepage indicators
+    /^\/(index\.html|index\.php|home)(\/)?$/
+  ];
+
+  if (nonProductPathPatterns.some(pattern => pattern.test(pathname))) {
     return true;
   }
 
@@ -167,8 +192,9 @@ function isNonProductPage() {
     return true;
   }
 
-  // Skip search results pages
-  if (url.includes('?q=') || url.includes('?s=') || url.includes('&q=') || url.includes('&s=')) {
+  // Skip search results pages when the path also looks like search/browse.
+  if ((pathname.includes('/search') || pathname.includes('/results')) &&
+      (url.includes('?q=') || url.includes('?s=') || url.includes('&q=') || url.includes('&s='))) {
     return true;
   }
 
@@ -219,14 +245,23 @@ function findProductsRecursively(obj, products = []) {
     return products;
   }
 
+  const rawType = obj['@type'];
+  const types = (Array.isArray(rawType) ? rawType : [rawType])
+    .filter(type => typeof type === 'string')
+    .map(type => type.replace(/^https?:\/\/schema\.org\//i, ''));
+
   // Check if this object is a Product
-  if (obj['@type'] === 'Product' || obj['@type'] === 'https://schema.org/Product') {
+  if (types.includes('Product')) {
     products.push(obj);
     return products;
   }
 
   // Check if this is a ProductGroup containing products
-  if (obj['@type'] === 'ProductGroup' && obj.hasVariant) {
+  if (types.includes('ProductGroup')) {
+    products.push(obj);
+  }
+
+  if (types.includes('ProductGroup') && obj.hasVariant) {
     const variants = Array.isArray(obj.hasVariant) ? obj.hasVariant : [obj.hasVariant];
     for (const variant of variants) {
       findProductsRecursively(variant, products);
@@ -296,7 +331,11 @@ function extractFromSchemaOrg() {
 
         for (const offers of offersList) {
           // Handle AggregateOffer (variable products)
-          if (offers['@type'] === 'AggregateOffer' || offers['@type'] === 'https://schema.org/AggregateOffer') {
+          const offerTypes = (Array.isArray(offers['@type']) ? offers['@type'] : [offers['@type']])
+            .filter(type => typeof type === 'string')
+            .map(type => type.replace(/^https?:\/\/schema\.org\//i, ''));
+
+          if (offerTypes.includes('AggregateOffer')) {
             debug('[product-detector]', '[Price Drop Tracker] Found AggregateOffer (variable product)');
 
             // Use lowPrice for variable products
@@ -405,14 +444,33 @@ function extractFromSchemaOrg() {
  */
 function extractFromOpenGraph() {
   const ogType = document.querySelector('meta[property="og:type"]')?.content;
-  if (!ogType || !ogType.includes('product')) {
+  const priceAmountElement =
+    document.querySelector('meta[property="og:price:amount"]') ||
+    document.querySelector('meta[property="product:price:amount"]') ||
+    document.querySelector('meta[property="product:price"]') ||
+    document.querySelector('meta[name="product:price:amount"]') ||
+    document.querySelector('meta[itemprop="price"]');
+
+  if ((!ogType || !ogType.includes('product')) && !priceAmountElement) {
     return null;
   }
 
-  const title = document.querySelector('meta[property="og:title"]')?.content;
-  const priceAmount = document.querySelector('meta[property="og:price:amount"]')?.content;
-  const priceCurrency = document.querySelector('meta[property="og:price:currency"]')?.content;
-  const rawImageUrl = document.querySelector('meta[property="og:image"]')?.content;
+  const title =
+    document.querySelector('meta[property="og:title"]')?.content ||
+    document.querySelector('meta[name="twitter:title"]')?.content ||
+    document.querySelector('meta[itemprop="name"]')?.content ||
+    document.querySelector('h1')?.textContent?.trim();
+  const priceAmount = priceAmountElement?.content;
+  const priceCurrency =
+    document.querySelector('meta[property="og:price:currency"]')?.content ||
+    document.querySelector('meta[property="product:price:currency"]')?.content ||
+    document.querySelector('meta[name="product:price:currency"]')?.content ||
+    document.querySelector('meta[itemprop="priceCurrency"]')?.content;
+  const rawImageUrl =
+    document.querySelector('meta[property="og:image:secure_url"]')?.content ||
+    document.querySelector('meta[property="og:image"]')?.content ||
+    document.querySelector('meta[name="twitter:image"]')?.content ||
+    document.querySelector('meta[itemprop="image"]')?.content;
 
   if (!title || !priceAmount) {
     return null;
@@ -425,7 +483,8 @@ function extractFromOpenGraph() {
 
   const priceData = parsePrice(priceString, {
     domain: window.location.hostname,
-    locale: document.documentElement.lang
+    locale: document.documentElement.lang,
+    expectedCurrency: priceCurrency
   });
 
   if (!priceData) {
@@ -456,10 +515,17 @@ function extractFromMicrodata() {
     return null;
   }
 
-  const title = productElement.querySelector('[itemprop="name"]')?.textContent?.trim();
+  const titleElement = productElement.querySelector('[itemprop="name"]');
+  const title = titleElement?.content || titleElement?.textContent?.trim();
   const priceElement = productElement.querySelector('[itemprop="price"]');
-  const currency = productElement.querySelector('[itemprop="priceCurrency"]')?.content;
-  const rawImageUrl = productElement.querySelector('[itemprop="image"]')?.src;
+  const currencyElement = productElement.querySelector('[itemprop="priceCurrency"]');
+  const currency = currencyElement?.content || currencyElement?.textContent?.trim();
+  const imageElement = productElement.querySelector('[itemprop="image"]');
+  const rawImageUrl =
+    imageElement?.src ||
+    imageElement?.content ||
+    imageElement?.getAttribute('href') ||
+    imageElement?.getAttribute('data-src');
 
   if (!title || !priceElement) {
     return null;
@@ -472,7 +538,8 @@ function extractFromMicrodata() {
 
   const priceData = parsePrice(priceString, {
     domain: window.location.hostname,
-    locale: document.documentElement.lang
+    locale: document.documentElement.lang,
+    expectedCurrency: currency
   });
 
   if (!priceData) {
@@ -490,6 +557,152 @@ function extractFromMicrodata() {
     confidence: 0.75,
     detectionMethod: 'microdata'
   };
+}
+
+/**
+ * Extract product data from embedded platform product JSON.
+ * Supports common Shopify theme JSON blocks without scraping arbitrary state.
+ * @returns {Object|null} Product data or null
+ */
+function extractFromEmbeddedProductJson() {
+  const hasShopifySignal =
+    !!document.querySelector('form[action*="/cart/add"], input[name="form_type"][value="product"]') ||
+    !!document.querySelector('script[id*="ProductJson" i], script[id*="product-json" i]') ||
+    document.documentElement.innerHTML.includes('ShopifyAnalytics');
+
+  if (!hasShopifySignal) {
+    return null;
+  }
+
+  const currency =
+    document.querySelector('meta[property="product:price:currency"]')?.content ||
+    document.querySelector('meta[itemprop="priceCurrency"]')?.content ||
+    document.querySelector('[data-currency]')?.getAttribute('data-currency') ||
+    null;
+
+  const productJsonScripts = document.querySelectorAll(
+    'script[type="application/json"][id*="ProductJson" i], script[type="application/json"][id*="product" i], script[type="application/json"][data-product-json]'
+  );
+
+  for (const script of productJsonScripts) {
+    try {
+      const data = JSON.parse(script.textContent);
+      const product = normalizeEmbeddedProduct(data, currency);
+      if (product) {
+        return product;
+      }
+    } catch (error) {
+      debugWarn('[product-detector]', '[Price Drop Tracker] Failed to parse embedded product JSON:', error);
+    }
+  }
+
+  // ShopifyAnalytics.meta is JavaScript, not pure JSON. Keep this narrow:
+  // parse the product object only when the script clearly contains Shopify meta.
+  const inlineScripts = document.querySelectorAll('script:not([src])');
+  for (const script of inlineScripts) {
+    const text = script.textContent || '';
+    if (!text.includes('ShopifyAnalytics') || !text.includes('variants')) {
+      continue;
+    }
+
+    const productMatch = text.match(/"product"\s*:\s*(\{[\s\S]*?"variants"\s*:\s*\[[\s\S]*?\][\s\S]*?\})\s*[,}]/);
+    if (!productMatch) {
+      continue;
+    }
+
+    try {
+      const data = JSON.parse(productMatch[1]);
+      const product = normalizeEmbeddedProduct(data, currency);
+      if (product) {
+        return product;
+      }
+    } catch (error) {
+      debugWarn('[product-detector]', '[Price Drop Tracker] Failed to parse ShopifyAnalytics product JSON:', error);
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Normalize embedded product JSON into product data.
+ * @param {Object} data - Parsed product data
+ * @param {string|null} currency - Expected currency
+ * @returns {Object|null}
+ */
+function normalizeEmbeddedProduct(data, currency) {
+  if (!data || typeof data !== 'object') {
+    return null;
+  }
+
+  const product = data.product || data;
+  const variants = Array.isArray(product.variants) ? product.variants : [];
+  const selectedVariant = variants.find(variant => variant.available !== false) || variants[0] || null;
+  const rawPrice = selectedVariant?.price ?? product.price ?? product.price_min;
+
+  if (!rawPrice) {
+    return null;
+  }
+
+  const normalizedPrice = normalizePlatformPrice(rawPrice);
+  const currencyCode = currency || product.currency || product.priceCurrency || null;
+  const priceString = currencyCode ? `${normalizedPrice} ${currencyCode}` : String(normalizedPrice);
+  const priceData = parsePrice(priceString, {
+    domain: window.location.hostname,
+    locale: document.documentElement.lang,
+    expectedCurrency: currencyCode
+  });
+
+  if (!priceData || priceData.confidence < 0.60) {
+    return null;
+  }
+
+  const title =
+    product.title ||
+    product.name ||
+    selectedVariant?.name ||
+    document.querySelector('meta[property="og:title"]')?.content ||
+    document.querySelector('h1')?.textContent?.trim();
+
+  if (!title) {
+    return null;
+  }
+
+  const rawImageUrl =
+    selectedVariant?.featured_image?.src ||
+    selectedVariant?.featured_image ||
+    product.featured_image ||
+    product.image ||
+    (Array.isArray(product.images) ? product.images[0] : null);
+
+  return {
+    title,
+    price: priceData,
+    imageUrl: makeAbsoluteUrl(typeof rawImageUrl === 'string' ? rawImageUrl : rawImageUrl?.src),
+    url: window.location.href,
+    domain: window.location.hostname,
+    sku: selectedVariant?.sku || selectedVariant?.id || product.id || null,
+    availability: selectedVariant?.available === false ? 'OutOfStock' : null,
+    confidence: 0.82,
+    detectionMethod: 'embeddedProductJson'
+  };
+}
+
+/**
+ * Normalize platform prices. Shopify stores integer minor units in product JSON.
+ * @param {string|number} rawPrice - Raw price
+ * @returns {string|number}
+ */
+function normalizePlatformPrice(rawPrice) {
+  if (typeof rawPrice !== 'number') {
+    return rawPrice;
+  }
+
+  if (Number.isInteger(rawPrice) && rawPrice >= 1000) {
+    return (rawPrice / 100).toFixed(2);
+  }
+
+  return rawPrice;
 }
 
 /**

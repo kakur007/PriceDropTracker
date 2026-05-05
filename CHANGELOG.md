@@ -5,6 +5,26 @@ All notable changes to Price Genius will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-05-05
+
+### Added
+- Embedded product JSON detection for Shopify-style product pages
+- Background/offscreen refresh support for embedded product JSON prices
+- Real `npm test` command for the currency parser test suite
+
+### Changed
+- Open Graph extraction now supports `product:price:*` meta tags and better title/image fallbacks
+- Microdata extraction now reads `content`, `href`, and lazy image attributes
+- Generic URL filtering is less aggressive for product pages nested under `/shop` or `/collections`
+- Main content script now avoids duplicate detector auto-runs after dynamic import
+
+### Fixed
+- Firefox-safe content-script browser API lookup
+- Nested Schema.org parsing in background/offscreen price refreshes
+- Schema.org `@type` arrays and full schema.org URLs in product and offer detection
+- Brazilian Real (`R$`) currency detection
+- Sale text parsing now prefers the current `Now` price
+
 ## [1.1.0] - 2025-11-28
 
 ### Added
