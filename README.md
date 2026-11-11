@@ -10,6 +10,11 @@ Automatically track product prices across major e-commerce sites and get notifie
 - **Smart Filters** - View all products, only price drops, or items expiring soon with convenient filter tabs.
 - **Product Dashboard** - Beautiful popup interface showing all tracked products with images, current prices, and price history.
 
+### 🔍 Is This Deal Real?
+- Checks shown discounts against your own price history ("we saw it at €60 on 28 Oct")
+- Uses the store's "lowest price in 30 days" notice when present (EU Omnibus rule)
+- Small, dismissible price card on product pages
+
 ### 🔔 Your Rules, Per Product
 - Bell icon on every product: any drop, at least N %, below a target price, or off
 - Back-in-stock alerts
@@ -598,10 +603,16 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [x] **Firefox support**
 - [x] **Search, sort and filtering** in the popup
 
-### 🚧 Phase 4: Next
+### ✅ Phase 4: Smarter Deals (v1.4.0)
+- [x] **"Is this deal real?"** - verdicts from your price history and the store's 30-day price
+- [x] **Price panel on product pages**
+- [x] **No "browsing history" install warning** (removed the tabs permission)
+
+### 🚧 Phase 5: Next
+- [ ] **Firefox for Android** support
 - [ ] **Browser Sync** - sync the product list via the browser's own sync (no account, opt-in)
+- [ ] **Translations** (starting with Estonian)
 - [ ] **Folders and tags** for products
-- [ ] **"Good price?" insight** - based on your own price history, computed locally
 - [ ] **Weekly summary** as a browser notification (no email, no server)
 
 ### Not planned

@@ -967,3 +967,103 @@ export function priceForVariant(doc, variant, ctx = {}) {
 
   return null;
 }
+
+// ------------------------------------------------------------ deal check
+//
+// Signals for "is this discount real?" (see utils/deal-check.js).
+
+// "lowest price" in the languages of EU stores (Omnibus directive notices)
+const LOWEST_WORDS = /lowest|cheapest|niedrigst|tiefst|günstigst|madalaim|odavaim|le plus bas|más bajo|mas bajo|più basso|piu basso|laagste|najniższ|najnizsz|lägsta|lagsta|alin |alhaisin|halvin|zemākā|zemaka|mažiausia|maziausia|nejnižší|nejnizsi|najnižš|laveste|mais baixo|legalacsonyabb|cel mai mic|χαμηλότερη|най-ниска|najniž/i;
+const THIRTY_DAYS = /\b30\b/;
+const NOT_PRODUCT_AREA = 'header, footer, nav, [role="navigation"], [class*="related" i], [class*="recommend" i], [class*="carousel" i], [class*="upsell" i], [class*="cross-sell" i], [class*="similar" i]';
+
+function priceTokens(text) {
+  // number with optional currency on either side; "30" alone is excluded below
+  const re = /(?:[$£€¥₹]|EUR|USD|GBP|PLN|SEK|NOK|DKK|CZK|HUF|RON|CHF)?\s*\d[\d\s.,'’]*(?:\d)(?:\s*(?:[$£€¥₹]|EUR|USD|GBP|zł|kr|Kč|Ft|lei|PLN|SEK|NOK|DKK|CZK|HUF|RON|CHF))?|(?:[$£€]\s*)\d/g;
+  return text.match(re) || [];
+}
+
+/**
+ * The store's "lowest price in the last 30 days" figure, if shown.
+ * @returns {number|null}
+ */
+export function findLowest30Price(doc, ctx = {}) {
+  const els = doc.querySelectorAll('p, span, div, small, li, dd, dt, td, strong, em, b');
+  let best = null;
+  for (const el of els) {
+    const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+    if (!text || text.length > 220 || !THIRTY_DAYS.test(text) || !LOWEST_WORDS.test(text)) continue;
+    if (el.closest(NOT_PRODUCT_AREA)) continue;
+    // innermost element carrying the sentence
+    if (Array.from(el.children).some(c => THIRTY_DAYS.test(c.textContent || '') && LOWEST_WORDS.test(c.textContent || ''))) continue;
+
+    let source = text;
+    // price may live in the next element ("Lowest price 30 days: | €19.99")
+    const hasPrice = priceTokens(text).some(t => !/^\s*30\s*$/.test(t));
+    if (!hasPrice && el.nextElementSibling) source += ' ' + el.nextElementSibling.textContent;
+
+    const after = source.slice(Math.max(0, source.search(LOWEST_WORDS)));
+    for (const token of priceTokens(after)) {
+      if (/^\s*30\s*$/.test(token)) continue;
+      const parsed = parsePrice(token.trim(), { domain: ctx.domain, locale: ctx.locale, expectedCurrency: ctx.expectedCurrency });
+      if (parsed && parsed.numeric > 0 && parsed.numeric !== 30) {
+        best = best === null ? parsed.numeric : Math.min(best, parsed.numeric);
+        break;
+      }
+    }
+    if (best !== null) break;
+  }
+  return best;
+}
+
+function domDistance(a, b) {
+  if (!a || !b) return 99;
+  const chain = [];
+  for (let n = a; n && chain.length < 20; n = n.parentElement) chain.push(n);
+  let steps = 0;
+  for (let n = b; n && steps < 20; n = n.parentElement, steps++) {
+    const i = chain.indexOf(n);
+    if (i !== -1) return i + steps;
+  }
+  return 99;
+}
+
+/**
+ * The struck-through "was" price shown next to the current price.
+ * @returns {number|null}
+ */
+export function findClaimedRegularPrice(doc, current, ctx = {}) {
+  if (!(current > 0)) return null;
+  const title = doc.querySelector('h1');
+  const candidates = doc.querySelectorAll(
+    'del, s, strike, [class*="old-price" i], [class*="oldprice" i], [class*="price-old" i], [class*="was-price" i], ' +
+    '[class*="price-was" i], [class*="regular-price" i], [class*="price--compare" i], [class*="compare-at" i], ' +
+    '[class*="strike" i], [class*="price-before" i], [class*="original-price" i], [class*="list-price" i], ' +
+    '[class*="crossed" i], [data-price-type="oldPrice"], [data-test*="old-price" i], [data-testid*="original-price" i]'
+  );
+  let best = null;
+  for (const el of candidates) {
+    if (el.closest(NOT_PRODUCT_AREA)) continue;
+    const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+    if (!text || text.length > 40 || !/\d/.test(text)) continue;
+    if (/save|spar|säästa|économ|ahorr|rispar|bespaar|oszczęd|\/\s*(kg|l|m|st|tk|pc)/i.test(text)) continue;
+    const parsed = parsePrice(text, { domain: ctx.domain, locale: ctx.locale, expectedCurrency: ctx.expectedCurrency });
+    if (!parsed || !(parsed.numeric > current * 1.01) || parsed.numeric > current * 20) continue;
+    const distance = title ? domDistance(el, title) : 0;
+    if (!best || distance < best.distance) best = { value: parsed.numeric, distance };
+  }
+  return best && best.distance <= 12 ? best.value : null;
+}
+
+/**
+ * Both deal signals for a product page.
+ */
+export function getDealSignals(doc, product, ctx = {}) {
+  const current = product?.price?.numeric;
+  const structuredRegular = Number(product?.price?.regularPrice) > current ? Number(product.price.regularPrice) : null;
+  const c = { ...ctx, expectedCurrency: product?.price?.currency || ctx.expectedCurrency };
+  return {
+    claimedRegular: structuredRegular || findClaimedRegularPrice(doc, current, c),
+    lowest30: findLowest30Price(doc, c)
+  };
+}

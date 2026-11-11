@@ -95,6 +95,18 @@ const CASES = [
     expect: { numeric: 78.45, currency: 'EUR', title: 'Pesulehed – 60 pesukorda', variantId: '160' }
   },
   {
+    name: 'Deal check: Estonian 30-day notice reveals inflated discount',
+    fixture: 'omnibus-et.html',
+    url: 'https://www.kodutehnika-demo.ee/robottolmuimeja-r5',
+    expect: { numeric: 99, currency: 'EUR', claimedRegular: 199, lowest30: 104, verdict: 'inflated' }
+  },
+  {
+    name: 'Deal check: German notice in a separate element, real discount',
+    fixture: 'omnibus-de.html',
+    url: 'https://www.kaffee-demo.de/kaffeemaschine-k2',
+    expect: { numeric: 249, currency: 'EUR', claimedRegular: 349, lowest30: 339, verdict: 'genuine' }
+  },
+  {
     name: 'Price rendered late by JavaScript',
     fixture: 'late-price.html',
     url: 'https://www.gadgets-demo.com/smart-gadget-pro',
@@ -162,7 +174,14 @@ for (const testCase of CASES) {
         regularPrice: product.price.regularPrice || null,
         method: product.detectionMethod,
         selector: product.priceSelector || null,
-        variantId: product.variant?.id || null
+        variantId: product.variant?.id || null,
+        claimedRegular: product.dealSignals?.claimedRegular ?? null,
+        lowest30: product.dealSignals?.lowest30 ?? null,
+        verdict: (await import('/__ext/utils/deal-check.js')).evaluateDeal({
+          current: product.price.numeric,
+          claimedRegular: product.dealSignals?.claimedRegular,
+          lowest30: product.dealSignals?.lowest30
+        })?.status ?? null
       },
       refresh
     };
@@ -180,6 +199,9 @@ for (const testCase of CASES) {
     if (Math.abs(p.numeric - e.numeric) > 0.001) problems.push(`price ${p.numeric} != ${e.numeric} (via ${p.method})`);
     if (p.currency !== e.currency) problems.push(`currency ${p.currency} != ${e.currency}`);
     if (e.title && p.title !== e.title) problems.push(`title "${p.title}" != "${e.title}"`);
+    for (const key of ['claimedRegular', 'lowest30', 'verdict']) {
+      if (key in e && p[key] !== e[key]) problems.push(`${key} ${p[key]} != ${e[key]}`);
+    }
     if (e.variantId && p.variantId !== e.variantId) problems.push(`variant ${p.variantId} != ${e.variantId}`);
     if (e.method && p.method !== e.method) problems.push(`method ${p.method} != ${e.method}`);
     if (e.regularPrice && Math.abs((p.regularPrice || 0) - e.regularPrice) > 0.001) problems.push(`regularPrice ${p.regularPrice} != ${e.regularPrice}`);

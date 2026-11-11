@@ -27,6 +27,22 @@
   const RETRY_DELAYS = [600, 1200, 2000, 3500, 6000];
 
   let detectorPromise = null;
+  let panelPromise = null;
+
+  function loadPanel() {
+    if (!panelPromise) {
+      panelPromise = import(api.runtime.getURL('content-scripts/page-panel.js'));
+    }
+    return panelPromise;
+  }
+
+  async function getSettings() {
+    try {
+      return (await api.storage.local.get('settings')).settings || null;
+    } catch (_) {
+      return null;
+    }
+  }
   let runId = 0;
   let lastUrl = location.href;
   let handledUrl = null;
@@ -43,6 +59,7 @@
   async function run() {
     const myRun = ++runId;
     const url = location.href;
+    loadPanel().then(m => m.removePagePanel()).catch(() => {});
 
     let detector;
     try {
@@ -72,7 +89,17 @@
           source: 'auto'
         });
         const result = response?.data;
-        if (response?.success && result?.added) {
+        const tracked = response?.success && (result?.added || result?.alreadyTracked) ? result.product : null;
+
+        let panelShown = false;
+        try {
+          const { showPagePanel } = await loadPanel();
+          if (myRun === runId) panelShown = showPagePanel({ product, tracked, settings: await getSettings() });
+        } catch (error) {
+          console.warn(TAG, 'Panel error:', error);
+        }
+
+        if (!panelShown && response?.success && result?.added) {
           detector.showTrackingBadge(product, `Tracking at ${product.price.formatted || product.price.numeric}`);
         }
       } catch (error) {

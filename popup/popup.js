@@ -11,6 +11,7 @@ import { isUrlSupported, getStoreName } from '../utils/domain-validator.js';
 import { hasPermissionForUrl, requestPermissionForUrl } from '../utils/permission-manager.js';
 import { sanitizeProductUrl } from '../utils/url-sanitizer.js';
 import { getAlert, describeAlert, globalMinDrop } from '../utils/alert-rules.js';
+import { evaluateDeal } from '../utils/deal-check.js';
 
 const state = {
   products: {},
@@ -23,6 +24,7 @@ const state = {
   hasSiteAccess: false,
   accessibleDomains: new Set(),
   settings: null,
+  liveSignals: null, // live price + store notices for a tracked page
   editingId: null,   // product whose alert editor is open
   alertDraft: null   // unsaved editor values (survive re-renders)
 };
@@ -250,6 +252,16 @@ async function inspectCurrentPage() {
   if (tracked) {
     state.page = { kind: 'tracked', product: tracked };
     renderPageCard();
+    // Quietly read the live page for the deal check (price + store notices)
+    executeScript({ target: { tabId: tab.id }, func: detectInPage })
+      .then(results => {
+        const live = results?.[0]?.result?.product;
+        if (live && state.page.kind === 'tracked') {
+          state.liveSignals = { current: live.price?.numeric, ...(live.dealSignals || {}) };
+          renderPageCard();
+        }
+      })
+      .catch(() => {});
     return;
   }
 
@@ -275,6 +287,32 @@ async function inspectCurrentPage() {
     state.page = { kind: 'blocked' };
   }
   renderPageCard();
+}
+
+/**
+ * "Is this deal real?" block for the current-page card.
+ * Tracked: verdict from the user's own price history (+ store notice if any).
+ * Untracked: only a nudge to track when the store claims a discount, or a
+ * verdict when the store prints its 30-day lowest price.
+ */
+function dealBlock(product, tracked) {
+  const signals = tracked ? (state.liveSignals || {}) : (product.dealSignals || {});
+  const current = tracked ? (state.liveSignals?.current || product.price?.numeric) : product.price?.numeric;
+  const verdict = evaluateDeal({
+    current,
+    claimedRegular: signals.claimedRegular,
+    lowest30: signals.lowest30,
+    history: tracked ? (product.priceHistory || []) : [],
+    format: v => money(product, v)
+  });
+  if (!verdict) return null;
+  if (verdict.status === 'unverified') {
+    if (tracked) return null;
+    return h('div', { class: 'deal neutral' },
+      h('b', { text: verdict.headline }),
+      h('span', { text: 'Track it and Price Genius will tell you whether this discount is real.' }));
+  }
+  return h('div', { class: `deal ${verdict.tone}` }, h('b', { text: verdict.headline }), h('span', { text: verdict.detail }));
 }
 
 function siteAccessNote() {
@@ -331,6 +369,7 @@ function renderPageCard() {
           h('div', { class: 'muted', text: `Since ${new Date(product.tracking?.firstSeen || Date.now()).toLocaleDateString()} · lowest ${formatPrice(lowestPrice(product), product.price?.currency, product.price?.locale)}` })
         )
       ),
+      dealBlock(product, true),
       h('div', { class: 'page-actions' },
         h('button', { class: 'btn btn-secondary btn-small', onclick: () => toggleAlertEditor(product.productId), 'aria-expanded': String(state.editingId === product.productId) },
           icon(ICONS.bell), `Alert: ${describeAlert(product, state.settings, v => money(product, v))}`),
@@ -347,6 +386,7 @@ function renderPageCard() {
       h('div', { class: 'page-eyebrow' }, h('span', { class: 'dot' }), 'Product found'),
       h('div', { class: 'page-title', text: product.title }),
       h('div', { class: 'page-price', text: formatPrice(product.price?.numeric, product.price?.currency, product.price?.locale) }),
+      dealBlock(product, false),
       h('div', { class: 'page-actions' },
         h('button', { class: 'btn btn-primary', id: 'trackBtn', onclick: trackDetected }, icon(ICONS.plus), 'Track price'),
         h('button', { class: 'btn btn-secondary', onclick: startPicker }, icon(ICONS.target), 'Not right? Pick price')

@@ -30,6 +30,9 @@ const DEFAULT_SETTINGS = {
     sound: true,
     badge: true
   },
+  display: {
+    pagePanel: true      // Price panel on product pages (tracked products & deal checks)
+  },
   privacy: {
     activityLog: true,
     analytics: false
@@ -365,6 +368,7 @@ export async function updateSettings(newSettings) {
       tracking: { ...currentSettings.tracking, ...(newSettings.tracking || {}) },
       checking: { ...currentSettings.checking, ...(newSettings.checking || {}) },
       notifications: { ...currentSettings.notifications, ...(newSettings.notifications || {}) },
+      display: { ...(currentSettings.display || {}), ...(newSettings.display || {}) },
       privacy: { ...currentSettings.privacy, ...(newSettings.privacy || {}) },
       advanced: { ...currentSettings.advanced, ...(newSettings.advanced || {}) }
     };

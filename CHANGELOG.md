@@ -5,6 +5,27 @@ All notable changes to Price Genius will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-11-11
+
+### Added
+- **"Is this deal real?"**: when a store shows a discount, Price Genius compares it with
+  your own price history for that product, and with the "lowest price of the last 30 days"
+  notice if the store prints one (EU Omnibus rule; read in 15+ EU languages). Verdicts:
+  *Discount looks inflated*, *Real discount*, *Was cheaper recently*, *Lowest price in 30 days*
+- **Price panel on product pages**: a small, dismissible card on tracked products (current
+  price, lowest seen, your alert) and on untracked products whose store prints a 30-day
+  price notice. Can be switched off in Settings → Appearance
+- The popup's current-page card shows the same verdict; untracked products with a
+  discount get a nudge to track them
+
+### Changed
+- New Price Genius icon everywhere: toolbar, extension list, popup, settings, price history,
+  privacy and onboarding pages, on-page panel and notifications; toolbar count badge uses the
+  brand teal
+- **Removed the `tabs` permission**: Chrome no longer shows "Read your browsing history"
+  when installing. The current page is read via `activeTab` only when the user clicks the
+  icon or uses the shortcut
+
 ## [1.3.0] - 2026-11-11
 
 Focus: work on (almost) every store, and a simpler, modern popup.
