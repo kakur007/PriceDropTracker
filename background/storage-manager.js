@@ -11,7 +11,7 @@ import { productStorageMutex } from '../utils/storage-mutex.js';
  */
 const DEFAULT_SETTINGS = {
   tracking: {
-    autoTrack: true,     // Track product pages automatically when visited
+    autoTrack: false,    // Opt-in: track product pages automatically when visited
     duration: 30,        // Days to track products
     maxProducts: 100,    // Maximum number of products to track
     autoRemoveExpired: true

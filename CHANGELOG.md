@@ -34,8 +34,11 @@ Focus: work on (almost) every store, and a simpler, modern popup.
 - Visiting a product you already track refreshes its price from the live page and notifies
   you on a drop - this also keeps JavaScript-heavy stores accurate
 - Background thumbnail fallback for stores whose images block cross-origin canvas use
-- Setting: "Automatically track products I view" (on by default)
+- Setting: "Track every product I open" (opt-in, off by default). Only products you add
+  are tracked; existing installs are switched to opt-in as well
 - Undo after removing a product
+- Every product shows its alert state at a glance (coloured pill with the rule, or a dashed
+  "Set alert"), plus an "Alerts" filter in the popup
 - Browser fixture tests (`tests/run-fixture-tests.mjs`) and an end-to-end extension test
 
 ### Changed

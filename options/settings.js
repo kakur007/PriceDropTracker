@@ -148,7 +148,7 @@ async function loadSettings() {
     currentSettings = await getSettings();
 
     // Populate form fields
-    document.getElementById('autoTrack').checked = currentSettings.tracking.autoTrack !== false;
+    document.getElementById('autoTrack').checked = currentSettings.tracking.autoTrack === true && currentSettings.tracking.autoTrackOptIn === true;
     document.getElementById('trackingDuration').value = currentSettings.tracking.duration;
     document.getElementById('maxProducts').value = currentSettings.tracking.maxProducts;
     document.getElementById('checkInterval').value = currentSettings.checking.interval;
@@ -354,6 +354,9 @@ async function handleSettingChange(e) {
         [key]: value
       }
     };
+    if (settingId === 'autoTrack') {
+      newSettings.tracking.autoTrackOptIn = value;
+    }
 
     // If check interval changed, notify service worker to reschedule
     if (settingId === 'checkInterval') {

@@ -54,8 +54,13 @@ function getCheckIntervalMinutes(settings) {
   return Math.max(30, Math.round(hours * 60));
 }
 
+/**
+ * Auto-track is opt-in. `autoTrackOptIn` is only written when the user turns
+ * the switch on in Settings, so installs that stored the old default
+ * (autoTrack: true) no longer add every product page they visit.
+ */
 function isAutoTrackEnabled(settings) {
-  return settings?.tracking?.autoTrack !== false;
+  return settings?.tracking?.autoTrack === true && settings?.tracking?.autoTrackOptIn === true;
 }
 
 /**
