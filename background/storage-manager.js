@@ -103,7 +103,7 @@ export async function saveProduct(productData) {
           existing.tracking.lastViewed = Date.now();
           existing.tracking.lastChecked = Date.now();
         }
-        for (const key of ['priceSelector', 'detectionMethod', 'hasImage', 'title', 'url']) {
+        for (const key of ['priceSelector', 'detectionMethod', 'hasImage', 'title', 'url', 'availability', 'alert', 'variant']) {
           if (productData[key] !== undefined && productData[key] !== null) existing[key] = productData[key];
         }
 

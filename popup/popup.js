@@ -10,6 +10,7 @@ import { debug, debugError } from '../utils/debug.js';
 import { isUrlSupported, getStoreName } from '../utils/domain-validator.js';
 import { hasPermissionForUrl, requestPermissionForUrl } from '../utils/permission-manager.js';
 import { sanitizeProductUrl } from '../utils/url-sanitizer.js';
+import { getAlert, describeAlert, globalMinDrop } from '../utils/alert-rules.js';
 
 const state = {
   products: {},
@@ -20,7 +21,10 @@ const state = {
   page: { kind: 'loading' },
   detected: null,
   hasSiteAccess: false,
-  accessibleDomains: new Set()
+  accessibleDomains: new Set(),
+  settings: null,
+  editingId: null,   // product whose alert editor is open
+  alertDraft: null   // unsaved editor values (survive re-renders)
 };
 
 const $ = id => document.getElementById(id);
@@ -69,7 +73,8 @@ const ICONS = {
   refresh: 'M16.5 10a6.5 6.5 0 1 1-1.9-4.6M16.5 3.5v3.8h-3.8',
   open: 'M11 3.5h5.5V9M16.5 3.5 9 11M14 12.5V16a.5.5 0 0 1-.5.5h-9A.5.5 0 0 1 4 16V7a.5.5 0 0 1 .5-.5H8',
   trash: 'M4 6h12M8 6V4.5h4V6M6 6l.7 9.5a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9L14 6',
-  check: 'M4.5 10.5 8 14l7.5-8'
+  check: 'M4.5 10.5 8 14l7.5-8',
+  bell: 'M10 3.5a4.5 4.5 0 0 0-4.5 4.5v2.6L4 13.5h12l-1.5-2.9V8A4.5 4.5 0 0 0 10 3.5ZM8.3 15.5a1.8 1.8 0 0 0 3.4 0'
 };
 
 function formatPrice(amount, currency = 'USD', locale) {
@@ -327,8 +332,11 @@ function renderPageCard() {
         )
       ),
       h('div', { class: 'page-actions' },
+        h('button', { class: 'btn btn-secondary btn-small', onclick: () => toggleAlertEditor(product.productId), 'aria-expanded': String(state.editingId === product.productId) },
+          icon(ICONS.bell), `Alert: ${describeAlert(product, state.settings, v => money(product, v))}`),
         h('button', { class: 'btn btn-secondary btn-small', onclick: startPicker }, icon(ICONS.target), 'Wrong price? Pick it')
       ),
+      state.editingId === product.productId && state.products[product.productId] ? alertEditor(state.products[product.productId]) : null,
       siteAccessNote()
     );
     return;
@@ -516,6 +524,8 @@ function productCard(product) {
         h('span', { text: storeName(product.domain) }),
         '·',
         h('span', { text: timeAgo(product.tracking?.lastChecked) }),
+        alertBadge(product),
+        product.availability === 'OutOfStock' ? h('span', { class: 'status', title: 'Out of stock on the last check' }, 'Out of stock') : null,
         statusEl
       )
     ),
@@ -529,12 +539,143 @@ function productCard(product) {
       sparkline(product)
     ),
     h('div', { class: 'card-actions' },
+      h('button', { class: 'icon-btn', title: 'Price alert', 'aria-label': `Price alert for ${product.title}`, 'aria-expanded': String(state.editingId === product.productId), onclick: () => toggleAlertEditor(product.productId) }, icon(ICONS.bell)),
       h('button', { class: 'icon-btn', title: 'Check price now', 'aria-label': `Check price of ${product.title}`, onclick: e => refreshOne(product, e.currentTarget) }, icon(ICONS.refresh)),
       h('button', { class: 'icon-btn', title: 'Open store page', 'aria-label': `Open ${product.title}`, onclick: () => openProduct(product) }, icon(ICONS.open)),
       h('button', { class: 'icon-btn danger', title: 'Stop tracking', 'aria-label': `Stop tracking ${product.title}`, onclick: () => removeProduct(product) }, icon(ICONS.trash))
     )
   );
+  const editingInPageCard = state.page.kind === 'tracked' && state.page.product?.productId === product.productId;
+  if (state.editingId === product.productId && !editingInPageCard) {
+    card.classList.add('editing');
+    card.append(alertEditor(product));
+  }
   return card;
+}
+
+// --------------------------------------------------------- price alerts
+
+function money(product, value) {
+  return formatPrice(value, product.price?.currency, product.price?.locale);
+}
+
+function alertBadge(product) {
+  const alert = getAlert(product);
+  if (alert.mode === 'default') return null;
+  return h('button', {
+    class: `alert-badge ${alert.mode === 'off' ? 'off' : ''}`,
+    title: 'Edit price alert',
+    onclick: e => { e.stopPropagation(); toggleAlertEditor(product.productId); }
+  }, icon(ICONS.bell), describeAlert(product, state.settings, v => money(product, v)));
+}
+
+function toggleAlertEditor(productId) {
+  if (state.editingId === productId) {
+    state.editingId = null;
+    state.alertDraft = null;
+  } else {
+    const product = state.products[productId];
+    const alert = getAlert(product);
+    state.editingId = productId;
+    state.alertDraft = {
+      mode: alert.mode,
+      targetPrice: alert.targetPrice ?? suggestTarget(product),
+      percent: alert.percent ?? globalMinDrop(state.settings),
+      backInStock: alert.backInStock !== false
+    };
+  }
+  renderList();
+  renderPageCard();
+  document.querySelector('.alert-editor select')?.focus();
+}
+
+function suggestTarget(product) {
+  // 10% under the current price, rounded to something human
+  const p = product.price?.numeric || 0;
+  const t = p * 0.9;
+  return t >= 100 ? Math.floor(t) : Math.floor(t * 100) / 100;
+}
+
+function alertEditor(product) {
+  const draft = state.alertDraft;
+  const currency = product.price?.currency || '';
+  const minDrop = globalMinDrop(state.settings);
+
+  const select = h('select', { 'aria-label': 'When to notify me', onchange: e => { draft.mode = e.target.value; rerenderEditor(); } },
+    ...[
+      ['default', `Drops of ${minDrop}% or more (default)`],
+      ['any', 'Any price drop'],
+      ['below', 'Price falls below…'],
+      ['percent', 'Drops of at least…'],
+      ['off', 'No price alerts']
+    ].map(([value, label]) => h('option', { value, selected: draft.mode === value }, label))
+  );
+
+  let extra = null;
+  if (draft.mode === 'below') {
+    extra = h('label', { class: 'alert-field' },
+      'Notify at or below',
+      h('input', {
+        type: 'number', min: '0', step: '0.01', inputmode: 'decimal', value: draft.targetPrice,
+        'aria-label': `Target price in ${currency}`,
+        oninput: e => { draft.targetPrice = e.target.value; },
+        onkeydown: e => { if (e.key === 'Enter') saveAlert(product); }
+      }),
+      h('span', { class: 'muted', text: currency }),
+      h('span', { class: 'muted', text: `now ${money(product, product.price?.numeric)}` })
+    );
+  } else if (draft.mode === 'percent') {
+    extra = h('label', { class: 'alert-field' },
+      'Drop of at least',
+      h('input', {
+        type: 'number', min: '1', max: '99', step: '1', value: draft.percent, 'aria-label': 'Minimum drop in percent',
+        oninput: e => { draft.percent = e.target.value; },
+        onkeydown: e => { if (e.key === 'Enter') saveAlert(product); }
+      }),
+      h('span', { class: 'muted', text: '%' })
+    );
+  }
+
+  return h('div', { class: 'alert-editor', onclick: e => e.stopPropagation() },
+    h('div', { class: 'alert-title' }, icon(ICONS.bell), 'Price alert'),
+    select,
+    extra,
+    h('label', { class: 'alert-check' },
+      h('input', { type: 'checkbox', checked: draft.backInStock && draft.mode !== 'off', disabled: draft.mode === 'off', onchange: e => { draft.backInStock = e.target.checked; } }),
+      'Also tell me when it’s back in stock'
+    ),
+    h('div', { class: 'alert-actions' },
+      h('button', { class: 'btn btn-secondary btn-small', onclick: () => toggleAlertEditor(product.productId) }, 'Cancel'),
+      h('button', { class: 'btn btn-primary btn-small', onclick: () => saveAlert(product) }, 'Save alert')
+    )
+  );
+}
+
+function rerenderEditor() {
+  renderList();
+  renderPageCard();
+}
+
+async function saveAlert(product) {
+  const draft = state.alertDraft;
+  try {
+    const response = await send('SET_ALERT', {
+      productId: product.productId,
+      alert: { mode: draft.mode, targetPrice: Number(draft.targetPrice), percent: Number(draft.percent), backInStock: draft.backInStock }
+    });
+    if (!response?.success) throw new Error(response?.error || 'Could not save');
+    state.products[product.productId] = { ...state.products[product.productId], alert: response.data.alert };
+    state.editingId = null;
+    state.alertDraft = null;
+    renderList();
+    if (state.page.kind === 'tracked' && state.page.product?.productId === product.productId) {
+      state.page.product = state.products[product.productId];
+    }
+    renderPageCard();
+    toast(`Alert saved: ${describeAlert(state.products[product.productId], state.settings, v => money(product, v))}`);
+  } catch (error) {
+    toast(error.message, { type: 'error' });
+  }
 }
 
 function openProduct(product) {
@@ -655,6 +796,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   } catch (error) {
     debugError('[Popup]', 'Could not read active tab:', error);
   }
+  try {
+    const r = await send('GET_SETTINGS');
+    state.settings = r?.data || null;
+  } catch (_) { /* defaults */ }
   await loadProducts();
   inspectCurrentPage();
 });

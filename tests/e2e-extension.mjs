@@ -197,6 +197,45 @@ const cardText = await popupCheck.locator('body').innerText();
 check(!/\bnull\b/.test(cardText) && !cardText.includes('Allow checks'), 'popup shows no "null" and no stale "Allow checks"');
 await popupCheck.close();
 
+// --- per-product alert via the popup editor
+{
+  const pop = await context.newPage();
+  await pop.setViewportSize({ width: 400, height: 600 });
+  await pop.goto(`chrome-extension://${extId}/popup/popup.html`);
+  await pop.waitForTimeout(900);
+  const card = pop.locator('.card').first();
+  await card.hover();
+  await card.locator('button[title="Price alert"]').click();
+  await pop.locator('.alert-editor select').selectOption('below');
+  await pop.locator('.alert-field input').fill('3.50');
+  await pop.screenshot({ path: path.join(SHOTS, 'popup-alert-editor.png') });
+  await pop.locator('.alert-editor button:has-text("Save alert")').click();
+  await pop.waitForTimeout(500);
+  const alerts = await worker.evaluate(async () => Object.values((await chrome.storage.local.get('products')).products).map(p => p.alert).filter(Boolean));
+  check(alerts.some(a => a.mode === 'below' && a.targetPrice === 3.5), 'alert saved from popup editor', JSON.stringify(alerts));
+  const badge = await pop.locator('.alert-badge').first().innerText().catch(() => '');
+  check(/Below/.test(badge), 'alert badge shown on card', badge);
+  await pop.screenshot({ path: path.join(SHOTS, 'popup-alert-saved.png') });
+  await pop.close();
+}
+
+// --- keyboard shortcuts registered, CSV button present
+{
+  const commands = await worker.evaluate(() => chrome.commands.getAll());
+  const names = commands.map(c => `${c.name}=${c.shortcut || '-'}`).join(', ');
+  check(commands.some(c => c.name === 'track-page') && commands.some(c => c.name === '_execute_action'), 'keyboard shortcuts registered', names);
+  const st = await context.newPage();
+  await st.goto(`chrome-extension://${extId}/options/settings.html`);
+  await st.waitForTimeout(600);
+  const rows = await st.locator('#shortcutList li').count();
+  check(rows === 2 && await st.locator('#exportCsvBtn').count() === 1, 'settings lists shortcuts and CSV export', `${rows} shortcuts`);
+  const [download] = await Promise.all([st.waitForEvent('download', { timeout: 5000 }).catch(() => null), st.click('#exportCsvBtn')]);
+  const csvPath = download ? await download.path() : null;
+  const csv = csvPath ? fs.readFileSync(csvPath, 'utf8') : '';
+  check(csv.includes('Organic Lip Balm') && csv.split('\n').length >= 3, 'CSV export downloads tracked products', download?.suggestedFilename() || 'no download');
+  await st.close();
+}
+
 // --- page screenshots
 for (const [name, rel] of [['settings', 'options/settings.html'], ['history', 'options/price-history.html'], ['privacy', 'options/privacy-policy.html'], ['welcome', 'onboarding/welcome.html']]) {
   for (const scheme of ['light', 'dark']) {

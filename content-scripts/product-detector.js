@@ -24,10 +24,12 @@ import {
   absoluteUrl,
   cleanText,
   getMetaImage,
-  getMetaTitle
+  getMetaTitle,
+  getSelectedVariant
 } from '../utils/page-extractor.js';
 import { debug, debugWarn, debugError } from '../utils/debug.js';
 import { sanitizeProductUrl } from '../utils/url-sanitizer.js';
+import { normalizeAvailability } from '../utils/alert-rules.js';
 
 const LOG = '[product-detector]';
 
@@ -450,6 +452,31 @@ async function enhanceProductData(data) {
   data.title = cleanText(data.title) || 'Unknown Product';
   if (data.title.length > 200) data.title = data.title.slice(0, 197) + '...';
 
+  // Variant chosen on the page (size, pack, colour…). Remember it so
+  // background checks read this variant's price, not the default one.
+  try {
+    const variant = getSelectedVariant(document, getContext());
+    if (variant) {
+      if (variant.price && data.detectionMethod !== 'manual') {
+        data.price = { ...variant.price };
+      }
+      if (variant.price?.availability) data.availability = variant.price.availability;
+      data.variant = {
+        platform: variant.platform,
+        id: variant.id || null,
+        sku: variant.sku || null,
+        attributes: variant.attributes || {},
+        label: variant.label || null
+      };
+      if (variant.label && !data.title.toLowerCase().includes(variant.label.toLowerCase())) {
+        data.title = `${data.title} – ${variant.label}`;
+      }
+    }
+  } catch (error) {
+    debugWarn(LOG, 'Variant detection failed:', error);
+  }
+
+  data.availability = normalizeAvailability(data.availability);
   data.productId = generateProductId(data.url, data.title, data.domain);
   data.detectedAt = Date.now();
 

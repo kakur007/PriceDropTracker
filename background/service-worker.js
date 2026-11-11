@@ -14,7 +14,9 @@ import { isUrlSupportedOrPermitted } from '../utils/domain-validator.js';
 import { sanitizeProductUrl } from '../utils/url-sanitizer.js';
 import { StorageManager } from './storage-manager.js';
 import { checkAllProducts, checkSingleProduct, PriceCheckResult } from './price-checker.js';
-import { showBatchPriceDropNotifications, showInfoNotification } from '../utils/notification-manager.js';
+import { showBatchPriceDropNotifications, showInfoNotification, showBackInStockNotification } from '../utils/notification-manager.js';
+import { variantKey } from '../utils/page-extractor.js';
+import { shouldNotifyDrop, shouldNotifyBackInStock, sanitizeAlert, normalizeAvailability } from '../utils/alert-rules.js';
 import { debug, debugWarn, debugError } from '../utils/debug.js';
 
 // Alarm names
@@ -37,6 +39,7 @@ const MESSAGE_TYPES = {
   REFRESH_SINGLE_PRODUCT: 'REFRESH_SINGLE_PRODUCT',
   FIND_PRODUCT_BY_URL: 'FIND_PRODUCT_BY_URL',
   RESTORE_PRODUCT: 'RESTORE_PRODUCT',
+  SET_ALERT: 'SET_ALERT',
   SYNC_SITE_ACCESS: 'SYNC_SITE_ACCESS'
 };
 
@@ -228,9 +231,7 @@ async function handlePriceCheckAlarm() {
     await updateBadge();
 
     // Send notifications for price drops if enabled
-    if (settings.notifications.enabled && results.priceDrops > 0) {
-      await notifyPriceDrops(results.details);
-    }
+    await notifyCheckResults(results.details);
 
   } catch (error) {
     debugError('[ServiceWorker]', '[ServiceWorker] Error during price check:', error);
@@ -259,47 +260,37 @@ async function handleCleanupAlarm() {
 }
 
 /**
- * Send notifications for price drops
- * @param {Array} checkDetails - Detailed price check results from price-checker
+ * Notify about price drops and restocks found by a check run.
+ * Every decision goes through alert-rules.js (per-product rules).
+ * @param {Array} checkDetails - results from price-checker
  */
-async function notifyPriceDrops(checkDetails) {
-  const priceDrops = checkDetails.filter(r => r.status === PriceCheckResult.PRICE_DROP);
-
-  if (priceDrops.length === 0) {
-    return;
-  }
-
-  debug('[ServiceWorker]', `[ServiceWorker] Sending notifications for ${priceDrops.length} price drops`);
-
+async function notifyCheckResults(checkDetails = []) {
   try {
-    // Get full product data for each drop
-    const dropData = await Promise.all(
-      priceDrops.map(async (drop) => {
-        const product = await StorageManager.getProduct(drop.productId);
-        if (!product) {
-          debugWarn('[ServiceWorker]', `[ServiceWorker] Product not found for notification: ${drop.productId}`);
-          return null;
+    const settings = await StorageManager.getSettings();
+    if (settings.notifications?.enabled === false) return;
+
+    const drops = [];
+    for (const r of checkDetails) {
+      const product = await StorageManager.getProduct(r.productId);
+      if (!product) continue;
+
+      if (r.status === PriceCheckResult.PRICE_DROP) {
+        const decision = shouldNotifyDrop(product, r.oldPrice, r.newPrice, settings);
+        debug('[ServiceWorker]', `Drop on ${product.productId}: ${decision.reason}`);
+        if (decision.notify) {
+          drops.push({ product, oldPrice: r.oldPrice, newPrice: r.newPrice, dropPercentage: Math.abs(r.changePercent || 0) });
+          continue; // one notification per product
         }
+      }
 
-        return {
-          product,
-          oldPrice: drop.oldPrice,
-          newPrice: drop.newPrice,
-          dropPercentage: Math.abs(drop.changePercent || 0)
-        };
-      })
-    );
-
-    // Filter out any null results
-    const validDrops = dropData.filter(d => d !== null);
-
-    if (validDrops.length > 0) {
-      // Use the notification manager to handle batching and cooldowns
-      await showBatchPriceDropNotifications(validDrops);
+      if (r.backInStock && shouldNotifyBackInStock(product, settings)) {
+        await showBackInStockNotification(product);
+      }
     }
 
+    if (drops.length) await showBatchPriceDropNotifications(drops);
   } catch (error) {
-    debugError('[ServiceWorker]', '[ServiceWorker] Error sending price drop notifications:', error);
+    debugError('[ServiceWorker]', 'Error sending notifications:', error);
   }
 }
 
@@ -346,6 +337,14 @@ async function handleMessage(message, sender) {
     case MESSAGE_TYPES.FIND_PRODUCT_BY_URL:
       return await findTrackedProductByUrl(data.url);
 
+    case MESSAGE_TYPES.SET_ALERT: {
+      const product = await StorageManager.getProduct(data.productId);
+      if (!product) throw new Error('Product not found');
+      product.alert = sanitizeAlert(data.alert);
+      await StorageManager.saveProduct(product);
+      return { alert: product.alert };
+    }
+
     case MESSAGE_TYPES.RESTORE_PRODUCT: {
       // Undo for delete: write the product back exactly as it was
       const { product, image } = data;
@@ -379,6 +378,7 @@ async function handleMessage(message, sender) {
       debug('[ServiceWorker]', '[ServiceWorker] Refreshing single product:', data.productId);
       const refreshResult = await checkSingleProduct(data.productId);
       await updateBadge();
+      await notifyCheckResults([{ productId: data.productId, ...refreshResult }]);
       // Return the updated product
       const refreshedProduct = await StorageManager.getProduct(data.productId);
       return { product: refreshedProduct, checkResult: refreshResult };
@@ -404,10 +404,7 @@ async function handleMessage(message, sender) {
         await updateBadge();
 
         // Send notifications for any price drops found
-        const settings = await StorageManager.getSettings();
-        if (settings.notifications.enabled && results.priceDrops > 0) {
-          await notifyPriceDrops(results.details);
-        }
+        await notifyCheckResults(results.details);
 
         return { success: true, results };
       } catch (error) {
@@ -423,10 +420,7 @@ async function handleMessage(message, sender) {
       await updateBadge();
 
       // Send notifications for any price drops found
-      const forceSettings = await StorageManager.getSettings();
-      if (forceSettings.notifications.enabled && forceResults.priceDrops > 0) {
-        await notifyPriceDrops(forceResults.details);
-      }
+      await notifyCheckResults(forceResults.details);
 
       return forceResults;
 
@@ -454,11 +448,19 @@ function normalizeProductUrl(url) {
   }
 }
 
-async function findTrackedProductByUrl(url) {
+/**
+ * @param {string} url
+ * @param {Object|null|undefined} variant - when given (incl. null), the
+ *   variant must match too, so two pack sizes of one product stay separate
+ */
+async function findTrackedProductByUrl(url, variant) {
   if (!url) return null;
   const target = normalizeProductUrl(url);
   const all = await StorageManager.getAllProducts();
-  return Object.values(all || {}).find(p => p?.url && normalizeProductUrl(p.url) === target) || null;
+  return Object.values(all || {}).find(p =>
+    p?.url && normalizeProductUrl(p.url) === target &&
+    (variant === undefined || variantKey(p.variant) === variantKey(variant))
+  ) || null;
 }
 
 /**
@@ -475,12 +477,37 @@ async function handleProductDetected(productData, sender, source = 'manual') {
   if (!safeUrl) throw new Error('This page is not a product page');
   productData.url = safeUrl;
 
-  const existing =
+  let existing =
     (await StorageManager.getProduct(productData.productId)) ||
-    (await findTrackedProductByUrl(productData.url));
+    (await findTrackedProductByUrl(productData.url, productData.variant || null));
+
+  // Re-picking a price on a product saved before variants were remembered:
+  // upgrade that entry instead of creating a duplicate.
+  if (!existing && source === 'manual' && productData.variant) {
+    const legacy = await findTrackedProductByUrl(productData.url, null);
+    if (legacy) {
+      legacy.variant = productData.variant;
+      legacy.title = productData.title;
+      legacy.priceSelector = productData.priceSelector || legacy.priceSelector;
+      legacy.detectionMethod = productData.detectionMethod;
+      await StorageManager.saveProduct(legacy);
+      existing = legacy;
+    }
+  }
 
   if (existing) {
     let priceChanged = false;
+
+    // Back in stock, seen on a live visit
+    const liveAvailability = normalizeAvailability(productData.availability);
+    if (liveAvailability && liveAvailability !== existing.availability) {
+      const wasOut = existing.availability === 'OutOfStock';
+      existing.availability = liveAvailability;
+      await StorageManager.saveProduct(existing);
+      if (wasOut && liveAvailability === 'InStock' && shouldNotifyBackInStock(existing, await StorageManager.getSettings())) {
+        await showBackInStockNotification(existing);
+      }
+    }
     const newPrice = productData.price?.numeric;
     const sameCurrency = !existing.price?.currency || existing.price.currency === productData.price?.currency;
 
@@ -503,17 +530,15 @@ async function handleProductDetected(productData, sender, source = 'manual') {
       priceChanged = true;
       await updateBadge();
 
-      if (newPrice < oldPrice) {
-        const settings = await StorageManager.getSettings();
-        if (settings.notifications?.enabled !== false) {
-          const refreshed = await StorageManager.getProduct(existing.productId);
-          await showBatchPriceDropNotifications([{
-            product: refreshed,
-            oldPrice,
-            newPrice,
-            dropPercentage: Math.abs(((newPrice - oldPrice) / oldPrice) * 100)
-          }]);
-        }
+      const refreshed = await StorageManager.getProduct(existing.productId);
+      const settings = await StorageManager.getSettings();
+      if (shouldNotifyDrop(refreshed, oldPrice, newPrice, settings).notify) {
+        await showBatchPriceDropNotifications([{
+          product: refreshed,
+          oldPrice,
+          newPrice,
+          dropPercentage: Math.abs(((newPrice - oldPrice) / oldPrice) * 100)
+        }]);
       }
     } else {
       // Still reachable: clear stale flags
@@ -530,6 +555,13 @@ async function handleProductDetected(productData, sender, source = 'manual') {
   }
 
   if (source === 'auto') {
+    // Same page, other variant already tracked (page opened on its default
+    // variant): don't add the default as a second product, don't touch prices
+    const sameUrl = await findTrackedProductByUrl(productData.url);
+    if (sameUrl) {
+      return { added: false, alreadyTracked: true, priceChanged: false, product: sameUrl };
+    }
+
     const settings = await StorageManager.getSettings();
     if (!isAutoTrackEnabled(settings)) {
       return { added: false, alreadyTracked: false, product: null };
@@ -702,6 +734,40 @@ browser.permissions.onAdded.addListener(async (permissions) => {
 
 browser.permissions.onRemoved?.addListener(() => {
   syncDynamicContentScripts();
+});
+
+/**
+ * Keyboard shortcut: track the product on the current tab. The shortcut
+ * grants activeTab, so this works on any store. If nothing is detected,
+ * the price picker opens instead.
+ */
+browser.commands?.onCommand?.addListener(async (command) => {
+  if (command !== 'track-page') return;
+  try {
+    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id || !/^https?:/i.test(tab.url || '')) return;
+    await browser.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: async () => {
+        const api = typeof browser !== 'undefined' ? browser : chrome;
+        window.__PRICE_TRACKER_MANUAL_MODE__ = true;
+        const detector = await import(api.runtime.getURL('content-scripts/product-detector.js'));
+        const product = await detector.detectProduct({ mode: 'manual' });
+        if (!product) {
+          const { startPicker } = await import(api.runtime.getURL('content-scripts/price-picker.js'));
+          startPicker();
+          return;
+        }
+        const response = await api.runtime.sendMessage({ type: 'PRODUCT_DETECTED', data: product, source: 'manual' });
+        const msg = !response?.success
+          ? (response?.error || 'Could not track this product')
+          : response.data?.alreadyTracked ? 'Already tracking this product' : `Tracking at ${product.price.formatted}`;
+        detector.showTrackingBadge(product, msg);
+      }
+    });
+  } catch (error) {
+    debugWarn('[ServiceWorker]', 'Track shortcut failed:', error);
+  }
 });
 
 debug('[ServiceWorker]', '[ServiceWorker] Service worker ready');

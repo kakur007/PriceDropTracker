@@ -802,7 +802,8 @@ async function checkSingleProduct(productId) {
     };
     const hints = {
       priceSelector: product.priceSelector || null,
-      detectionMethod: product.detectionMethod || null
+      detectionMethod: product.detectionMethod || null,
+      variant: product.variant || null
     };
 
     // Log if currency was corrected
@@ -838,6 +839,8 @@ async function checkSingleProduct(productId) {
     if (!parseResult.success || parseResult.price === null) {
       debugWarn('[PriceChecker]', `Could not extract price for ${productId}`);
 
+      if (parseResult.availability) product.availability = parseResult.availability;
+
       // Update failed checks counter
       product.tracking = product.tracking || {};
       product.tracking.failedChecks = (product.tracking.failedChecks || 0) + 1;
@@ -858,6 +861,12 @@ async function checkSingleProduct(productId) {
     const newPrice = parseResult.price;
     const detectionMethod = parseResult.detectionMethod;
 
+    // Stock tracking for back-in-stock alerts
+    const previousAvailability = product.availability || null;
+    const newAvailability = parseResult.availability || null;
+    const backInStock = previousAvailability === 'OutOfStock' && newAvailability === 'InStock';
+    if (newAvailability) product.availability = newAvailability;
+
     debug('[PriceChecker]', `New price detected: ${newPrice} (via ${detectionMethod})`);
 
     // Compare with current price
@@ -877,7 +886,8 @@ async function checkSingleProduct(productId) {
 
       return {
         status: PriceCheckResult.NO_CHANGE,
-        price: newPrice
+        price: newPrice,
+        backInStock
       };
     }
 
@@ -900,6 +910,13 @@ async function checkSingleProduct(productId) {
       formatted: formatMoney(newPrice, product.price.currency, product.price.locale),
       detectionMethod
     });
+    if (newAvailability) {
+      const updated = await StorageManager.getProduct(productId);
+      if (updated) {
+        updated.availability = newAvailability;
+        await StorageManager.saveProduct(updated);
+      }
+    }
 
     // Determine result status
     let status = PriceCheckResult.SUCCESS;
@@ -915,7 +932,8 @@ async function checkSingleProduct(productId) {
       newPrice,
       change: priceDiff,
       changePercent: priceChangePercent,
-      detectionMethod
+      detectionMethod,
+      backInStock
     };
 
   } catch (error) {

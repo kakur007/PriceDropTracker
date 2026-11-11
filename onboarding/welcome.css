@@ -72,6 +72,11 @@ a { color: var(--accent-strong); }
   border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2);
 }
 .kbd svg { width: 15px; height: 15px; }
+kbd {
+  font: 600 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px;
+  padding: 0 5px; background: var(--surface-2); color: var(--text);
+}
 
 .mock {
   margin-top: auto; border: 1px solid var(--border); border-radius: 12px; padding: 12px;

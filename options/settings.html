@@ -147,7 +147,7 @@
       </section>
 
       <section class="settings-section" aria-labelledby="h-look">
-        <h2 id="h-look">Appearance</h2>
+        <h2 id="h-look">Appearance &amp; shortcuts</h2>
         <div class="setting-row">
           <div class="setting-text">
             <label for="themeSelect">Theme</label>
@@ -161,6 +161,14 @@
             </select>
           </div>
         </div>
+
+        <div class="setting-row">
+          <div class="setting-text">
+            <span class="setting-title">Keyboard shortcuts</span>
+            <ul class="shortcut-list" id="shortcutList"></ul>
+          </div>
+          <div class="setting-control"><button id="shortcutsBtn" class="btn btn-secondary">Change</button></div>
+        </div>
       </section>
 
       <section class="settings-section" aria-labelledby="h-data">
@@ -172,12 +180,22 @@
 
         <div class="setting-row">
           <div class="setting-text">
-            <span class="setting-title">Backup</span>
-            <p class="setting-description">Everything is stored only in this browser. Export a backup or move it to another computer.</p>
+            <span class="setting-title">Spreadsheet</span>
+            <p class="setting-description">Download your products with current, first, lowest and highest prices as a CSV file for Excel, Numbers or Google Sheets.</p>
           </div>
           <div class="setting-control">
-            <button id="exportDataBtn" class="btn btn-secondary">Export</button>
-            <button id="importDataBtn" class="btn btn-secondary">Import</button>
+            <button id="exportCsvBtn" class="btn btn-secondary">Export CSV</button>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-text">
+            <span class="setting-title">Backup</span>
+            <p class="setting-description">Everything is stored only in this browser. Save a full backup (including price history) or move it to another computer.</p>
+          </div>
+          <div class="setting-control">
+            <button id="exportDataBtn" class="btn btn-secondary">Save backup</button>
+            <button id="importDataBtn" class="btn btn-secondary">Restore</button>
             <input type="file" id="importFileInput" accept=".json" hidden>
           </div>
         </div>

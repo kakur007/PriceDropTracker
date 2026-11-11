@@ -10,6 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Focus: work on (almost) every store, and a simpler, modern popup.
 
 ### Added
+- **Price alerts per product**: bell icon on each product - notify on the default
+  threshold, any drop, a drop of at least N %, when the price falls below a target, or
+  never. Products with a custom alert show a badge
+- **Back-in-stock alerts**: availability is read from the page on every check; you're
+  notified when a product that was out of stock becomes available (on by default, per product)
+- **Variant-aware tracking**: the size/pack/colour selected on the page is remembered
+  (WooCommerce variations, Shopify variants, structured-data SKUs). Background checks read
+  that variant's price instead of the default one, and never fall back to another
+  variant's price. Re-picking the price on an older entry upgrades it in place
+- **Keyboard shortcuts**: Alt+Shift+T tracks the product on the current page (or opens the
+  price picker if none is found), Alt+Shift+P opens Price Genius. Change them in Settings
+- **CSV export** for Excel / Numbers / Google Sheets (current, first, lowest and highest
+  price, change, alert, availability); uses `;` and decimal commas in locales that expect them
+- The "At most N alerts a day" setting is now actually enforced
 - **Track any store from the popup**: the popup scans the current tab (using the
   `activeTab` permission) and shows the product it found with a **Track price** button -
   no permission prompt needed just to track
@@ -49,6 +63,9 @@ Focus: work on (almost) every store, and a simpler, modern popup.
 - The price picker now intercepts clicks on `window` and swallows pointer/touch events,
   so picking a price inside a buy button can't trigger it
 - "Allow checks" stayed visible after access was granted when the price had changed
+- Products with variants recorded the default variant's price on background checks
+  (e.g. single item instead of the selected 60-pack), showing fake price drops
+- Summary notifications for more than 3 drops ignored the minimum-drop threshold
 - Popup showed the text "null" on tracked products
 - **Automatic background price checks never ran**: the service worker read settings keys
   that don't exist (`tracking.enabled` / `tracking.checkInterval`), so the periodic alarm

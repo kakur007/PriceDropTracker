@@ -14,6 +14,19 @@
 
 import { parsePrice } from './currency-parser.js';
 import { CURRENCIES } from './currency-data.js';
+import { normalizeAvailability } from './alert-rules.js';
+
+/**
+ * Availability from meta tags / microdata when JSON-LD doesn't say.
+ */
+function findAvailabilityHint(doc) {
+  const el = doc.querySelector(
+    'meta[property="product:availability"], meta[property="og:availability"], ' +
+    '[itemprop="availability"][href], [itemprop="availability"][content], link[itemprop="availability"]'
+  );
+  if (!el) return null;
+  return normalizeAvailability(el.getAttribute('content') || el.getAttribute('href'));
+}
 
 // JSON-LD keys whose Product children are *other* products (recommendations,
 // listings, accessories). Descending into them causes false positives.
@@ -624,13 +637,31 @@ const GENERIC_SELECTORS = ['[itemprop="price"]', '[data-price]', '.price'];
  * @returns {{success:boolean, price:number|null, currency:string|null, detectionMethod:string, weak:boolean}}
  */
 export function extractPriceForRefresh(doc, ctx = {}, hints = {}) {
+  const structured = extractStructuredProduct(doc, ctx);
+  const availability = normalizeAvailability(structured?.availability) || findAvailabilityHint(doc);
+
   const ok = (parsed, method, weak = false) => ({
     success: true,
     price: parsed.numeric,
     currency: parsed.currency,
     detectionMethod: method,
+    availability,
     weak
   });
+
+  // A specific variant was tracked: only that variant's price counts. Falling
+  // back to the page's default price would record another variant's price
+  // (e.g. single item instead of a 60-pack) as a fake price change.
+  if (hints.variant) {
+    const v = priceForVariant(doc, hints.variant, ctx);
+    if (v) {
+      return { ...ok(v.price, 'variant'), availability: normalizeAvailability(v.availability) || availability };
+    }
+    return {
+      success: false, price: null, currency: null, detectionMethod: 'none', availability, weak: false,
+      error: 'The selected variant could not be found on the page'
+    };
+  }
 
   // A user-picked element is the most explicit signal we have
   if (hints.priceSelector && hints.detectionMethod === 'manual') {
@@ -638,7 +669,6 @@ export function extractPriceForRefresh(doc, ctx = {}, hints = {}) {
     if (p) return ok(p, 'savedSelector');
   }
 
-  const structured = extractStructuredProduct(doc, ctx);
   if (structured?.price) return ok(structured.price, structured.detectionMethod);
 
   if (hints.priceSelector) {
@@ -665,7 +695,7 @@ export function extractPriceForRefresh(doc, ctx = {}, hints = {}) {
     if (p) return ok(p, `selector: ${sel}`, true);
   }
 
-  return { success: false, price: null, currency: null, detectionMethod: 'none', weak: false, error: 'Could not find a price on the page' };
+  return { success: false, price: null, currency: null, detectionMethod: 'none', availability, weak: false, error: 'Could not find a price on the page' };
 }
 
 // ---------------------------------------------------------------- helpers
@@ -756,4 +786,184 @@ export function buildSelector(el) {
   }
   const sel = parts.join(' > ');
   return sel && unique(sel) ? sel : null;
+}
+
+// ------------------------------------------------------------- variants
+//
+// Many products come in variants (size, pack, colour) with different prices.
+// The variant chosen on the page is applied by the store's JavaScript, which
+// does not run when the background fetches the page - a fetched page shows
+// the *default* variant. So we remember the chosen variant and, on refresh,
+// read that variant's price from the variant data embedded in the HTML.
+
+/**
+ * Stable key used to compare variants.
+ */
+export function variantKey(variant) {
+  if (!variant) return null;
+  if (variant.id) return `id:${variant.id}`;
+  if (variant.sku) return `sku:${variant.sku}`;
+  if (variant.attributes && Object.keys(variant.attributes).length) {
+    return 'attr:' + Object.entries(variant.attributes).sort().map(([k, v]) => `${k}=${v}`).join('&');
+  }
+  return null;
+}
+
+function wooVariations(doc) {
+  const form = doc.querySelector('form.variations_form[data-product_variations]');
+  if (!form) return null;
+  const raw = form.getAttribute('data-product_variations');
+  if (!raw || raw === 'false') return null; // large products load variations via AJAX
+  const data = parseJsonLenient(raw);
+  return Array.isArray(data) ? data : null;
+}
+
+function wooCurrency(doc, ctx) {
+  const symbol = doc.querySelector('.woocommerce-Price-currencySymbol')?.textContent?.trim();
+  if (symbol) {
+    const parsed = parsePrice(`${symbol}1`, { domain: ctx.domain, locale: ctx.locale });
+    if (parsed?.currency) return parsed.currency;
+  }
+  return ctx.expectedCurrency || null;
+}
+
+function wooMatches(variation, attributes) {
+  const attrs = variation?.attributes || {};
+  return Object.entries(attributes || {}).every(([k, v]) => !attrs[k] || String(attrs[k]) === String(v));
+}
+
+function shopifyVariants(doc, ctx) {
+  const scripts = doc.querySelectorAll(
+    'script[type="application/json"][id*="ProductJson" i], script[type="application/json"][id*="product-json" i], script[type="application/json"][data-product-json]'
+  );
+  for (const script of scripts) {
+    const data = parseJsonLenient(script.textContent);
+    const product = data?.product || data;
+    if (Array.isArray(product?.variants) && product.variants.length > 1) return product.variants;
+  }
+  return null;
+}
+
+function jsonLdVariantOffers(doc) {
+  const out = [];
+  for (const block of getJsonLdBlocks(doc)) {
+    for (const node of findProductNodes(block)) {
+      const variants = node.hasVariant ? (Array.isArray(node.hasVariant) ? node.hasVariant : [node.hasVariant]) : [node];
+      for (const v of variants) {
+        const offers = v?.offers ? (Array.isArray(v.offers) ? v.offers : [v.offers]) : [];
+        for (const offer of offers) {
+          const sku = v.sku || offer.sku || null;
+          if (sku) out.push({ sku: String(sku), offer });
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * The variant currently selected on a LIVE page (reads form state).
+ * @returns {{platform, id, sku, attributes, label, price?:Object}|null}
+ */
+export function getSelectedVariant(doc, ctx = {}) {
+  // WooCommerce
+  const variations = wooVariations(doc);
+  const form = doc.querySelector('form.variations_form');
+  if (form) {
+    const attributes = {};
+    const labels = [];
+    for (const select of form.querySelectorAll('select[name^="attribute_"]')) {
+      if (!select.value) continue;
+      attributes[select.name] = select.value;
+      labels.push(select.selectedOptions?.[0]?.textContent?.trim() || select.value);
+    }
+    for (const input of form.querySelectorAll('input[name^="attribute_"]:checked')) {
+      attributes[input.name] = input.value;
+      labels.push(input.value);
+    }
+    const idValue = form.querySelector('input[name="variation_id"]')?.value;
+    const id = idValue && idValue !== '0' ? String(idValue) : null;
+    if (id || Object.keys(attributes).length) {
+      const match = variations?.find(v => String(v.variation_id) === id) ||
+        (Object.keys(attributes).length ? variations?.find(v => wooMatches(v, attributes)) : null);
+      const variant = {
+        platform: 'woocommerce',
+        id: id || (match ? String(match.variation_id) : null),
+        sku: match?.sku || null,
+        attributes,
+        label: labels.join(' / ') || null
+      };
+      if (match) variant.price = wooVariantPrice(match, doc, ctx);
+      return variant.id || Object.keys(attributes).length ? variant : null;
+    }
+    return null;
+  }
+
+  // Shopify: ?variant= in the URL, or the product form's id field
+  const variants = shopifyVariants(doc, ctx);
+  if (variants) {
+    let id = null;
+    try { id = new URL(ctx.url || '').searchParams.get('variant'); } catch (_) { /* ignore */ }
+    id = id || doc.querySelector('form[action*="/cart/add"] [name="id"]')?.value || null;
+    const match = id ? variants.find(v => String(v.id) === String(id)) : null;
+    if (match) {
+      const currency = doc.querySelector('meta[property="og:price:currency"]')?.getAttribute('content') || ctx.expectedCurrency;
+      return {
+        platform: 'shopify',
+        id: String(match.id),
+        sku: match.sku || null,
+        attributes: {},
+        label: match.title && match.title !== 'Default Title' ? match.title : null,
+        price: buildStructuredPrice(Number.isInteger(match.price) ? match.price / 100 : match.price, currency, ctx, 'variant')
+      };
+    }
+  }
+  return null;
+}
+
+function wooVariantPrice(variation, doc, ctx) {
+  const price = buildStructuredPrice(variation.display_price, wooCurrency(doc, ctx), ctx, 'variant');
+  if (price && Number(variation.display_regular_price) > price.numeric) {
+    price.regularPrice = Number(variation.display_regular_price);
+  }
+  return price;
+}
+
+/**
+ * Price of a remembered variant in a (fetched) document.
+ * @returns {{price:Object, availability:string|null}|null}
+ */
+export function priceForVariant(doc, variant, ctx = {}) {
+  if (!variant) return null;
+
+  const variations = wooVariations(doc);
+  if (variations) {
+    const match = (variant.id && variations.find(v => String(v.variation_id) === String(variant.id))) ||
+      (variant.sku && variations.find(v => v.sku && String(v.sku) === String(variant.sku))) ||
+      (variant.attributes && Object.keys(variant.attributes).length && variations.find(v => wooMatches(v, variant.attributes)));
+    if (match) {
+      const price = wooVariantPrice(match, doc, ctx);
+      if (price) return { price, availability: match.is_in_stock === false ? 'OutOfStock' : 'InStock' };
+    }
+  }
+
+  const shopify = shopifyVariants(doc, ctx);
+  if (shopify && variant.id) {
+    const match = shopify.find(v => String(v.id) === String(variant.id));
+    if (match) {
+      const currency = doc.querySelector('meta[property="og:price:currency"]')?.getAttribute('content') || ctx.expectedCurrency;
+      const price = buildStructuredPrice(Number.isInteger(match.price) ? match.price / 100 : match.price, currency, ctx, 'variant');
+      if (price) return { price, availability: match.available === false ? 'OutOfStock' : 'InStock' };
+    }
+  }
+
+  if (variant.sku) {
+    const hit = jsonLdVariantOffers(doc).find(o => o.sku === String(variant.sku));
+    if (hit) {
+      const r = priceFromOffers(hit.offer, ctx);
+      if (r) return { price: r.price, availability: r.availability || null };
+    }
+  }
+
+  return null;
 }
