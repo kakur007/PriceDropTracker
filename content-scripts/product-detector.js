@@ -25,7 +25,8 @@ import {
   cleanText,
   getMetaImage,
   getMetaTitle,
-  getSelectedVariant
+  getSelectedVariant,
+  getDealSignals
 } from '../utils/page-extractor.js';
 import { debug, debugWarn, debugError } from '../utils/debug.js';
 import { sanitizeProductUrl } from '../utils/url-sanitizer.js';
@@ -477,6 +478,14 @@ async function enhanceProductData(data) {
   }
 
   data.availability = normalizeAvailability(data.availability);
+
+  // "Is this deal real?" inputs: store's was-price and 30-day lowest notice
+  try {
+    data.dealSignals = getDealSignals(document, data, getContext());
+  } catch (error) {
+    data.dealSignals = null;
+  }
+
   data.productId = generateProductId(data.url, data.title, data.domain);
   data.detectedAt = Date.now();
 

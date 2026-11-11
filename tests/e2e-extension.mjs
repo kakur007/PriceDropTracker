@@ -47,6 +47,12 @@ await context.route('**/*', route => {
   if (url.startsWith('https://demo-store.myshopify.com/')) {
     return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: fixture('shopify.html') });
   }
+  if (url.startsWith('https://deal-demo.myshopify.com/')) {
+    return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: fixture('omnibus-et.html') });
+  }
+  if (url.startsWith('https://nodeal-demo.myshopify.com/')) {
+    return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: fixture('no-structured-data.html') });
+  }
   if (url.startsWith('https://moobel-demo.myshopify.com/')) {
     return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: fixture('no-structured-data.html') });
   }
@@ -208,6 +214,74 @@ await popupCheck.waitForTimeout(800);
 const cardText = await popupCheck.locator('body').innerText();
 check(!/\bnull\b/.test(cardText) && !cardText.includes('Allow checks'), 'popup shows no "null" and no stale "Allow checks"');
 await popupCheck.close();
+
+// --- on-page panel ("is this deal real?")
+{
+  // back to the default: no auto-tracking
+  await worker.evaluate(async () => {
+    const { settings } = await chrome.storage.local.get('settings');
+    settings.tracking.autoTrack = false;
+    settings.tracking.autoTrackOptIn = false;
+    await chrome.storage.local.set({ settings });
+  });
+  const hasPanel = async pg => {
+    for (let i = 0; i < 16; i++) {
+      if (await pg.locator('#price-genius-panel').count()) return true;
+      await pg.waitForTimeout(500);
+    }
+    return false;
+  };
+
+  const deal = await context.newPage();
+  await deal.setViewportSize({ width: 1100, height: 700 });
+  await deal.goto('https://deal-demo.myshopify.com/products/robottolmuimeja-r5');
+  check(await hasPanel(deal), 'panel shown for untracked product with 30-day price notice');
+  await deal.screenshot({ path: path.join(SHOTS, 'panel-deal-check.png') });
+  const trackedAfter = Object.values((await worker.evaluate(() => chrome.storage.local.get('products'))).products).some(p => p.domain === 'deal-demo.myshopify.com');
+  check(!trackedAfter, 'deal check does not track the product by itself');
+  await deal.close();
+
+  const nodeal = await context.newPage();
+  await nodeal.goto('https://nodeal-demo.myshopify.com/products/ergonoomiline-kontoritool-aero');
+  await nodeal.waitForTimeout(7000);
+  check(await nodeal.locator('#price-genius-panel').count() === 0, 'no panel for untracked product without a verifiable notice');
+  await nodeal.close();
+
+  // tracked product that was cheaper 10 days ago
+  await worker.evaluate(async () => {
+    const { products } = await chrome.storage.local.get('products');
+    const p = Object.values(products).find(x => x.domain === 'demo-store.myshopify.com');
+    const now = Date.now();
+    p.priceHistory = [
+      { price: 4.99, currency: 'USD', timestamp: now - 10 * 86400000 },
+      { price: 5.99, currency: 'USD', timestamp: now - 86400000 }
+    ];
+    await chrome.storage.local.set({ products });
+  });
+  const tracked = await context.newPage();
+  await tracked.setViewportSize({ width: 1100, height: 700 });
+  await tracked.goto(STORE_URL);
+  check(await hasPanel(tracked), 'panel shown on a tracked product');
+  await tracked.screenshot({ path: path.join(SHOTS, 'panel-tracked.png') });
+  await tracked.close();
+
+  // setting off -> no panel
+  await worker.evaluate(async () => {
+    const { settings } = await chrome.storage.local.get('settings');
+    settings.display = { ...(settings.display || {}), pagePanel: false };
+    await chrome.storage.local.set({ settings });
+  });
+  const off = await context.newPage();
+  await off.goto(STORE_URL);
+  await off.waitForTimeout(7000);
+  check(await off.locator('#price-genius-panel').count() === 0, 'panel respects the Settings switch');
+  await off.close();
+  await worker.evaluate(async () => {
+    const { settings } = await chrome.storage.local.get('settings');
+    settings.display.pagePanel = true;
+    await chrome.storage.local.set({ settings });
+  });
+}
 
 // --- per-product alert via the popup editor
 {

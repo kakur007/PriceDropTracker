@@ -49,7 +49,7 @@ The extension requires certain permissions to function. Here's why we need each 
 - **Storage:** To save tracked products and price history on your device
 - **Notifications:** To alert you when prices drop
 - **Alarms:** To schedule automatic price checks every few hours
-- **Tabs:** To detect when you're viewing product pages
+- **Active tab:** To read the product on the current page only when you click the Price Genius icon or press its shortcut
 
 ## Data Retention
 

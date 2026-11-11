@@ -1,6 +1,6 @@
 {
   "name": "price-genius",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Automatically track product prices and get notified when they drop - Chrome & Firefox Extension",
   "type": "module",
   "private": true,
@@ -9,7 +9,7 @@
     "build:chrome": "node scripts/build.mjs chrome",
     "build:firefox": "node scripts/build.mjs firefox",
     "test": "npm run test:unit && node tests/run-fixture-tests.mjs",
-    "test:unit": "node tests/currency-parser.test.js && node tests/url-sanitizer.test.js && node tests/alert-rules.test.js && node tests/csv-export.test.js"
+    "test:unit": "node tests/currency-parser.test.js && node tests/url-sanitizer.test.js && node tests/alert-rules.test.js && node tests/csv-export.test.js && node tests/deal-check.test.js"
   },
   "repository": {
     "type": "git",

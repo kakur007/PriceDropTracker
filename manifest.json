@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Price Genius by GoGoNano",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Track prices on any online store and get notified when they drop. Works automatically, or point to the price yourself.",
   "author": "GoGoNano",
 
@@ -20,7 +20,6 @@
     "unlimitedStorage",
     "alarms",
     "notifications",
-    "tabs",
     "activeTab",
     "scripting",
     "offscreen"

@@ -210,6 +210,14 @@ button.status:hover { filter: brightness(.95); }
 
 .list-empty { text-align: center; padding: 18px; color: var(--muted); font-size: 13px; }
 
+/* Deal check */
+.deal { margin-top: 10px; padding: 8px 10px; border-radius: 10px; font-size: 12.5px; display: flex; flex-direction: column; gap: 1px; }
+.deal b { font-size: 13px; }
+.deal span { color: var(--text-2); }
+.deal.good { background: var(--down-soft); } .deal.good b { color: var(--down); }
+.deal.warn { background: var(--warn-soft); } .deal.warn b { color: var(--warn); }
+.deal.neutral { background: var(--surface-2); }
+
 /* Price alerts */
 .alert-badge {
   display: inline-flex; align-items: center; gap: 3px; border: 1px solid transparent;

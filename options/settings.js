@@ -148,6 +148,7 @@ async function loadSettings() {
     currentSettings = await getSettings();
 
     // Populate form fields
+    document.getElementById('pagePanel').checked = currentSettings.display?.pagePanel !== false;
     document.getElementById('autoTrack').checked = currentSettings.tracking.autoTrack === true && currentSettings.tracking.autoTrackOptIn === true;
     document.getElementById('trackingDuration').value = currentSettings.tracking.duration;
     document.getElementById('maxProducts').value = currentSettings.tracking.maxProducts;
@@ -193,7 +194,7 @@ async function loadStorageStats() {
  */
 function setupEventListeners() {
   // Track changes to all settings inputs with debouncing
-  const inputs = ['autoTrack', 'trackingDuration', 'maxProducts', 'checkInterval', 'notificationsEnabled', 'minDropPercentage', 'maxNotificationsPerDay', 'debugMode'];
+  const inputs = ['pagePanel', 'autoTrack', 'trackingDuration', 'maxProducts', 'checkInterval', 'notificationsEnabled', 'minDropPercentage', 'maxNotificationsPerDay', 'debugMode'];
 
   // Debounce settings saves to prevent excessive writes (300ms delay)
   const debouncedSettingSave = debounce(handleSettingChange, 300);
@@ -333,6 +334,7 @@ async function handleSettingChange(e) {
     // Map UI field to settings object path
     const settingMap = {
       'autoTrack': ['tracking', 'autoTrack'],
+      'pagePanel': ['display', 'pagePanel'],
       'trackingDuration': ['tracking', 'duration'],
       'maxProducts': ['tracking', 'maxProducts'],
       'checkInterval': ['checking', 'interval'],

@@ -25,6 +25,9 @@ HOW IT WORKS
 
 Price not found on some shop? Click "Pick price on page" and point at it. Price Genius remembers that spot and checks it from then on.
 
+IS THIS DEAL REAL?
+"−50%!" isn't always what it seems. On products you track, Price Genius compares the discount with the prices it actually saw, and tells you when a deal is inflated or when it was cheaper a few days ago. If the store shows its lowest price of the last 30 days, that's checked too.
+
 ALERTS THAT FIT EACH PRODUCT
 • Any drop, a drop of at least X %, or below a price you choose
 • Back-in-stock alerts
@@ -41,6 +44,7 @@ PRIVATE BY DESIGN
 • Background checks run without your store logins, so they can never touch your cart or account
 
 ALSO INCLUDED
+• A small price card on product pages (can be switched off)
 • Price history chart for every product
 • Search, sort and filter your list
 • Export to CSV for Excel or Google Sheets
