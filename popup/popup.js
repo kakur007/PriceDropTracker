@@ -9,6 +9,7 @@ import browser, { executeScript } from '../utils/browser-polyfill.js';
 import { debug, debugError } from '../utils/debug.js';
 import { isUrlSupported, getStoreName } from '../utils/domain-validator.js';
 import { hasPermissionForUrl, requestPermissionForUrl } from '../utils/permission-manager.js';
+import { sanitizeProductUrl } from '../utils/url-sanitizer.js';
 
 const state = {
   products: {},
@@ -18,7 +19,8 @@ const state = {
   tab: null,
   page: { kind: 'loading' },
   detected: null,
-  hasSiteAccess: false
+  hasSiteAccess: false,
+  accessibleDomains: new Set()
 };
 
 const $ = id => document.getElementById(id);
@@ -142,8 +144,9 @@ function changePercent(product) {
 }
 
 function needsAttention(product) {
-  const status = product.tracking?.status;
-  return status === 'stale' || status === 'no_permission' || status === 'captcha_detected' ||
+  let status = product.tracking?.status;
+  if (status === 'no_permission' && state.accessibleDomains.has(product.domain)) status = 'active';
+  return status === 'stale' || status === 'no_permission' || status === 'captcha_detected' || status === 'unsafe_url' ||
     (product.tracking?.failedChecks || 0) >= 3;
 }
 
@@ -282,6 +285,9 @@ function siteAccessNote() {
 function renderPageCard() {
   const card = $('pageCard');
   card.textContent = '';
+  // Element.append() would render null as the text "null"
+  const append = card.append.bind(card);
+  card.append = (...nodes) => append(...nodes.filter(n => n !== null && n !== undefined && n !== false));
   const { kind, product } = state.page;
 
   if (kind === 'loading') {
@@ -382,13 +388,20 @@ async function startPicker() {
 }
 
 async function grantSiteAccess(url = state.tab?.url) {
+  const targetUrl = typeof url === 'string' ? url : state.tab.url;
   // Must be the first await in the click handler (user gesture)
-  const granted = await requestPermissionForUrl(typeof url === 'string' ? url : state.tab.url);
+  const granted = await requestPermissionForUrl(targetUrl);
   if (granted) {
-    state.hasSiteAccess = true;
+    if (state.tab?.url && new URL(state.tab.url).hostname === new URL(targetUrl).hostname) state.hasSiteAccess = true;
     toast('Background checks enabled for this store');
     renderPageCard();
-    setTimeout(loadProducts, 1500);
+    // Re-check this store's products right away (also clears "Allow checks")
+    const host = new URL(targetUrl).hostname;
+    const sameStore = Object.values(state.products).filter(p => p?.domain === host);
+    for (const product of sameStore) {
+      await send('REFRESH_SINGLE_PRODUCT', { productId: product.productId }).catch(() => {});
+    }
+    await loadProducts();
   } else {
     toast('Access not granted - prices update only when you visit the page', { duration: 4000 });
   }
@@ -400,11 +413,22 @@ async function loadProducts() {
   try {
     const response = await send('GET_ALL_PRODUCTS');
     state.products = (response?.success && response.data) || {};
+    await refreshAccessibleDomains();
   } catch (error) {
     debugError('[Popup]', 'Error loading products:', error);
     state.products = {};
   }
   renderList();
+}
+
+async function refreshAccessibleDomains() {
+  const domains = new Set();
+  for (const p of Object.values(state.products)) {
+    if (p?.tracking?.status === 'no_permission' && p.url && !domains.has(p.domain)) {
+      if (isUrlSupported(p.url) || await hasPermissionForUrl(p.url)) domains.add(p.domain);
+    }
+  }
+  state.accessibleDomains = domains;
 }
 
 function visibleProducts() {
@@ -459,12 +483,14 @@ function productCard(product) {
   const status = product.tracking?.status;
 
   let statusEl = null;
-  if (status === 'no_permission') {
+  if (status === 'no_permission' && !state.accessibleDomains.has(product.domain)) {
     statusEl = h('button', {
       class: 'status',
       title: 'Allow access so prices can be checked in the background',
       onclick: e => { e.stopPropagation(); grantSiteAccess(product.url); }
     }, 'Allow checks');
+  } else if (status === 'unsafe_url') {
+    statusEl = h('span', { class: 'status', title: 'This was saved from a cart/checkout link, so it is no longer checked. Open the product page and track it again.' }, 'Re-track needed');
   } else if (status === 'captcha_detected') {
     statusEl = h('span', { class: 'status', title: 'The store asked for a CAPTCHA. Visiting the page refreshes the price.' }, 'Blocked by store');
   } else if (needsAttention(product)) {
@@ -512,7 +538,9 @@ function productCard(product) {
 }
 
 function openProduct(product) {
-  if (product?.url) browser.tabs.create({ url: product.url });
+  const url = sanitizeProductUrl(product?.url);
+  if (url) browser.tabs.create({ url });
+  else toast('This link was a cart/checkout link - track the product page again', { type: 'error' });
 }
 
 async function refreshOne(product, button) {

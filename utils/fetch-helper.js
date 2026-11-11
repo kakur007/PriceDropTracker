@@ -425,8 +425,13 @@ async function fetchHTML(url, options = {}) {
   // 1. More legitimate (not spoofed)
   // 2. Consistent with the browser's actual identity
   // 3. Less likely to be flagged as suspicious by anti-bot systems
+  // Background checks must never act as the logged-in user: no cookies, so a
+  // request can't touch the user's cart, session or account on the store.
   const response = await fetchWithRetry(url, {
     ...options,
+    method: 'GET',
+    credentials: 'omit',
+    cache: 'no-store',
     headers: {
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       'Accept-Language': 'en-US,en;q=0.9',

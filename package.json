@@ -8,8 +8,8 @@
     "build": "node scripts/build.mjs",
     "build:chrome": "node scripts/build.mjs chrome",
     "build:firefox": "node scripts/build.mjs firefox",
-    "test": "node tests/currency-parser.test.js && node tests/run-fixture-tests.mjs",
-    "test:unit": "node tests/currency-parser.test.js"
+    "test": "node tests/currency-parser.test.js && node tests/url-sanitizer.test.js && node tests/run-fixture-tests.mjs",
+    "test:unit": "node tests/currency-parser.test.js && node tests/url-sanitizer.test.js"
   },
   "repository": {
     "type": "git",

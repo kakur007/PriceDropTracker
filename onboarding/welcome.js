@@ -1,13 +1,14 @@
 import browser from '../utils/browser-polyfill.js';
+import { initTheme } from '../utils/theme.js';
+
+initTheme();
 
 document.addEventListener('DOMContentLoaded', () => {
-  const getStartedBtn = document.getElementById('getStartedBtn');
-  if (getStartedBtn) {
-    getStartedBtn.addEventListener('click', () => {
-      // Open GoGoNano website
-      browser.tabs.create({ url: 'https://www.gogonano.com' });
-      // Close the welcome tab
-      window.close();
-    });
-  }
+  document.getElementById('getStartedBtn')?.addEventListener('click', () => {
+    window.close();
+  });
+
+  document.getElementById('openSettingsBtn')?.addEventListener('click', () => {
+    browser.runtime.openOptionsPage();
+  });
 });

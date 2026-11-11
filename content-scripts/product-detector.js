@@ -27,6 +27,7 @@ import {
   getMetaTitle
 } from '../utils/page-extractor.js';
 import { debug, debugWarn, debugError } from '../utils/debug.js';
+import { sanitizeProductUrl } from '../utils/url-sanitizer.js';
 
 const LOG = '[product-detector]';
 
@@ -430,7 +431,21 @@ export async function buildProductFromElement(element) {
  * Add ids, thumbnail, and normalise fields.
  */
 async function enhanceProductData(data) {
-  data.url = data.url || window.location.href;
+  // Prefer the canonical product URL; strip cart/action/tracking params so a
+  // later background check can never repeat an action like add-to-cart.
+  const canonical = document.querySelector('link[rel="canonical"]')?.href;
+  let canonicalUrl = null;
+  try {
+    if (canonical && new URL(canonical).hostname === window.location.hostname &&
+        new URL(canonical).pathname.length > 1) {
+      canonicalUrl = sanitizeProductUrl(canonical);
+    }
+  } catch (_) { /* ignore bad canonical */ }
+  data.url = canonicalUrl || sanitizeProductUrl(data.url || window.location.href);
+  if (!data.url) {
+    debug(LOG, 'Page URL is a cart/checkout action, not tracking');
+    return null;
+  }
   data.domain = data.domain || window.location.hostname;
   data.title = cleanText(data.title) || 'Unknown Product';
   if (data.title.length > 200) data.title = data.title.slice(0, 197) + '...';

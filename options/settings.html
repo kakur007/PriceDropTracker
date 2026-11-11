@@ -3,232 +3,219 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Price Genius - Settings</title>
+  <title>Settings · Price Genius</title>
   <link rel="stylesheet" href="settings.css">
-  <style>
-    .nav-tabs {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 24px;
-      border-bottom: 2px solid #e5e7eb;
-    }
-
-    .nav-tab {
-      padding: 12px 24px;
-      background: none;
-      border: none;
-      border-bottom: 3px solid transparent;
-      color: #6b7280;
-      font-size: 15px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.2s;
-      text-decoration: none;
-    }
-
-    .nav-tab:hover {
-      color: #2563eb;
-      border-bottom-color: #93c5fd;
-    }
-
-    .nav-tab.active {
-      color: #2563eb;
-      border-bottom-color: #2563eb;
-    }
-
-    /* Dark mode */
-    body[data-theme="dark"] .nav-tabs {
-      border-bottom-color: #374151;
-    }
-
-    body[data-theme="dark"] .nav-tab {
-      color: #9ca3af;
-    }
-
-    body[data-theme="dark"] .nav-tab:hover {
-      color: #60a5fa;
-      border-bottom-color: #3b82f6;
-    }
-
-    body[data-theme="dark"] .nav-tab.active {
-      color: #60a5fa;
-      border-bottom-color: #3b82f6;
-    }
-  </style>
 </head>
 <body>
-  <div class="container">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="settings.html"><img src="../assets/icons/icon-32.png" alt="" width="26" height="26">Price Genius</a>
+      <nav class="nav-tabs" aria-label="Sections">
+        <a href="settings.html" class="nav-tab active" aria-current="page">Settings</a>
+        <a href="price-history.html" class="nav-tab">Price history</a>
+        <a href="privacy-policy.html" class="nav-tab">Privacy</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
     <header class="header">
       <h1>Settings</h1>
-      <p class="subtitle">Configure your Price Genius preferences</p>
+      <p class="subtitle">Changes are saved automatically.</p>
     </header>
 
-    <!-- Navigation Tabs -->
-    <div class="nav-tabs">
-      <a href="settings.html" class="nav-tab active">Settings</a>
-      <a href="price-history.html" class="nav-tab">Price History</a>
-      <a href="privacy-policy.html" class="nav-tab">Privacy Policy</a>
-    </div>
-
     <div class="settings-grid">
-      <!-- Tracking Settings -->
-      <section class="settings-section">
-        <h2>Tracking</h2>
+      <section class="settings-section" aria-labelledby="h-tracking">
+        <h2 id="h-tracking">Tracking</h2>
 
-        <div class="setting-item">
-          <label class="checkbox-label">
-            <input type="checkbox" id="autoTrack" checked>
-            <span>Automatically track products I view</span>
-          </label>
-          <p class="setting-description">When off, products are only tracked when you press "Track price" in the toolbar popup. Prices of products you already track are still refreshed when you visit them.</p>
+        <div class="setting-row">
+          <div class="setting-text">
+            <label for="autoTrack">Track products automatically</label>
+            <p class="setting-description">Start tracking product pages you open on popular stores. When off, only products you add with <strong>Track price</strong> are tracked. Prices of tracked products still refresh when you visit them.</p>
+          </div>
+          <div class="setting-control"><span class="switch"><input type="checkbox" id="autoTrack" checked><span></span></span></div>
         </div>
 
-        <div class="setting-item">
-          <label for="trackingDuration">Tracking Duration</label>
-          <select id="trackingDuration" class="select">
-            <option value="7">7 days</option>
-            <option value="14">14 days</option>
-            <option value="30" selected>30 days</option>
-            <option value="60">60 days</option>
-          </select>
-          <p class="setting-description">How long to track products before auto-removal</p>
-        </div>
-
-        <div class="setting-item">
-          <label for="maxProducts">Maximum Products</label>
-          <select id="maxProducts" class="select">
-            <option value="50">50 products</option>
-            <option value="100" selected>100 products</option>
-            <option value="150">150 products</option>
-          </select>
-          <p class="setting-description">Maximum number of products to track simultaneously</p>
-        </div>
-      </section>
-
-      <!-- Price Checking -->
-      <section class="settings-section">
-        <h2>Price Checking</h2>
-
-        <div class="setting-item">
-          <label for="checkInterval">Check Frequency</label>
-          <select id="checkInterval" class="select">
-            <option value="3">Every 3 hours</option>
-            <option value="6" selected>Every 6 hours</option>
-            <option value="12">Every 12 hours</option>
-            <option value="24">Once daily</option>
-          </select>
-          <p class="setting-description">How often to check product prices</p>
-        </div>
-
-        <div class="setting-item">
-          <button id="checkNowBtn" class="btn btn-secondary">Check All Prices Now</button>
-          <p class="setting-description">Manually trigger price check for all products</p>
-        </div>
-      </section>
-
-      <!-- Notifications -->
-      <section class="settings-section">
-        <h2>Notifications</h2>
-
-        <div class="setting-item">
-          <label class="checkbox-label">
-            <input type="checkbox" id="notificationsEnabled" checked>
-            <span>Enable notifications</span>
-          </label>
-        </div>
-
-        <div class="setting-item">
-          <label for="minDropPercentage">Minimum Drop Percentage</label>
-          <select id="minDropPercentage" class="select">
-            <option value="5" selected>5%</option>
-            <option value="10">10%</option>
-            <option value="15">15%</option>
-            <option value="20">20%</option>
-          </select>
-          <p class="setting-description">Only notify for drops above this threshold</p>
-        </div>
-
-        <div class="setting-item">
-          <label for="maxNotificationsPerDay">Max Notifications Per Day</label>
-          <select id="maxNotificationsPerDay" class="select">
-            <option value="3" selected>3 per day</option>
-            <option value="5">5 per day</option>
-            <option value="10">10 per day</option>
-            <option value="999">Unlimited</option>
-          </select>
-          <p class="setting-description">Limit daily notification volume</p>
-        </div>
-      </section>
-
-      <!-- Data Management -->
-      <section class="settings-section">
-        <h2>Data Management</h2>
-
-        <div class="setting-item">
-          <div class="storage-info">
-            <div class="storage-stat">
-              <span class="stat-label">Products tracked:</span>
-              <span class="stat-value" id="productCount">0</span>
-            </div>
-            <div class="storage-stat">
-              <span class="stat-label">Storage used:</span>
-              <span class="stat-value" id="storageUsed">0 KB</span>
-            </div>
+        <div class="setting-row">
+          <div class="setting-text">
+            <label for="trackingDuration">Keep tracking for</label>
+            <p class="setting-description">Products are removed automatically after this time.</p>
+          </div>
+          <div class="setting-control">
+            <select id="trackingDuration" class="select">
+              <option value="7">7 days</option>
+              <option value="14">14 days</option>
+              <option value="30" selected>30 days</option>
+              <option value="60">60 days</option>
+              <option value="90">90 days</option>
+            </select>
           </div>
         </div>
 
-        <div class="setting-item">
-          <button id="exportDataBtn" class="btn btn-secondary">Export All Data</button>
-          <p class="setting-description">Download your tracking data as JSON</p>
-        </div>
-
-        <div class="setting-item">
-          <button id="importDataBtn" class="btn btn-secondary">Import Data</button>
-          <input type="file" id="importFileInput" accept=".json" style="display: none;">
-          <p class="setting-description">Restore data from a previous export</p>
-        </div>
-
-        <div class="setting-item">
-          <button id="clearDataBtn" class="btn btn-danger">Clear All Data</button>
-          <p class="setting-description">⚠️ Permanently delete all tracked products</p>
+        <div class="setting-row">
+          <div class="setting-text">
+            <label for="maxProducts">Maximum products</label>
+            <p class="setting-description">How many products can be tracked at the same time.</p>
+          </div>
+          <div class="setting-control">
+            <select id="maxProducts" class="select">
+              <option value="50">50 products</option>
+              <option value="100" selected>100 products</option>
+              <option value="150">150 products</option>
+              <option value="250">250 products</option>
+            </select>
+          </div>
         </div>
       </section>
 
-      <!-- Advanced Settings -->
+      <section class="settings-section" aria-labelledby="h-checking">
+        <h2 id="h-checking">Price checks</h2>
+
+        <div class="setting-row">
+          <div class="setting-text">
+            <label for="checkInterval">Check prices</label>
+            <p class="setting-description">Checks run in the background without your store logins, so they can never change your cart or account.</p>
+          </div>
+          <div class="setting-control">
+            <select id="checkInterval" class="select">
+              <option value="3">Every 3 hours</option>
+              <option value="6" selected>Every 6 hours</option>
+              <option value="12">Every 12 hours</option>
+              <option value="24">Once a day</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-text">
+            <span class="setting-title">Check everything now</span>
+            <p class="setting-description" id="lastCheckText">Runs a check for all tracked products.</p>
+          </div>
+          <div class="setting-control"><button id="checkNowBtn" class="btn btn-secondary">Check now</button></div>
+        </div>
+      </section>
+
+      <section class="settings-section" aria-labelledby="h-notify">
+        <h2 id="h-notify">Notifications</h2>
+
+        <div class="setting-row">
+          <div class="setting-text">
+            <label for="notificationsEnabled">Price drop alerts</label>
+            <p class="setting-description">Show a notification when a tracked product gets cheaper.</p>
+          </div>
+          <div class="setting-control"><span class="switch"><input type="checkbox" id="notificationsEnabled" checked><span></span></span></div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-text">
+            <label for="minDropPercentage">Alert me for drops of at least</label>
+            <p class="setting-description">Smaller changes are still recorded in the price history.</p>
+          </div>
+          <div class="setting-control">
+            <select id="minDropPercentage" class="select">
+              <option value="1">1%</option>
+              <option value="5" selected>5%</option>
+              <option value="10">10%</option>
+              <option value="15">15%</option>
+              <option value="20">20%</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-text">
+            <label for="maxNotificationsPerDay">At most</label>
+            <p class="setting-description">Limit how many alerts you get per day.</p>
+          </div>
+          <div class="setting-control">
+            <select id="maxNotificationsPerDay" class="select">
+              <option value="3" selected>3 alerts a day</option>
+              <option value="5">5 alerts a day</option>
+              <option value="10">10 alerts a day</option>
+              <option value="999">No limit</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <section class="settings-section" aria-labelledby="h-sites">
+        <h2 id="h-sites">Stores with background access</h2>
+        <p class="setting-description" style="padding-bottom:10px">Stores you allowed from the popup. Popular stores (Amazon, eBay, Zalando, …) are built in and not listed. Removing access stops background checks for that store.</p>
+        <ul class="site-list" id="siteAccessList">
+          <li class="empty">Loading…</li>
+        </ul>
+      </section>
+
+      <section class="settings-section" aria-labelledby="h-look">
+        <h2 id="h-look">Appearance</h2>
+        <div class="setting-row">
+          <div class="setting-text">
+            <label for="themeSelect">Theme</label>
+            <p class="setting-description">Applies to the popup and these pages.</p>
+          </div>
+          <div class="setting-control">
+            <select id="themeSelect" class="select">
+              <option value="system">Match system</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <section class="settings-section" aria-labelledby="h-data">
+        <h2 id="h-data">Your data</h2>
+        <div class="stats">
+          <div class="stat"><span class="stat-label">Products tracked</span><span class="stat-value" id="productCount">0</span></div>
+          <div class="stat"><span class="stat-label">Storage used</span><span class="stat-value" id="storageUsed">0 KB</span></div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-text">
+            <span class="setting-title">Backup</span>
+            <p class="setting-description">Everything is stored only in this browser. Export a backup or move it to another computer.</p>
+          </div>
+          <div class="setting-control">
+            <button id="exportDataBtn" class="btn btn-secondary">Export</button>
+            <button id="importDataBtn" class="btn btn-secondary">Import</button>
+            <input type="file" id="importFileInput" accept=".json" hidden>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-text">
+            <span class="setting-title">Delete all data</span>
+            <p class="setting-description">Permanently removes all tracked products and price history.</p>
+          </div>
+          <div class="setting-control"><button id="clearDataBtn" class="btn btn-danger">Delete everything</button></div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-text">
+            <label for="debugMode">Debug logging</label>
+            <p class="setting-description">Detailed console logs for troubleshooting.</p>
+          </div>
+          <div class="setting-control"><span class="switch"><input type="checkbox" id="debugMode"><span></span></span></div>
+        </div>
+      </section>
+
       <section class="settings-section">
-        <h2>Advanced</h2>
-
-        <div class="setting-item">
-          <label class="checkbox-label">
-            <input type="checkbox" id="debugMode">
-            <span>Debug Mode</span>
-          </label>
-          <p class="setting-description">Enable detailed console logging for troubleshooting. Changes apply immediately.</p>
-        </div>
-      </section>
-
-      <!-- About -->
-      <section class="settings-section full-width">
-        <h2>About</h2>
-        <div class="about-info">
-          <p><strong>Price Genius by GoGoNano</strong> - Version 1.3.0</p>
-          <p>Automatically track product prices and get notified when they drop.</p>
-          <p>100% privacy-focused - all data stays on your device.</p>
+        <div class="about">
+          <div>
+            <strong>Price Genius</strong> <span class="muted" id="versionText"></span>
+            <p class="muted">by GoGoNano · all data stays on your device</p>
+          </div>
           <div class="about-links">
-            <a href="https://www.gogonano.com" target="_blank">Developer: GoGoNano</a>
-            <a href="https://www.gogonano.com/contact-us/?lang=en" target="_blank">Contact & Support</a>
-            <a href="privacy-policy.html">Privacy Policy</a>
-            <a href="#" id="giveFeedbackLink">Give Feedback</a>
+            <a href="https://www.gogonano.com/contact-us/?lang=en" target="_blank" rel="noopener">Support</a>
+            <a href="#" id="giveFeedbackLink">Give feedback</a>
+            <a href="privacy-policy.html">Privacy</a>
           </div>
         </div>
       </section>
     </div>
+  </main>
 
-    <!-- Save Indicator -->
-    <div id="saveIndicator" class="save-indicator" style="display: none;">
-      ✓ Settings saved
-    </div>
-  </div>
+  <div id="saveIndicator" class="save-indicator" role="status" aria-live="polite" hidden></div>
 
   <script type="module" src="settings.js"></script>
 </body>

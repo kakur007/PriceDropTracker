@@ -25,6 +25,9 @@ Focus: work on (almost) every store, and a simpler, modern popup.
 - Browser fixture tests (`tests/run-fixture-tests.mjs`) and an end-to-end extension test
 
 ### Changed
+- Redesigned settings page (toggles, store-access list with "Remove access", theme
+  choice) and onboarding page (pin-the-icon step, how-it-works, privacy summary);
+  Price history and Privacy pages share the same header and theme
 - Redesigned popup: current-page card, search, sort, filter chips (All / Price drops /
   Needs attention), price sparklines, follows the system light/dark theme
 - One shared extractor (`utils/page-extractor.js`) is now used by the content script,
@@ -37,6 +40,16 @@ Focus: work on (almost) every store, and a simpler, modern popup.
   from `manifest.json`
 
 ### Fixed
+- **Products could be added to the store cart by background checks**: if a product was
+  saved from a URL carrying a cart action (e.g. WooCommerce `?add-to-cart=…`), every
+  background check repeated it. Product URLs are now sanitized (canonical URL preferred,
+  cart/action/session/tracking parameters stripped, cart/checkout URLs never tracked),
+  existing stored URLs are cleaned on update, and background checks no longer send the
+  store's cookies at all
+- The price picker now intercepts clicks on `window` and swallows pointer/touch events,
+  so picking a price inside a buy button can't trigger it
+- "Allow checks" stayed visible after access was granted when the price had changed
+- Popup showed the text "null" on tracked products
 - **Automatic background price checks never ran**: the service worker read settings keys
   that don't exist (`tracking.enabled` / `tracking.checkInterval`), so the periodic alarm
   was never created. It now uses the "Check frequency" setting

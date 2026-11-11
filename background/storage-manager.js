@@ -103,7 +103,7 @@ export async function saveProduct(productData) {
           existing.tracking.lastViewed = Date.now();
           existing.tracking.lastChecked = Date.now();
         }
-        for (const key of ['priceSelector', 'detectionMethod', 'hasImage', 'title']) {
+        for (const key of ['priceSelector', 'detectionMethod', 'hasImage', 'title', 'url']) {
           if (productData[key] !== undefined && productData[key] !== null) existing[key] = productData[key];
         }
 
@@ -262,6 +262,7 @@ export async function updateProductPrice(productId, newPriceData) {
       product.tracking.lastChecked = Date.now();
       product.tracking.checkCount++;
       product.tracking.failedChecks = 0; // Reset on success
+      product.tracking.status = 'active'; // A successful read clears no_permission/stale
 
       // Save
       const products = await getAllProducts();

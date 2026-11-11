@@ -11,6 +11,7 @@
 
 import browser from '../utils/browser-polyfill.js';
 import { isUrlSupportedOrPermitted } from '../utils/domain-validator.js';
+import { sanitizeProductUrl } from '../utils/url-sanitizer.js';
 import { StorageManager } from './storage-manager.js';
 import { checkAllProducts, checkSingleProduct, PriceCheckResult } from './price-checker.js';
 import { showBatchPriceDropNotifications, showInfoNotification } from '../utils/notification-manager.js';
@@ -83,6 +84,7 @@ browser.runtime.onInstalled.addListener(async (details) => {
     }
 
     await syncDynamicContentScripts();
+    await sanitizeStoredProductUrls();
 
     // Update badge to show tracked product count
     await updateBadge();
@@ -103,6 +105,7 @@ browser.runtime.onStartup.addListener(async () => {
     // Verify alarms are set up
     await setupAlarms();
     await syncDynamicContentScripts();
+    await sanitizeStoredProductUrls();
 
     // Update badge
     await updateBadge();
@@ -468,6 +471,10 @@ async function findTrackedProductByUrl(url) {
 async function handleProductDetected(productData, sender, source = 'manual') {
   debug('[ServiceWorker]', `Product detected (${source}):`, productData.title, productData.url);
 
+  const safeUrl = sanitizeProductUrl(productData.url);
+  if (!safeUrl) throw new Error('This page is not a product page');
+  productData.url = safeUrl;
+
   const existing =
     (await StorageManager.getProduct(productData.productId)) ||
     (await findTrackedProductByUrl(productData.url));
@@ -581,6 +588,35 @@ async function createThumbnailInBackground(productId, imageUrl) {
 }
 
 /**
+ * One-off cleanup for products saved by older versions: strip cart/action
+ * parameters from stored URLs (e.g. ?add-to-cart=123) so background checks
+ * stop repeating them. Products whose URL *is* an action are paused.
+ */
+async function sanitizeStoredProductUrls() {
+  try {
+    const { products = {} } = await browser.storage.local.get('products');
+    let changed = 0;
+    for (const product of Object.values(products)) {
+      if (!product?.url) continue;
+      const safe = sanitizeProductUrl(product.url);
+      if (safe && safe !== product.url) {
+        product.url = safe;
+        changed++;
+      } else if (!safe && product.tracking?.status !== 'unsafe_url') {
+        product.tracking = { ...(product.tracking || {}), status: 'unsafe_url' };
+        changed++;
+      }
+    }
+    if (changed) {
+      await browser.storage.local.set({ products });
+      debug('[ServiceWorker]', `Sanitized ${changed} stored product URL(s)`);
+    }
+  } catch (error) {
+    debugWarn('[ServiceWorker]', 'URL cleanup failed:', error);
+  }
+}
+
+/**
  * Keep a dynamic content script registered for every store the user granted
  * access to, so those stores behave like built-in ones (auto price refresh
  * on visit, SPA support) instead of needing the popup button every time.
@@ -652,6 +688,9 @@ browser.permissions.onAdded.addListener(async (permissions) => {
     const waiting = Object.values(all || {}).filter(p => p?.tracking?.status === 'no_permission');
     for (const product of waiting) {
       if (await isUrlSupportedOrPermitted(product.url)) {
+        // Access exists now: clear the flag whatever the check finds
+        product.tracking = { ...(product.tracking || {}), status: 'active', failedChecks: 0 };
+        await StorageManager.saveProduct(product);
         await checkSingleProduct(product.productId);
       }
     }

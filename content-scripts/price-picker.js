@@ -81,13 +81,13 @@ export function startPicker() {
   const block = e => {
     if (e.composedPath().includes(host)) return;
     e.preventDefault();
-    e.stopPropagation();
+    e.stopImmediatePropagation();
   };
 
   const onClick = async e => {
     if (e.composedPath().includes(host)) return;
     e.preventDefault();
-    e.stopPropagation();
+    e.stopImmediatePropagation();
     const target = current || resolveTarget(e.target);
     if (!target) return;
     stop();
@@ -107,25 +107,33 @@ export function startPicker() {
   };
 
   const onKey = e => {
-    if (e.key === 'Escape') stop();
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      stop();
+    }
   };
 
+  // Listen on window in the capture phase so we run before any page handler,
+  // and swallow every press-type event: a click on the price must never reach
+  // the store (e.g. a price inside an "Add to cart" button).
+  const BLOCKED = ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'touchstart', 'touchend', 'dblclick', 'auxclick', 'contextmenu', 'submit'];
+
   function stop() {
-    document.removeEventListener('mousemove', onMove, true);
-    document.removeEventListener('click', onClick, true);
-    document.removeEventListener('mousedown', block, true);
-    document.removeEventListener('mouseup', block, true);
-    document.removeEventListener('keydown', onKey, true);
+    window.removeEventListener('mousemove', onMove, true);
+    window.removeEventListener('click', onClick, true);
+    for (const type of BLOCKED) window.removeEventListener(type, block, true);
+    window.removeEventListener('keydown', onKey, true);
     host.remove();
-    active = null;
+    // Keep swallowing the tail of the current click for a moment
+    setTimeout(() => { active = null; }, 0);
   }
 
   shadow.querySelector('[data-cancel]').addEventListener('click', stop);
-  document.addEventListener('mousemove', onMove, true);
-  document.addEventListener('click', onClick, true);
-  document.addEventListener('mousedown', block, true);
-  document.addEventListener('mouseup', block, true);
-  document.addEventListener('keydown', onKey, true);
+  window.addEventListener('mousemove', onMove, true);
+  window.addEventListener('click', onClick, true);
+  for (const type of BLOCKED) window.addEventListener(type, block, { capture: true, passive: false });
+  window.addEventListener('keydown', onKey, true);
   (document.body || document.documentElement).appendChild(host);
   active = { stop };
 }

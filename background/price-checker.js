@@ -18,6 +18,7 @@ import { isUrlSupportedOrPermitted } from '../utils/domain-validator.js';
 import { parsePrice } from '../utils/currency-parser.js';
 import { debug, debugWarn, debugError } from '../utils/debug.js';
 import { extractPriceForRefresh } from '../utils/page-extractor.js';
+import { sanitizeProductUrl } from '../utils/url-sanitizer.js';
 
 /**
  * Derive expected currency from domain
@@ -750,6 +751,18 @@ async function checkSingleProduct(productId) {
         status: PriceCheckResult.NOT_FOUND,
         error: 'Product not found in storage'
       };
+    }
+
+    // Never request a URL that performs an action (add-to-cart etc.)
+    const safeUrl = sanitizeProductUrl(product.url);
+    if (!safeUrl) {
+      product.tracking = { ...(product.tracking || {}), status: 'unsafe_url', lastChecked: Date.now() };
+      await StorageManager.saveProduct(product);
+      return { status: PriceCheckResult.ERROR, error: 'Saved link is a cart/checkout link - open the product page and track it again' };
+    }
+    if (safeUrl !== product.url) {
+      product.url = safeUrl;
+      await StorageManager.saveProduct(product);
     }
 
     // Check if domain is supported or has permission
