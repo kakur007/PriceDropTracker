@@ -445,6 +445,7 @@ function visibleProducts() {
   if (q) list = list.filter(p => `${p.title} ${p.domain}`.toLowerCase().includes(q));
   if (state.filter === 'drops') list = list.filter(p => changePercent(p) <= -0.5);
   if (state.filter === 'attention') list = list.filter(needsAttention);
+  if (state.filter === 'alerts') list = list.filter(hasCustomAlert);
 
   const sorters = {
     recent: (a, b) => (b.tracking?.lastChecked || 0) - (a.tracking?.lastChecked || 0),
@@ -461,6 +462,7 @@ function renderList() {
   $('countAll').textContent = all.length;
   $('countDrops').textContent = all.filter(p => changePercent(p) <= -0.5).length;
   $('countAttention').textContent = all.filter(needsAttention).length;
+  $('countAlerts').textContent = all.filter(hasCustomAlert).length;
   $('tagline').textContent = all.length ? `Watching ${all.length} product${all.length === 1 ? '' : 's'}` : 'Price tracking for any store';
 
   const lastChecked = Math.max(0, ...all.map(p => p.tracking?.lastChecked || 0));
@@ -539,7 +541,6 @@ function productCard(product) {
       sparkline(product)
     ),
     h('div', { class: 'card-actions' },
-      h('button', { class: 'icon-btn', title: 'Price alert', 'aria-label': `Price alert for ${product.title}`, 'aria-expanded': String(state.editingId === product.productId), onclick: () => toggleAlertEditor(product.productId) }, icon(ICONS.bell)),
       h('button', { class: 'icon-btn', title: 'Check price now', 'aria-label': `Check price of ${product.title}`, onclick: e => refreshOne(product, e.currentTarget) }, icon(ICONS.refresh)),
       h('button', { class: 'icon-btn', title: 'Open store page', 'aria-label': `Open ${product.title}`, onclick: () => openProduct(product) }, icon(ICONS.open)),
       h('button', { class: 'icon-btn danger', title: 'Stop tracking', 'aria-label': `Stop tracking ${product.title}`, onclick: () => removeProduct(product) }, icon(ICONS.trash))
@@ -559,14 +560,28 @@ function money(product, value) {
   return formatPrice(value, product.price?.currency, product.price?.locale);
 }
 
+function hasCustomAlert(product) {
+  return getAlert(product).mode !== 'default';
+}
+
+/**
+ * Always-visible alert indicator, so it's obvious at a glance which products
+ * have their own alert: a coloured pill with the rule, or a muted "Set alert".
+ */
 function alertBadge(product) {
   const alert = getAlert(product);
-  if (alert.mode === 'default') return null;
+  const custom = alert.mode !== 'default';
+  const label = custom
+    ? describeAlert(product, state.settings, v => money(product, v))
+    : 'Set alert';
   return h('button', {
-    class: `alert-badge ${alert.mode === 'off' ? 'off' : ''}`,
-    title: 'Edit price alert',
+    class: `alert-badge ${custom ? (alert.mode === 'off' ? 'off' : 'set') : 'unset'}`,
+    title: custom
+      ? `Your alert: ${label}. Click to change.`
+      : `No alert of your own yet - uses the default (drops of ${globalMinDrop(state.settings)}% or more). Click to set one.`,
+    'aria-label': custom ? `Price alert: ${label}. Change` : `Set a price alert for ${product.title}`,
     onclick: e => { e.stopPropagation(); toggleAlertEditor(product.productId); }
-  }, icon(ICONS.bell), describeAlert(product, state.settings, v => money(product, v)));
+  }, icon(ICONS.bell), label);
 }
 
 function toggleAlertEditor(productId) {

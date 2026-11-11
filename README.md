@@ -114,8 +114,8 @@ Automatically track product prices across major e-commerce sites and get notifie
 ## 🚀 How It Works
 
 1. **Browse Normally** - Visit a product page in any online store
-2. **Track it** - On popular stores the product is tracked automatically. On any other store, click the
-   toolbar icon and press **Track price**. If the price can't be found automatically, press
+2. **Track it** - Click the toolbar icon and press **Track price** (or press **Alt+Shift+T**).
+   Only products you choose are tracked; automatic tracking can be switched on in Settings. If the price can't be found automatically, press
    **Pick price on page** and click the price yourself - it works on practically any site
    - A confirmation badge appears in the bottom-right corner
    - Product is saved with title, price, image, and URL
@@ -145,11 +145,10 @@ Just click "Get Started" and browse to any product page!
 
 ### Tracking Products
 
-**On popular stores** (Amazon, eBay, Walmart, Zalando, Shopify stores, …) products are tracked
-automatically when you open them. A small confirmation appears in the bottom-right corner.
-You can turn this off in Settings → "Automatically track products I view".
+Only products you choose are tracked. (If you prefer, Settings → "Track every product I open"
+adds every product page you visit on supported stores automatically.)
 
-**On any other store:**
+**To track a product:**
 1. Open the product page and click the Price Genius toolbar icon
 2. The popup shows the product it found - press **Track price**
 3. Press **Allow** when asked, so prices can also be checked in the background
@@ -809,7 +808,7 @@ This extension has completed its initial development phase. All core features ar
 ## 🌟 What Makes This Extension Special?
 
 ### 1. Zero-Effort Tracking
-Unlike other price trackers that require manual adding, this extension works automatically as you browse. No wishlists, no copying URLs, no buttons to click.
+One click (or Alt+Shift+T) on any product page in any store - no wishlists, no copying URLs, no account.
 
 ### 2. Privacy First
 Your data never leaves your device. No cloud servers, no accounts, no tracking. We believe privacy is a right, not a feature.

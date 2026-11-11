@@ -73,16 +73,28 @@ check(!!priceAlarm, 'periodic price-check alarm scheduled', priceAlarm ? `every 
 // Close the onboarding tab opened on install
 for (const p of context.pages()) if (p.url().includes('onboarding')) await p.close();
 
-// --- auto detection on a supported store
+// --- auto-track is opt-in: a plain visit must NOT add the product
 const page = await context.newPage();
 await page.goto(STORE_URL);
+await page.waitForTimeout(6000);
+const afterVisit = (await worker.evaluate(() => chrome.storage.local.get('products'))).products || {};
+check(Object.keys(afterVisit).length === 0, 'visiting a product page does not track it by default', `${Object.keys(afterVisit).length} tracked`);
+
+// opt in (as the Settings switch does) and visit again
+await worker.evaluate(async () => {
+  const { settings } = await chrome.storage.local.get('settings');
+  settings.tracking.autoTrack = true;
+  settings.tracking.autoTrackOptIn = true;
+  await chrome.storage.local.set({ settings });
+});
+await page.reload();
 let products = {};
 for (let i = 0; i < 20 && Object.keys(products).length === 0; i++) {
   await page.waitForTimeout(500);
   products = (await worker.evaluate(() => chrome.storage.local.get('products'))).products || {};
 }
 const saved = Object.values(products)[0];
-check(saved?.price?.numeric === 5.99, 'auto-detected product saved on visit', saved ? `${saved.title} ${saved.price.numeric} ${saved.price.currency}` : 'nothing saved');
+check(saved?.price?.numeric === 5.99, 'with auto-track opted in, product saved on visit', saved ? `${saved.title} ${saved.price.numeric} ${saved.price.currency}` : 'nothing saved');
 
 // --- background refresh through fetch + offscreen parser
 if (saved) {
@@ -204,8 +216,9 @@ await popupCheck.close();
   await pop.goto(`chrome-extension://${extId}/popup/popup.html`);
   await pop.waitForTimeout(900);
   const card = pop.locator('.card').first();
-  await card.hover();
-  await card.locator('button[title="Price alert"]').click();
+  const unsetBadges = await pop.locator('.alert-badge.unset').count();
+  check(unsetBadges === 2, 'products without an alert show "Set alert"', `${unsetBadges}`);
+  await card.locator('.alert-badge').click();
   await pop.locator('.alert-editor select').selectOption('below');
   await pop.locator('.alert-field input').fill('3.50');
   await pop.screenshot({ path: path.join(SHOTS, 'popup-alert-editor.png') });
@@ -213,8 +226,13 @@ await popupCheck.close();
   await pop.waitForTimeout(500);
   const alerts = await worker.evaluate(async () => Object.values((await chrome.storage.local.get('products')).products).map(p => p.alert).filter(Boolean));
   check(alerts.some(a => a.mode === 'below' && a.targetPrice === 3.5), 'alert saved from popup editor', JSON.stringify(alerts));
-  const badge = await pop.locator('.alert-badge').first().innerText().catch(() => '');
-  check(/Below/.test(badge), 'alert badge shown on card', badge);
+  const badge = await pop.locator('.alert-badge.set').first().innerText().catch(() => '');
+  check(/Below/.test(badge), 'product with alert shows coloured alert pill', badge);
+  await pop.locator('.chip[data-filter="alerts"]').click();
+  const alertCards = await pop.locator('.card').count();
+  check(alertCards === 1, '"Alerts" filter shows only products with an alert', `${alertCards} cards`);
+  await pop.screenshot({ path: path.join(SHOTS, 'popup-alert-filter.png') });
+  await pop.locator('.chip[data-filter="all"]').click();
   await pop.screenshot({ path: path.join(SHOTS, 'popup-alert-saved.png') });
   await pop.close();
 }
