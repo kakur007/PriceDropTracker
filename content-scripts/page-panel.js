@@ -88,7 +88,7 @@ export function showPagePanel({ product, tracked, settings }) {
       }
       .top { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
       .brand { display:flex; align-items:center; gap:6px; font-weight:650; font-size:12px; color:var(--muted); letter-spacing:.02em; }
-      .dot { width:8px; height:8px; border-radius:50%; background:var(--accent); }
+      .logo { width:18px; height:18px; border-radius:5px; display:block; }
       .close { all:unset; cursor:pointer; width:22px; height:22px; border-radius:6px; display:grid; place-items:center; color:var(--muted); }
       .close:hover { background:var(--soft); color:var(--text); }
       .close:focus-visible, .btn:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
@@ -109,7 +109,7 @@ export function showPagePanel({ product, tracked, settings }) {
     </style>
     <div class="card" role="complementary" aria-label="Price Genius">
       <div class="top">
-        <div class="brand"><span class="dot"></span><span class="label"></span></div>
+        <div class="brand"><img class="logo" alt=""><span class="label"></span></div>
         <button class="close" type="button" aria-label="Close Price Genius panel" title="Hide on this page">
           <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
         </button>
@@ -117,6 +117,7 @@ export function showPagePanel({ product, tracked, settings }) {
       <div class="body"></div>
     </div>`;
 
+  root.querySelector('.logo').src = api.runtime.getURL('assets/icons/icon-64.png');
   const label = root.querySelector('.label');
   const body = root.querySelector('.body');
   label.textContent = tracked ? 'Price Genius · tracking' : 'Price Genius · deal check';

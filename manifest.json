@@ -167,6 +167,7 @@
     {
       "resources": [
         "content-scripts/*.js",
+        "assets/icons/icon-64.png",
         "content-scripts/site-adapters/*.js",
         "utils/*.js"
       ],

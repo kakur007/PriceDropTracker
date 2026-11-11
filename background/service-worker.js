@@ -704,7 +704,7 @@ async function updateBadge() {
 
     if (count > 0) {
       await badgeAPI.setBadgeText({ text: count.toString() });
-      await badgeAPI.setBadgeBackgroundColor({ color: '#4CAF50' });
+      await badgeAPI.setBadgeBackgroundColor({ color: '#0B8494' });
     } else {
       await badgeAPI.setBadgeText({ text: '' });
     }

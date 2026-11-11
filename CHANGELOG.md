@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   discount get a nudge to track them
 
 ### Changed
+- New Price Genius icon everywhere: toolbar, extension list, popup, settings, price history,
+  privacy and onboarding pages, on-page panel and notifications; toolbar count badge uses the
+  brand teal
 - **Removed the `tabs` permission**: Chrome no longer shows "Read your browsing history"
   when installing. The current page is read via `activeTab` only when the user clicks the
   icon or uses the shortcut
