@@ -3,6 +3,10 @@
 Same text for the Chrome Web Store and Firefox Add-ons. Both stores take plain
 text (no Markdown), so paste the sections as-is.
 
+Do NOT list store or brand names (Amazon, eBay, ...) in the description: the
+Chrome Web Store rejects that as "excessive keywords" (spam policy). Version
+1.3.0 was rejected once for exactly this.
+
 ## Short description / summary
 (Chrome: max 132 characters · Firefox: max 250)
 
@@ -28,7 +32,7 @@ ALERTS THAT FIT EACH PRODUCT
 • A daily limit, so you're never flooded with notifications
 
 WORKS ON ALMOST ANY STORE
-Amazon (all regions), eBay, Walmart, Target, Best Buy, Zalando, ASOS, Boozt, Etsy, AliExpress, MediaMarkt and most Shopify, WooCommerce and OpenCart shops. Prices in 30+ currencies.
+Big marketplaces, fashion and electronics stores, and small independent shops alike. Prices in 30+ currencies, shown in each store's own currency.
 
 PRIVATE BY DESIGN
 • No account, no sign-up
