@@ -1,1058 +1,632 @@
 /**
- * Price Drop Tracker - Popup UI Logic
- * Displays tracked products with price information and controls
+ * Price Genius - Popup
+ *
+ * Top: what's on the current tab (track it / already tracking / pick price)
+ * Below: searchable, sortable list of tracked products
  */
 
 import browser, { executeScript } from '../utils/browser-polyfill.js';
-import { debug, debugError, debugWarn } from '../utils/debug.js';
-import { isUrlSupported } from '../utils/domain-validator.js';
+import { debug, debugError } from '../utils/debug.js';
+import { isUrlSupported, getStoreName } from '../utils/domain-validator.js';
 import { hasPermissionForUrl, requestPermissionForUrl } from '../utils/permission-manager.js';
 
-let allProducts = {};
-let currentFilter = 'all';
-let currentTab = null; // Store current tab for permission requests
+const state = {
+  products: {},
+  filter: 'all',
+  sort: 'recent',
+  query: '',
+  tab: null,
+  page: { kind: 'loading' },
+  detected: null,
+  hasSiteAccess: false
+};
 
-// Initialize popup
-document.addEventListener('DOMContentLoaded', async () => {
-  await initializeTheme();
-  await loadProducts();
+const $ = id => document.getElementById(id);
 
-  // Get current tab ONCE when popup opens (before any user interaction)
-  // This allows us to use it synchronously in click handlers for Firefox
-  try {
-    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-    currentTab = tab;
-    debug('[Popup]', 'Current tab cached:', currentTab?.url);
+// ------------------------------------------------------------------ helpers
 
-    // NOTE: No auto-resume logic needed here. Service worker handles it via permissions.onAdded
-  } catch (error) {
-    debugError('[Popup]', 'Error getting current tab:', error);
+function h(tag, attrs = {}, ...children) {
+  const el = document.createElement(tag);
+  for (const [key, value] of Object.entries(attrs || {})) {
+    if (value === null || value === undefined || value === false) continue;
+    if (key === 'class') el.className = value;
+    else if (key === 'text') el.textContent = value;
+    else if (key.startsWith('on')) el.addEventListener(key.slice(2), value);
+    else el.setAttribute(key, value === true ? '' : value);
   }
-
-  setupEventListeners();
-
-  // Listen for storage changes to auto-refresh popup when products are added/removed
-  browser.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName === 'local' && changes.products) {
-      debug('[Popup]', 'Products changed in storage, reloading...');
-      loadProducts();
-    }
-  });
-});
-
-/**
- * Initialize theme from saved preference
- */
-async function initializeTheme() {
-  try {
-    const result = await browser.storage.local.get(['theme']);
-    const theme = result.theme || 'light';
-    applyTheme(theme);
-  } catch (error) {
-    debugError('[Popup] Error loading theme:', error);
-    applyTheme('light');
+  for (const child of children.flat()) {
+    if (child === null || child === undefined || child === false) continue;
+    el.append(child instanceof Node ? child : document.createTextNode(String(child)));
   }
+  return el;
 }
 
-/**
- * Apply theme to document
- */
-function applyTheme(theme) {
-  document.body.setAttribute('data-theme', theme);
-  updateThemeIcon(theme);
-}
-
-/**
- * Update theme toggle icon
- */
-function updateThemeIcon(theme) {
-  const lightIcon = document.querySelector('.theme-icon-light');
-  const darkIcon = document.querySelector('.theme-icon-dark');
-
-  if (theme === 'dark') {
-    lightIcon.style.display = 'none';
-    darkIcon.style.display = 'block';
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function icon(pathD, { stroke = true } = {}) {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 20 20');
+  svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS(SVG_NS, 'path');
+  path.setAttribute('d', pathD);
+  if (stroke) {
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', 'currentColor');
+    path.setAttribute('stroke-width', '1.7');
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('stroke-linejoin', 'round');
   } else {
-    lightIcon.style.display = 'block';
-    darkIcon.style.display = 'none';
+    path.setAttribute('fill', 'currentColor');
   }
+  svg.append(path);
+  return svg;
 }
 
-/**
- * Toggle between light and dark theme
- */
-async function toggleTheme() {
-  const currentTheme = document.body.getAttribute('data-theme') || 'light';
-  const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+const ICONS = {
+  plus: 'M10 4.5v11M4.5 10h11',
+  target: 'M10 3v3M10 14v3M3 10h3M14 10h3M10 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z',
+  refresh: 'M16.5 10a6.5 6.5 0 1 1-1.9-4.6M16.5 3.5v3.8h-3.8',
+  open: 'M11 3.5h5.5V9M16.5 3.5 9 11M14 12.5V16a.5.5 0 0 1-.5.5h-9A.5.5 0 0 1 4 16V7a.5.5 0 0 1 .5-.5H8',
+  trash: 'M4 6h12M8 6V4.5h4V6M6 6l.7 9.5a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9L14 6',
+  check: 'M4.5 10.5 8 14l7.5-8'
+};
 
-  applyTheme(newTheme);
-
-  // Save preference
+function formatPrice(amount, currency = 'USD', locale) {
+  if (typeof amount !== 'number' || !isFinite(amount)) return '—';
   try {
-    await browser.storage.local.set({ theme: newTheme });
-    debug('[Popup]', `Theme switched to ${newTheme}`);
-  } catch (error) {
-    debugError('[Popup] Error saving theme:', error);
-  }
-}
-
-/**
- * Load all products from storage
- */
-async function loadProducts() {
-  try {
-    showLoading();
-
-    // Get products via message to background script
-    const response = await browser.runtime.sendMessage({
-      type: 'GET_ALL_PRODUCTS'
-    });
-
-    if (response && response.success) {
-      allProducts = response.data || {};
-    } else {
-      allProducts = {};
-    }
-
-    const productIds = Object.keys(allProducts);
-
-    if (productIds.length === 0) {
-      showEmptyState();
-      updateStats({});
-      return;
-    }
-
-    updateStats(allProducts);
-    displayProducts(allProducts, currentFilter);
-
-  } catch (error) {
-    debugError('[Popup] Error loading products:', error);
-    showError('Failed to load products. Please try refreshing.');
-    updateStats({});
-  }
-}
-
-/**
- * Update statistics display
- */
-function updateStats(products) {
-  const productArray = Object.values(products);
-  const totalProducts = productArray.length;
-
-  let priceDrops = 0;
-  for (const product of productArray) {
-    if (hasActivePriceDrop(product)) {
-      priceDrops++;
-    }
-  }
-
-  document.getElementById('totalProducts').textContent = totalProducts;
-  document.getElementById('priceDrops').textContent = priceDrops;
-}
-
-/**
- * Check if product has an active price drop
- */
-function hasActivePriceDrop(product) {
-  if (!product.priceHistory || product.priceHistory.length < 2) {
-    return false;
-  }
-
-  const firstPrice = product.priceHistory[0].price;
-  const currentPrice = product.price.numeric;
-
-  return currentPrice < firstPrice;
-}
-
-/**
- * Group products by domain
- */
-function groupProductsByDomain(products) {
-  const groups = {};
-
-  products.forEach(product => {
-    const domain = product.domain || 'unknown';
-
-    if (!groups[domain]) {
-      groups[domain] = [];
-    }
-
-    groups[domain].push(product);
-  });
-
-  // Sort groups: known stores first, then custom sites alphabetically
-  const knownStores = ['amazon.com', 'ebay.com', 'walmart.com', 'target.com', 'bestbuy.com'];
-  const sortedGroups = {};
-
-  // Add known stores first
-  knownStores.forEach(store => {
-    const matchingDomain = Object.keys(groups).find(domain => domain.includes(store.replace('.com', '')));
-    if (matchingDomain && groups[matchingDomain]) {
-      sortedGroups[matchingDomain] = groups[matchingDomain];
-    }
-  });
-
-  // Add remaining custom sites alphabetically
-  Object.keys(groups)
-    .filter(domain => !Object.keys(sortedGroups).includes(domain))
-    .sort()
-    .forEach(domain => {
-      sortedGroups[domain] = groups[domain];
-    });
-
-  return sortedGroups;
-}
-
-/**
- * Display products based on filter
- */
-function displayProducts(products, filter) {
-  const container = document.getElementById('productsList');
-  const filteredProducts = filterProducts(products, filter);
-
-  if (filteredProducts.length === 0) {
-    if (filter === 'all') {
-      showEmptyState();
-    } else {
-      hideEmptyState();  // Hide the global empty state
-
-      // Clear container
-      container.textContent = '';
-
-      // Create empty state elements
-      const emptyState = document.createElement('div');
-      emptyState.className = 'empty-state';
-
-      const icon = document.createElement('div');
-      icon.className = 'empty-icon';
-      icon.textContent = '🔍';
-
-      const heading = document.createElement('h2');
-      heading.textContent = 'No products match this filter';
-
-      const paragraph = document.createElement('p');
-      paragraph.textContent = 'Try selecting a different tab to view more products.';
-
-      emptyState.appendChild(icon);
-      emptyState.appendChild(heading);
-      emptyState.appendChild(paragraph);
-
-      container.appendChild(emptyState);
-
-      hideLoading();
-      document.getElementById('productsList').style.display = 'block';  // Make sure list is visible
-    }
-    return;
-  }
-
-  hideLoading();
-  hideEmptyState();
-
-  // Sort by last checked (most recent first)
-  filteredProducts.sort((a, b) => {
-    const aChecked = a.tracking?.lastChecked || 0;
-    const bChecked = b.tracking?.lastChecked || 0;
-    return bChecked - aChecked;
-  });
-
-  // Group products by domain
-  const groupedProducts = groupProductsByDomain(filteredProducts);
-
-  // Create HTML for grouped products using DOMParser for security
-  const parser = new DOMParser();
-  const htmlString = Object.entries(groupedProducts).map(([domain, products]) => {
-    const storeName = getStoreName(domain);
-    const productCards = products.map(product => createProductCard(product)).join('');
-
-    return `
-      <div class="product-group">
-        <div class="group-header" data-domain="${escapeHtml(domain)}">
-          <div class="group-info">
-            <span class="group-name">${escapeHtml(storeName)}</span>
-            <span class="group-count">${products.length} ${products.length === 1 ? 'product' : 'products'}</span>
-          </div>
-          <svg class="group-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </div>
-        <div class="group-products">
-          ${productCards}
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  // Parse HTML safely and append to container
-  const doc = parser.parseFromString(`<div>${htmlString}</div>`, 'text/html');
-  container.textContent = ''; // Clear existing content
-  Array.from(doc.body.firstChild.children).forEach(child => {
-    container.appendChild(child);
-  });
-
-  // Add event listeners to group headers for collapse/expand
-  container.querySelectorAll('.group-header').forEach(header => {
-    header.addEventListener('click', (e) => {
-      const group = header.closest('.product-group');
-      group.classList.toggle('collapsed');
-    });
-  });
-
-  // Add event listeners to cards
-  container.querySelectorAll('.product-card').forEach(card => {
-    const productId = card.dataset.productId;
-
-    card.querySelector('.product-header').addEventListener('click', () => {
-      openProduct(productId);
-    });
-
-    card.querySelector('.btn-visit')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      openProduct(productId);
-    });
-
-    card.querySelector('.btn-refresh')?.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      await handleRefreshSingleProduct(productId, e.currentTarget);
-    });
-
-    card.querySelector('.btn-delete')?.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      await handleDeleteProduct(productId);
-    });
-
-    // Load image from separate storage (lazy loading for performance)
-    const img = card.querySelector('.product-image[data-fallback]');
-    if (img) {
-      const imageKey = `img_${productId}`;
-      browser.storage.local.get(imageKey).then(result => {
-        if (result[imageKey]) {
-          img.src = result[imageKey];
-          img.style.display = 'block';
-          const placeholder = document.getElementById(`placeholder-${productId}`);
-          if (placeholder) {
-            placeholder.style.display = 'none';
-          }
-        }
-      }).catch(error => {
-        debugError('[popup]', '[Popup] Error loading image:', error);
-        // Keep placeholder visible on error
-      });
-
-      // Handle image loading errors
-      img.addEventListener('error', function() {
-        this.style.display = 'none';
-        const placeholder = document.getElementById(`placeholder-${productId}`);
-        if (placeholder) {
-          placeholder.style.display = 'flex';
-        }
-      });
-    }
-  });
-}
-
-/**
- * Filter products based on selected filter
- */
-function filterProducts(products, filter) {
-  const productArray = Object.values(products);
-
-  if (filter === 'all') {
-    return productArray;
-  }
-
-  if (filter === 'drops') {
-    return productArray.filter(product => hasActivePriceDrop(product));
-  }
-
-  if (filter === 'expiring') {
-    const now = Date.now();
-    const twentyFiveDays = 25 * 24 * 60 * 60 * 1000;
-    return productArray.filter(product => {
-      const age = now - (product.tracking?.firstSeen || now);
-      return age > twentyFiveDays;
-    });
-  }
-
-  return productArray;
-}
-
-/**
- * Create HTML for a product card
- */
-function createProductCard(product) {
-  // Get price information
-  const currentPrice = product.price.numeric;
-  const currency = product.price.currency;
-  const locale = product.price.locale || 'en-US';
-
-  // Determine the original/regular price
-  // Priority 1: Use regularPrice from product.price (e.g., from WooCommerce <del> tag)
-  // Priority 2: Fall back to first price in history
-  let firstPrice = currentPrice;
-  if (product.price.regularPrice && product.price.regularPrice > currentPrice) {
-    // Product is currently on sale - use the regular price
-    firstPrice = product.price.regularPrice;
-  } else if (product.priceHistory && product.priceHistory.length > 0) {
-    // Use first historical price
-    firstPrice = product.priceHistory[0].price;
-  }
-
-  const hasPriceChange = firstPrice !== currentPrice;
-  const priceDiff = currentPrice - firstPrice;
-  const priceChangePercent = firstPrice > 0 ? ((priceDiff / firstPrice) * 100) : 0;
-  const hasDropped = priceDiff < 0;
-  const hasIncreased = priceDiff > 0;
-
-  // Format prices
-  const formattedCurrent = formatPrice(currentPrice, currency, locale);
-  const formattedOriginal = formatPrice(firstPrice, currency, locale);
-
-  // Check if product is stale (failed checks)
-  const isStale = product.tracking?.status === 'stale' || (product.tracking?.failedChecks || 0) >= 3;
-
-  // Get store name from domain
-  const storeName = getStoreName(product.domain);
-
-  return `
-    <div class="product-card ${isStale ? 'stale' : ''}" data-product-id="${product.productId}">
-      <div class="product-header">
-        ${product.hasImage ?
-          `<img class="product-image"
-                id="img-${product.productId}"
-                src=""
-                loading="lazy"
-                alt="${escapeHtml(product.title)}"
-                style="display:none;"
-                data-fallback="true">
-           <div class="product-image-placeholder" id="placeholder-${product.productId}">📦</div>`
-          : '<div class="product-image-placeholder">📦</div>'}
-        <div class="product-info">
-          <div class="product-title">${escapeHtml(product.title)}</div>
-          <div class="product-store">${storeName}</div>
-          <div class="product-pricing">
-            <span class="current-price">${formattedCurrent}</span>
-            ${hasPriceChange ? `<span class="original-price">${formattedOriginal}</span>` : ''}
-            ${hasDropped ? `<span class="price-drop">${Math.abs(priceChangePercent).toFixed(0)}%</span>` : ''}
-            ${hasIncreased ? `<span class="price-increase">${Math.abs(priceChangePercent).toFixed(0)}%</span>` : ''}
-          </div>
-          ${isStale ? '<div class="stale-indicator" title="Could not update price. The product page may have changed.">⚠️ Update failed</div>' : ''}
-        </div>
-      </div>
-
-      <div class="product-actions">
-        <button class="product-icon-btn btn-refresh" title="Refresh price" aria-label="Refresh price for ${escapeHtml(product.title)}">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <path d="M13.65 2.35C12.2 0.9 10.21 0 8 0C3.58 0 0.01 3.58 0.01 8C0.01 12.42 3.58 16 8 16C11.73 16 14.84 13.45 15.73 10H13.65C12.83 12.33 10.61 14 8 14C4.69 14 2 11.31 2 8C2 4.69 4.69 2 8 2C9.66 2 11.14 2.69 12.22 3.78L9 7H16V0L13.65 2.35Z" fill="currentColor"/>
-          </svg>
-        </button>
-        <button class="product-icon-btn btn-visit" title="Visit page" aria-label="Visit product page for ${escapeHtml(product.title)}">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <path d="M14 9V14C14 14.5304 13.7893 15.0391 13.4142 15.4142C13.0391 15.7893 12.5304 16 12 16H2C1.46957 16 0.960859 15.7893 0.585786 15.4142C0.210714 15.0391 0 14.5304 0 14V4C0 3.46957 0.210714 2.96086 0.585786 2.58579C0.960859 2.21071 1.46957 2 2 2H7M11 0H16M16 0V5M16 0L7 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
-        <button class="product-icon-btn btn-delete" title="Remove product" aria-label="Remove ${escapeHtml(product.title)} from tracking">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <path d="M2 4H3.33333H14M5.33333 4V2.66667C5.33333 2.31304 5.47381 1.97391 5.72386 1.72386C5.97391 1.47381 6.31304 1.33333 6.66667 1.33333H9.33333C9.68696 1.33333 10.0261 1.47381 10.2761 1.72386C10.5262 1.97391 10.6667 2.31304 10.6667 2.66667V4M12.6667 4V13.3333C12.6667 13.687 12.5262 14.0261 12.2761 14.2761C12.0261 14.5262 11.687 14.6667 11.3333 14.6667H4.66667C4.31304 14.6667 3.97391 14.5262 3.72386 14.2761C3.47381 14.0261 3.33333 13.687 3.33333 13.3333V4H12.6667Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
-      </div>
-    </div>
-  `;
-}
-
-/**
- * Format price using Intl.NumberFormat
- */
-function formatPrice(amount, currency = 'USD', locale = 'en-US') {
-  try {
-    return new Intl.NumberFormat(locale, {
-      style: 'currency',
-      currency: currency,
-      minimumFractionDigits: currency === 'JPY' || currency === 'KRW' ? 0 : 2,
-      maximumFractionDigits: currency === 'JPY' || currency === 'KRW' ? 0 : 2
-    }).format(amount);
-  } catch (error) {
-    debugWarn('[Popup] Error formatting price:', error);
-    // Fallback to simple formatting
+    return new Intl.NumberFormat(locale || undefined, { style: 'currency', currency }).format(amount);
+  } catch (_) {
     return `${currency} ${amount.toFixed(2)}`;
   }
 }
 
-/**
- * Get friendly store name from domain
- */
-function getStoreName(domain) {
-  if (!domain) return 'Unknown Store';
-
-  if (domain.includes('amazon')) return 'Amazon';
-  if (domain.includes('ebay')) return 'eBay';
-  if (domain.includes('walmart')) return 'Walmart';
-  if (domain.includes('target')) return 'Target';
-  if (domain.includes('bestbuy')) return 'Best Buy';
-
-  // Return domain without www.
-  return domain.replace('www.', '');
+function timeAgo(ts) {
+  if (!ts) return 'never';
+  const s = Math.max(0, (Date.now() - ts) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.round(s / 60)}m ago`;
+  if (s < 86400) return `${Math.round(s / 3600)}h ago`;
+  return `${Math.round(s / 86400)}d ago`;
 }
 
-/**
- * Escape HTML to prevent XSS
- */
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+function storeName(domain) {
+  const shopify = (domain || '').match(/^([^.]+)\.myshopify\.com$/i);
+  if (shopify) return shopify[1].replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  const name = getStoreName(domain || '');
+  // getStoreName capitalises the first label for unknown stores; keep the
+  // full domain there since "Shop" or "Www" says nothing.
+  return name && !/^(Www|Shop|Store)$/i.test(name) ? name : (domain || '').replace(/^www\./, '');
 }
 
-/**
- * Execute product detection on the current tab
- * @param {number} tabId - Tab ID to run detection on
- * @returns {Promise<Object>} - Detection result
- */
-async function executeProductDetection(tabId) {
+function isHttpUrl(url) {
+  return /^https?:\/\//i.test(url || '');
+}
+
+function send(type, data = {}) {
+  return browser.runtime.sendMessage({ type, data });
+}
+
+let toastTimer = null;
+function toast(message, { type = 'info', action = null, duration = 3200 } = {}) {
+  const el = $('toast');
+  el.className = `toast ${type === 'error' ? 'error' : ''}`;
+  el.textContent = '';
+  el.append(h('span', { text: message }));
+  if (action) {
+    el.append(h('button', {
+      text: action.label,
+      onclick: () => { el.hidden = true; action.run(); }
+    }));
+  }
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, duration);
+}
+
+// ----------------------------------------------------------- price analysis
+
+function baselinePrice(product) {
+  const history = product.priceHistory || [];
+  return history.length ? history[0].price : product.price?.numeric;
+}
+
+function lowestPrice(product) {
+  const prices = (product.priceHistory || []).map(e => e.price).filter(p => p > 0);
+  return prices.length ? Math.min(...prices) : product.price?.numeric;
+}
+
+function changePercent(product) {
+  const base = baselinePrice(product);
+  const now = product.price?.numeric;
+  if (!(base > 0) || !(now > 0)) return 0;
+  return ((now - base) / base) * 100;
+}
+
+function needsAttention(product) {
+  const status = product.tracking?.status;
+  return status === 'stale' || status === 'no_permission' || status === 'captcha_detected' ||
+    (product.tracking?.failedChecks || 0) >= 3;
+}
+
+function sparkline(product) {
+  const points = (product.priceHistory || []).map(e => e.price).filter(p => p > 0);
+  if (points.length < 2) return null;
+  const w = 56, hgt = 18, pad = 2;
+  const min = Math.min(...points), max = Math.max(...points);
+  const span = max - min || 1;
+  const step = (w - pad * 2) / (points.length - 1);
+  const d = points.map((p, i) =>
+    `${i ? 'L' : 'M'}${(pad + i * step).toFixed(1)},${(hgt - pad - ((p - min) / span) * (hgt - pad * 2)).toFixed(1)}`
+  ).join(' ');
+
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${w} ${hgt}`);
+  const change = points[points.length - 1] - points[0];
+  svg.setAttribute('class', `spark ${change < 0 ? 'down' : change > 0 ? 'up' : ''}`);
+  svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS(SVG_NS, 'path');
+  path.setAttribute('d', d);
+  path.setAttribute('fill', 'none');
+  path.setAttribute('stroke', 'currentColor');
+  path.setAttribute('stroke-width', '1.5');
+  path.setAttribute('stroke-linejoin', 'round');
+  path.setAttribute('stroke-linecap', 'round');
+  svg.append(path);
+  return svg;
+}
+
+// ------------------------------------------------------------------- theme
+
+async function initTheme() {
+  let pref = 'system';
   try {
-    debug('[Popup]', 'Executing script on tab:', tabId);
-
-    const results = await executeScript({
-      target: { tabId: tabId },
-      func: async () => {
-        // Define API wrapper for Chrome/Firefox compatibility
-        // In injected functions, we don't have access to browser polyfill
-        // FIX: Check globals directly, not window properties
-        const api = (typeof browser !== 'undefined' ? browser : (typeof chrome !== 'undefined' ? chrome : null));
-
-        if (!api) {
-          return { success: false, error: 'Browser API not found in script context' };
-        }
-
-        try {
-          // Set manual mode flag to prevent auto-detection IIFE from running
-          window.__PRICE_TRACKER_MANUAL_MODE__ = true;
-
-          // Import detector using inline getURL() for Firefox static analyzer
-          const { detectProduct } = await import(api.runtime.getURL('content-scripts/product-detector.js'));
-
-          console.log('[Price Drop Tracker] Manual detection started...');
-
-          // Wait for page to be fully loaded
-          await new Promise(resolve => setTimeout(resolve, 1000));
-
-          // Detect product
-          const productData = await detectProduct();
-
-          if (productData) {
-            console.log('[Price Drop Tracker] Product detected, sending to background...');
-
-            // Send to background for storage using callback-style for Chrome compatibility
-            const response = await new Promise((resolve, reject) => {
-              api.runtime.sendMessage({
-                type: 'PRODUCT_DETECTED',
-                data: productData
-              }, response => {
-                if (api.runtime.lastError) {
-                  reject(api.runtime.lastError);
-                } else {
-                  resolve(response);
-                }
-              });
-            });
-
-            console.log('[Price Drop Tracker] Background response:', response);
-
-            if (response && response.success && !response.data.alreadyTracked) {
-              console.log('[Price Drop Tracker] ✓ Product tracked:', productData.title);
-
-              // Show on-page confirmation with brand colors
-              const badge = document.createElement('div');
-              badge.style.cssText = `
-                position: fixed;
-                bottom: 20px;
-                right: 20px;
-                background: #1eadbd;
-                color: white;
-                padding: 14px 22px;
-                border-radius: 10px;
-                box-shadow: 0 6px 20px rgba(30, 173, 189, 0.3);
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-                font-size: 15px;
-                font-weight: 600;
-                z-index: 999999;
-                animation: slideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-                display: flex;
-                align-items: center;
-                gap: 10px;
-              `;
-              // Create SVG icon
-              const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-              svg.setAttribute('width', '20');
-              svg.setAttribute('height', '20');
-              svg.setAttribute('viewBox', '0 0 20 20');
-              svg.setAttribute('fill', 'none');
-
-              const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-              circle.setAttribute('cx', '10');
-              circle.setAttribute('cy', '10');
-              circle.setAttribute('r', '10');
-              circle.setAttribute('fill', 'white');
-              circle.setAttribute('fill-opacity', '0.2');
-
-              const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-              path.setAttribute('d', 'M6 10L9 13L14 7');
-              path.setAttribute('stroke', 'white');
-              path.setAttribute('stroke-width', '2');
-              path.setAttribute('stroke-linecap', 'round');
-              path.setAttribute('stroke-linejoin', 'round');
-
-              svg.appendChild(circle);
-              svg.appendChild(path);
-
-              // Create text span
-              const badgeText = document.createElement('span');
-              badgeText.textContent = `Now tracking: ${productData.price.formatted}`;
-
-              // Append to badge
-              badge.appendChild(svg);
-              badge.appendChild(badgeText);
-
-              const style = document.createElement('style');
-              style.textContent = `
-                @keyframes slideIn {
-                  from {
-                    transform: translateY(100px);
-                    opacity: 0;
-                  }
-                  to {
-                    transform: translateY(0);
-                    opacity: 1;
-                  }
-                }
-              `;
-              document.head.appendChild(style);
-              document.body.appendChild(badge);
-
-              setTimeout(() => {
-                badge.style.transition = 'all 0.3s ease';
-                badge.style.opacity = '0';
-                badge.style.transform = 'translateY(20px)';
-                setTimeout(() => badge.remove(), 300);
-              }, 5000);
-
-              return { success: true, product: productData };
-            } else if (response && response.success && response.data.alreadyTracked) {
-              // FIX: Treat "Already Tracked" as a success for the user interface
-              return { success: true, alreadyTracked: true, product: productData };
-            } else {
-              return { success: false, error: response.error || 'Unable to track product' };
-            }
-          } else {
-            console.log('[Price Drop Tracker] No product detected');
-            return { success: false, error: 'No product found on this page' };
-          }
-        } catch (error) {
-          console.error('[Price Drop Tracker] Detection error:', error);
-          return { success: false, error: error.message };
-        }
-      }
-    });
-
-    debug('[Popup]', 'Script execution results:', results);
-
-    if (!results || results.length === 0) {
-      debugError('[Popup] No results from script execution');
-      return { success: false, error: 'Script execution failed' };
-    }
-
-    return results[0].result;
-
-  } catch (error) {
-    debugError('[Popup] Error executing script:', error);
-    return { success: false, error: `Script injection failed: ${error.message}` };
-  }
+    pref = (await browser.storage.local.get('theme')).theme || 'system';
+  } catch (_) { /* default */ }
+  applyTheme(pref);
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme(document.body.dataset.pref));
 }
 
-/**
- * Set up event listeners
- */
-function setupEventListeners() {
-  // Track This Page button - for sites not auto-tracked
-  const trackThisPageBtn = document.getElementById('trackThisPageBtn');
-  trackThisPageBtn.addEventListener('click', async () => {
-    try {
-      // Use cached tab from popup initialization (no await needed!)
-      // CRITICAL: Firefox requires permissions.request() to be called synchronously
-      // from the user input handler, so we cannot await anything before it
-      const tab = currentTab;
-
-      if (!tab || !tab.id || !tab.url) {
-        showTemporaryMessage('Unable to access current tab', 'error');
-        return;
-      }
-
-      // Show loading state (after validation but before any async ops)
-      trackThisPageBtn.disabled = true;
-      trackThisPageBtn.textContent = '⏳';
-
-      debug('[Popup]', 'Track button clicked for URL:', tab.url);
-
-      // Check if this is a default supported site (synchronously - no await!)
-      const isDefaultSupported = isUrlSupported(tab.url);
-      debug('[Popup]', 'Is default supported:', isDefaultSupported);
-
-      // If not in default list, request permission immediately
-      // CRITICAL: No await operations before this point!
-      // Firefox requires permissions.request() to be called directly from user gesture
-      // Chrome requires permissions.request() to be called SYNCHRONOUSLY without ANY awaits before it
-      if (!isDefaultSupported) {
-        debug('[Popup]', 'Custom site detected, requesting permission:', tab.url);
-
-        // Detect browser to handle differently
-        const isChrome = typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id;
-
-        // FIREFOX: Check permission first to decide flow
-        // CHROME: Skip check to preserve user gesture chain
-        let alreadyHasPermission = false;
-        if (!isChrome) {
-          alreadyHasPermission = await hasPermissionForUrl(tab.url);
-          debug('[Popup]', 'Firefox - already has permission:', alreadyHasPermission);
-        }
-
-        // Only save to storage if we haven't checked or if permission doesn't exist
-        // (If it exists, we don't need service worker coordination)
-        if (isChrome || !alreadyHasPermission) {
-          // CHROME: Fire-and-forget storage save (no await to preserve user gesture)
-          // FIREFOX: Await the save (popup doesn't close, no issue with user gesture)
-          if (isChrome) {
-            // Chrome: Don't await to keep synchronous chain
-            browser.storage.local.set({ pendingPermissionUrl: tab.url }).catch(err => {
-              debugError('[Popup]', 'Failed to save pending URL:', err);
-            });
-          } else {
-            // Firefox: Await to ensure service worker can read it
-            try {
-              await browser.storage.local.set({ pendingPermissionUrl: tab.url });
-            } catch (err) {
-              debugError('[Popup]', 'Failed to save pending URL:', err);
-            }
-          }
-        }
-
-        // THIS MUST BE CALLED SYNCHRONOUSLY (or right after await in Firefox)
-        // Request permission - this will return true if already granted
-        // IMPORTANT: In Chrome, requesting permission WILL close the popup!
-        // The service worker's permissions.onAdded listener will handle detection
-        const granted = await requestPermissionForUrl(tab.url);
-
-        if (!granted) {
-          debug('[Popup]', 'Permission denied by user');
-          // Clear pending state if denied
-          await browser.storage.local.remove('pendingPermissionUrl');
-          showTemporaryMessage('Permission denied. Cannot track products on this site.', 'error');
-          trackThisPageBtn.textContent = '➕';
-          trackThisPageBtn.disabled = false;
-          return;
-        }
-
-        debug('[Popup]', 'Permission granted for:', tab.url);
-
-        // If we reach here, popup didn't close (Firefox or permission already granted in Chrome)
-        // FIREFOX FIX: Only exit early if permission was NEWLY granted
-        // If permission already existed, continue with detection here (permissions.onAdded won't fire)
-        if (!isChrome && !alreadyHasPermission) {
-          // Firefox: Permission was just granted, service worker will handle it via permissions.onAdded
-          // Don't run detection here to avoid duplicate injection
-          debug('[Popup]', 'Firefox: New permission granted, letting service worker handle detection');
-          showTemporaryMessage('Permission granted! Detecting product...', 'info');
-          trackThisPageBtn.textContent = '➕';
-          trackThisPageBtn.disabled = false;
-          return;
-        }
-
-        // Chrome/Firefox: Permission already existed, clear pending and continue with detection
-        await browser.storage.local.remove('pendingPermissionUrl');
-        debug('[Popup]', 'Permission already existed, continuing with detection in popup');
-        // Fall through to detection below
-      }
-
-      // Execute product detection (we have permission at this point)
-      let result = await executeProductDetection(tab.id);
-      debug('[Popup]', 'Detection result:', result);
-
-      if (result && result.success) {
-        // Reload products to show the newly tracked item
-        await loadProducts();
-
-        // FIX: Distinct messages for new vs existing
-        if (result.alreadyTracked) {
-          showTemporaryMessage('Product is already being tracked', 'info');
-        } else {
-          showTemporaryMessage('Product tracked successfully!', 'success');
-        }
-      } else {
-        const errorMsg = result && result.error ? result.error : 'Unable to detect product';
-        showTemporaryMessage(errorMsg, 'error');
-      }
-
-      // Reset button
-      trackThisPageBtn.textContent = '➕';
-      trackThisPageBtn.disabled = false;
-
-    } catch (error) {
-      debugError('[Popup] Error tracking page:', error);
-      showTemporaryMessage('Failed to scan page. Make sure you\'re on a product page.', 'error');
-      trackThisPageBtn.textContent = '➕';
-      trackThisPageBtn.disabled = false;
-    }
-  });
-
-  // Tab filters
-  document.querySelectorAll('.tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      currentFilter = tab.dataset.filter;
-      displayProducts(allProducts, currentFilter);
-    });
-  });
-
-  // Refresh button
-  const refreshBtn = document.getElementById('refreshBtn');
-  refreshBtn.addEventListener('click', async () => {
-    // Add spinning animation
-    refreshBtn.classList.add('refreshing');
-    refreshBtn.disabled = true;
-    refreshBtn.setAttribute('aria-busy', 'true');
-
-    try {
-      // Send message to background to force check all products
-      const response = await browser.runtime.sendMessage({
-        type: 'FORCE_CHECK_ALL',
-        data: { batchSize: 5 }
-      });
-
-      if (response && response.success) {
-        debug('[Popup]', 'Force check complete:', response.data);
-      }
-
-      // Reload products after a short delay
-      setTimeout(async () => {
-        await loadProducts();
-        refreshBtn.classList.remove('refreshing');
-        refreshBtn.disabled = false;
-        refreshBtn.setAttribute('aria-busy', 'false');
-      }, 1000);
-
-    } catch (error) {
-      debugError('[Popup] Error refreshing:', error);
-      refreshBtn.classList.remove('refreshing');
-      refreshBtn.disabled = false;
-      refreshBtn.setAttribute('aria-busy', 'false');
-      showTemporaryMessage('Failed to refresh prices. Please try again.', 'error');
-    }
-  });
-
-  // Theme toggle button
-  document.getElementById('themeToggleBtn').addEventListener('click', toggleTheme);
-
-  // Settings button
-  document.getElementById('settingsBtn').addEventListener('click', () => {
-    browser.runtime.openOptionsPage();
-  });
+function applyTheme(pref) {
+  const dark = pref === 'dark' || (pref !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  document.body.dataset.pref = pref;
+  document.body.dataset.theme = dark ? 'dark' : 'light';
+  $('themeToggleBtn').title = `Theme: ${pref}`;
 }
 
-/**
- * Open product page in new tab
- */
-function openProduct(productId) {
-  const product = allProducts[productId];
-  if (product && product.url) {
-    browser.tabs.create({ url: product.url });
-  }
+async function cycleTheme() {
+  const order = ['system', 'light', 'dark'];
+  const next = order[(order.indexOf(document.body.dataset.pref || 'system') + 1) % order.length];
+  applyTheme(next);
+  toast(`Theme: ${next}`, { duration: 1200 });
+  try { await browser.storage.local.set({ theme: next }); } catch (_) { /* ignore */ }
 }
 
-/**
- * Handle refreshing a single product
- */
-async function handleRefreshSingleProduct(productId, buttonElement) {
+// ------------------------------------------------------------ current page
+
+/** Runs inside the page (activeTab), returns detected product or error. */
+async function detectInPage() {
+  const api = typeof browser !== 'undefined' ? browser : chrome;
   try {
-    // Add loading state to button
-    buttonElement.classList.add('refreshing');
-    buttonElement.disabled = true;
-
-    // Request price check for this specific product
-    const response = await browser.runtime.sendMessage({
-      type: 'REFRESH_SINGLE_PRODUCT',
-      data: { productId }
-    });
-
-    if (response && response.success) {
-      // Update the product in our local cache
-      const updatedProduct = response.data.product;
-      if (updatedProduct) {
-        allProducts[productId] = updatedProduct;
-        displayProducts(allProducts, currentFilter);
-        updateStats(allProducts);
-
-        showTemporaryMessage('Price updated!', 'success');
-      }
-    } else {
-      showTemporaryMessage('Failed to update price', 'error');
+    window.__PRICE_TRACKER_MANUAL_MODE__ = true;
+    const { detectProduct } = await import(api.runtime.getURL('content-scripts/product-detector.js'));
+    let product = await detectProduct({ mode: 'manual' });
+    if (!product) {
+      // JS-heavy stores may still be rendering
+      await new Promise(r => setTimeout(r, 1200));
+      product = await detectProduct({ mode: 'manual' });
     }
+    return { ok: true, product };
   } catch (error) {
-    debugError('[Popup] Error refreshing product:', error);
-    showTemporaryMessage('Failed to update price. Please try again.', 'error');
-  } finally {
-    // Remove loading state
-    buttonElement.classList.remove('refreshing');
-    buttonElement.disabled = false;
+    return { ok: false, error: String(error?.message || error) };
   }
 }
 
-/**
- * Handle deleting a product
- * @param {string} productId - ID of product to delete
- */
-async function handleDeleteProduct(productId) {
-  if (!confirm('Remove this product from tracking?')) {
+/** Runs inside the page: start the price picker. */
+async function startPickerInPage() {
+  const api = typeof browser !== 'undefined' ? browser : chrome;
+  const { startPicker } = await import(api.runtime.getURL('content-scripts/price-picker.js'));
+  startPicker();
+  return true;
+}
+
+async function inspectCurrentPage() {
+  const tab = state.tab;
+  if (!tab || !isHttpUrl(tab.url)) {
+    state.page = { kind: 'unsupported' };
+    renderPageCard();
     return;
   }
 
-  try {
-    const response = await browser.runtime.sendMessage({
-      type: 'DELETE_PRODUCT',
-      data: { productId }
-    });
+  state.hasSiteAccess = isUrlSupported(tab.url) || await hasPermissionForUrl(tab.url);
 
-    if (response && response.success) {
-      delete allProducts[productId];
-      displayProducts(allProducts, currentFilter);
-      updateStats(allProducts);
-      showTemporaryMessage('Product removed successfully', 'success');
+  const tracked = await send('FIND_PRODUCT_BY_URL', { url: tab.url }).then(r => r?.data).catch(() => null);
+  if (tracked) {
+    state.page = { kind: 'tracked', product: tracked };
+    renderPageCard();
+    return;
+  }
+
+  state.page = { kind: 'loading' };
+  renderPageCard();
+
+  try {
+    const results = await executeScript({ target: { tabId: tab.id }, func: detectInPage });
+    const result = results?.[0]?.result;
+    if (!result?.ok) {
+      debug('[Popup]', 'Detection failed:', result?.error);
+      state.page = { kind: 'notFound' };
+    } else if (result.product) {
+      state.detected = result.product;
+      const already = state.products[result.product.productId];
+      state.page = already ? { kind: 'tracked', product: already } : { kind: 'detected', product: result.product };
     } else {
-      showError('Failed to remove product');
+      state.page = { kind: 'notFound' };
     }
   } catch (error) {
-    debugError('[Popup] Error deleting product:', error);
-    showError('Failed to remove product. Please try again.');
+    // e.g. browser store pages, PDFs, pages blocked by policy
+    debug('[Popup]', 'Cannot access page:', error?.message);
+    state.page = { kind: 'blocked' };
+  }
+  renderPageCard();
+}
+
+function siteAccessNote() {
+  const tab = state.tab;
+  if (!tab || state.hasSiteAccess) return null;
+  const domain = new URL(tab.url).hostname.replace(/^www\./, '');
+  return h('div', { class: 'page-note' },
+    h('span', {}, 'Allow background checks on ', h('strong', { text: domain }), ' so we can spot drops while you browse elsewhere.'),
+    h('button', { class: 'btn btn-secondary btn-small', onclick: grantSiteAccess }, 'Allow')
+  );
+}
+
+function renderPageCard() {
+  const card = $('pageCard');
+  card.textContent = '';
+  const { kind, product } = state.page;
+
+  if (kind === 'loading') {
+    card.append(h('div', { class: 'page-loading' }, h('span', { class: 'spinner' }), 'Looking for a product on this page…'));
+    return;
+  }
+
+  if (kind === 'unsupported') {
+    card.append(
+      h('div', { class: 'page-eyebrow' }, h('span', { class: 'dot' }), 'This tab'),
+      h('p', { class: 'page-text', text: 'Open a product page in any online store to start tracking its price.' })
+    );
+    return;
+  }
+
+  if (kind === 'blocked') {
+    card.append(
+      h('div', { class: 'page-eyebrow' }, h('span', { class: 'dot' }), 'This tab'),
+      h('p', { class: 'page-text', text: "The browser doesn't let extensions read this page. Try a regular store page." })
+    );
+    return;
+  }
+
+  if (kind === 'tracked') {
+    const change = changePercent(product);
+    card.append(
+      h('div', { class: 'page-eyebrow ok' }, h('span', { class: 'dot' }), 'Tracking this product'),
+      h('div', { class: 'page-row' },
+        h('div', { style: 'min-width:0;flex:1' },
+          h('div', { class: 'page-title', text: product.title }),
+          h('div', { class: 'page-price' },
+            formatPrice(product.price?.numeric, product.price?.currency, product.price?.locale),
+            ' ',
+            Math.abs(change) >= 0.5 ? h('span', { class: `pill ${change < 0 ? 'down' : 'up'}`, text: `${change < 0 ? '−' : '+'}${Math.abs(change).toFixed(0)}%` }) : null
+          ),
+          h('div', { class: 'muted', text: `Since ${new Date(product.tracking?.firstSeen || Date.now()).toLocaleDateString()} · lowest ${formatPrice(lowestPrice(product), product.price?.currency, product.price?.locale)}` })
+        )
+      ),
+      h('div', { class: 'page-actions' },
+        h('button', { class: 'btn btn-secondary btn-small', onclick: startPicker }, icon(ICONS.target), 'Wrong price? Pick it')
+      ),
+      siteAccessNote()
+    );
+    return;
+  }
+
+  if (kind === 'detected') {
+    card.append(
+      h('div', { class: 'page-eyebrow' }, h('span', { class: 'dot' }), 'Product found'),
+      h('div', { class: 'page-title', text: product.title }),
+      h('div', { class: 'page-price', text: formatPrice(product.price?.numeric, product.price?.currency, product.price?.locale) }),
+      h('div', { class: 'page-actions' },
+        h('button', { class: 'btn btn-primary', id: 'trackBtn', onclick: trackDetected }, icon(ICONS.plus), 'Track price'),
+        h('button', { class: 'btn btn-secondary', onclick: startPicker }, icon(ICONS.target), 'Not right? Pick price')
+      )
+    );
+    return;
+  }
+
+  // notFound
+  card.append(
+    h('div', { class: 'page-eyebrow' }, h('span', { class: 'dot' }), 'No price found automatically'),
+    h('p', { class: 'page-text', text: 'If this is a product page, point us to the price and we will keep an eye on it.' }),
+    h('div', { class: 'page-actions' },
+      h('button', { class: 'btn btn-primary', onclick: startPicker }, icon(ICONS.target), 'Pick price on page'),
+      h('button', { class: 'btn btn-secondary', onclick: inspectCurrentPage }, icon(ICONS.refresh), 'Scan again')
+    )
+  );
+}
+
+async function trackDetected() {
+  const btn = $('trackBtn');
+  if (btn) btn.disabled = true;
+  try {
+    const response = await browser.runtime.sendMessage({ type: 'PRODUCT_DETECTED', data: state.detected, source: 'manual' });
+    if (!response?.success) throw new Error(response?.error || 'Could not save');
+    await loadProducts();
+    state.page = { kind: 'tracked', product: response.data.product || state.detected };
+    renderPageCard();
+    toast(response.data.alreadyTracked ? 'Already tracking - price updated' : 'Tracking started');
+  } catch (error) {
+    debugError('[Popup]', 'Track failed:', error);
+    toast(error.message === 'Maximum product limit reached'
+      ? 'Product limit reached - remove some or raise the limit in Settings'
+      : 'Could not track this product', { type: 'error' });
+    if (btn) btn.disabled = false;
   }
 }
 
-/**
- * Show loading state
- */
-function showLoading() {
-  document.getElementById('loadingState').style.display = 'block';
-  document.getElementById('productsList').style.display = 'none';
-  document.getElementById('emptyState').style.display = 'none';
+async function startPicker() {
+  try {
+    await executeScript({ target: { tabId: state.tab.id }, func: startPickerInPage });
+    window.close();
+  } catch (error) {
+    debugError('[Popup]', 'Picker failed:', error);
+    toast("Can't open the picker on this page", { type: 'error' });
+  }
 }
 
-/**
- * Hide loading state
- */
-function hideLoading() {
-  document.getElementById('loadingState').style.display = 'none';
-  document.getElementById('productsList').style.display = 'block';
+async function grantSiteAccess(url = state.tab?.url) {
+  // Must be the first await in the click handler (user gesture)
+  const granted = await requestPermissionForUrl(typeof url === 'string' ? url : state.tab.url);
+  if (granted) {
+    state.hasSiteAccess = true;
+    toast('Background checks enabled for this store');
+    renderPageCard();
+    setTimeout(loadProducts, 1500);
+  } else {
+    toast('Access not granted - prices update only when you visit the page', { duration: 4000 });
+  }
 }
 
-/**
- * Show empty state
- */
-function showEmptyState() {
-  document.getElementById('loadingState').style.display = 'none';
-  document.getElementById('productsList').style.display = 'none';
-  document.getElementById('emptyState').style.display = 'block';
+// --------------------------------------------------------------- list
+
+async function loadProducts() {
+  try {
+    const response = await send('GET_ALL_PRODUCTS');
+    state.products = (response?.success && response.data) || {};
+  } catch (error) {
+    debugError('[Popup]', 'Error loading products:', error);
+    state.products = {};
+  }
+  renderList();
 }
 
-/**
- * Hide empty state
- */
-function hideEmptyState() {
-  document.getElementById('emptyState').style.display = 'none';
+function visibleProducts() {
+  let list = Object.values(state.products).filter(p => p && p.price);
+  const q = state.query.trim().toLowerCase();
+  if (q) list = list.filter(p => `${p.title} ${p.domain}`.toLowerCase().includes(q));
+  if (state.filter === 'drops') list = list.filter(p => changePercent(p) <= -0.5);
+  if (state.filter === 'attention') list = list.filter(needsAttention);
+
+  const sorters = {
+    recent: (a, b) => (b.tracking?.lastChecked || 0) - (a.tracking?.lastChecked || 0),
+    drop: (a, b) => changePercent(a) - changePercent(b),
+    'price-asc': (a, b) => a.price.numeric - b.price.numeric,
+    'price-desc': (a, b) => b.price.numeric - a.price.numeric,
+    name: (a, b) => (a.title || '').localeCompare(b.title || '')
+  };
+  return list.sort(sorters[state.sort] || sorters.recent);
 }
 
-/**
- * Show error message
- * @param {string} message - Error message to display
- */
-function showError(message) {
-  debugError('[Popup]', message);
-  hideLoading();
+function renderList() {
+  const all = Object.values(state.products).filter(p => p && p.price);
+  $('countAll').textContent = all.length;
+  $('countDrops').textContent = all.filter(p => changePercent(p) <= -0.5).length;
+  $('countAttention').textContent = all.filter(needsAttention).length;
+  $('tagline').textContent = all.length ? `Watching ${all.length} product${all.length === 1 ? '' : 's'}` : 'Price tracking for any store';
 
-  const container = document.getElementById('productsList');
-  container.textContent = ''; // Clear existing content
+  const lastChecked = Math.max(0, ...all.map(p => p.tracking?.lastChecked || 0));
+  $('lastCheck').textContent = lastChecked ? `Last check ${timeAgo(lastChecked)}` : '';
 
-  const errorState = document.createElement('div');
-  errorState.className = 'empty-state';
-  errorState.setAttribute('role', 'alert');
+  const hasAny = all.length > 0;
+  $('toolbar').hidden = !hasAny || all.length < 4;
+  $('filterChips').hidden = !hasAny;
+  $('emptyState').hidden = hasAny;
 
-  const icon = document.createElement('div');
-  icon.className = 'empty-icon';
-  icon.textContent = '⚠️';
+  const container = $('productsList');
+  container.textContent = '';
+  if (!hasAny) return;
 
-  const heading = document.createElement('h2');
-  heading.textContent = 'Error';
-
-  const paragraph = document.createElement('p');
-  paragraph.textContent = message; // textContent auto-escapes
-
-  errorState.appendChild(icon);
-  errorState.appendChild(heading);
-  errorState.appendChild(paragraph);
-
-  container.appendChild(errorState);
-}
-
-/**
- * Show temporary message to user
- */
-function showTemporaryMessage(message, type = 'success') {
-  // Remove any existing message
-  const existing = document.querySelector('.temp-message');
-  if (existing) existing.remove();
-
-  // Create message element
-  const messageEl = document.createElement('div');
-  messageEl.className = `temp-message temp-message-${type}`;
-  messageEl.textContent = message;
-
-  // Add CSS if not already added
-  if (!document.getElementById('temp-message-styles')) {
-    const style = document.createElement('style');
-    style.id = 'temp-message-styles';
-    style.textContent = `
-      .temp-message {
-        position: fixed;
-        bottom: 16px;
-        left: 50%;
-        transform: translateX(-50%);
-        padding: 12px 20px;
-        border-radius: 8px;
-        font-size: 14px;
-        font-weight: 500;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        z-index: 10000;
-        animation: slideUp 0.3s ease;
-      }
-      .temp-message-success {
-        background: #16a34a;
-        color: white;
-      }
-      .temp-message-error {
-        background: #dc2626;
-        color: white;
-      }
-      @keyframes slideUp {
-        from { transform: translate(-50%, 100px); opacity: 0; }
-        to { transform: translate(-50%, 0); opacity: 1; }
-      }
-    `;
-    document.head.appendChild(style);
+  const list = visibleProducts();
+  if (list.length === 0) {
+    container.append(h('div', { class: 'list-empty', text: state.query ? 'No products match your search.' : 'Nothing here right now.' }));
+    return;
   }
 
-  document.body.appendChild(messageEl);
-
-  // Remove after 3 seconds
-  setTimeout(() => {
-    messageEl.style.transition = 'opacity 0.3s ease';
-    messageEl.style.opacity = '0';
-    setTimeout(() => messageEl.remove(), 300);
-  }, 3000);
+  for (const product of list) container.append(productCard(product));
 }
+
+function productCard(product) {
+  const { currency, locale } = product.price;
+  const change = changePercent(product);
+  const base = baselinePrice(product);
+  const status = product.tracking?.status;
+
+  let statusEl = null;
+  if (status === 'no_permission') {
+    statusEl = h('button', {
+      class: 'status',
+      title: 'Allow access so prices can be checked in the background',
+      onclick: e => { e.stopPropagation(); grantSiteAccess(product.url); }
+    }, 'Allow checks');
+  } else if (status === 'captcha_detected') {
+    statusEl = h('span', { class: 'status', title: 'The store asked for a CAPTCHA. Visiting the page refreshes the price.' }, 'Blocked by store');
+  } else if (needsAttention(product)) {
+    statusEl = h('span', { class: 'status', title: 'The last checks could not read the price. Visit the page or use “Pick price”.' }, 'Check failed');
+  }
+
+  const thumb = h('div', { class: 'thumb', text: (storeName(product.domain)[0] || '?').toUpperCase() });
+  if (product.hasImage) {
+    browser.storage.local.get(`img_${product.productId}`).then(r => {
+      const src = r[`img_${product.productId}`];
+      if (src) {
+        thumb.textContent = '';
+        thumb.append(h('img', { src, alt: '' }));
+      }
+    }).catch(() => {});
+  }
+
+  const card = h('article', { class: 'card', role: 'listitem', 'data-id': product.productId },
+    thumb,
+    h('div', { class: 'card-body' },
+      h('button', { class: 'card-title', title: product.title, onclick: () => openProduct(product) }, product.title),
+      h('div', { class: 'card-meta' },
+        h('span', { text: storeName(product.domain) }),
+        '·',
+        h('span', { text: timeAgo(product.tracking?.lastChecked) }),
+        statusEl
+      )
+    ),
+    h('div', { class: 'pricing' },
+      h('div', { class: 'price-now', text: formatPrice(product.price.numeric, currency, locale) }),
+      Math.abs(change) >= 0.5
+        ? h('div', { style: 'display:flex;gap:6px;align-items:center' },
+            h('span', { class: 'price-was', text: formatPrice(base, currency, locale) }),
+            h('span', { class: `pill ${change < 0 ? 'down' : 'up'}`, text: `${change < 0 ? '−' : '+'}${Math.abs(change).toFixed(0)}%` }))
+        : null,
+      sparkline(product)
+    ),
+    h('div', { class: 'card-actions' },
+      h('button', { class: 'icon-btn', title: 'Check price now', 'aria-label': `Check price of ${product.title}`, onclick: e => refreshOne(product, e.currentTarget) }, icon(ICONS.refresh)),
+      h('button', { class: 'icon-btn', title: 'Open store page', 'aria-label': `Open ${product.title}`, onclick: () => openProduct(product) }, icon(ICONS.open)),
+      h('button', { class: 'icon-btn danger', title: 'Stop tracking', 'aria-label': `Stop tracking ${product.title}`, onclick: () => removeProduct(product) }, icon(ICONS.trash))
+    )
+  );
+  return card;
+}
+
+function openProduct(product) {
+  if (product?.url) browser.tabs.create({ url: product.url });
+}
+
+async function refreshOne(product, button) {
+  button.disabled = true;
+  button.classList.add('spinning');
+  try {
+    const response = await send('REFRESH_SINGLE_PRODUCT', { productId: product.productId });
+    const result = response?.data?.checkResult;
+    if (response?.data?.product) state.products[product.productId] = response.data.product;
+    renderList();
+    if (result?.status === 'price_drop' || (result?.newPrice && result.newPrice < result.oldPrice)) toast('Price dropped!');
+    else if (result?.status === 'error') toast(result.error || 'Could not read the price', { type: 'error' });
+    else toast('Price is up to date');
+  } catch (error) {
+    toast('Could not check the price', { type: 'error' });
+  } finally {
+    button.disabled = false;
+    button.classList.remove('spinning');
+  }
+}
+
+async function removeProduct(product) {
+  const imageKey = `img_${product.productId}`;
+  let image = null;
+  try { image = (await browser.storage.local.get(imageKey))[imageKey] || null; } catch (_) { /* ignore */ }
+  const snapshot = JSON.parse(JSON.stringify(state.products[product.productId] || product));
+
+  const card = document.querySelector(`.card[data-id="${CSS.escape(product.productId)}"]`);
+  card?.classList.add('removing');
+
+  try {
+    await send('DELETE_PRODUCT', { productId: product.productId });
+    delete state.products[product.productId];
+    setTimeout(renderList, 180);
+    if (state.page.kind === 'tracked' && state.page.product?.productId === product.productId) {
+      state.page = { kind: 'notFound' };
+      inspectCurrentPage();
+    }
+    toast('Stopped tracking', {
+      duration: 6000,
+      action: {
+        label: 'Undo',
+        run: async () => {
+          await send('RESTORE_PRODUCT', { product: snapshot, image });
+          await loadProducts();
+          inspectCurrentPage();
+        }
+      }
+    });
+  } catch (error) {
+    card?.classList.remove('removing');
+    toast('Could not remove product', { type: 'error' });
+  }
+}
+
+async function refreshAll() {
+  const btn = $('refreshBtn');
+  btn.disabled = true;
+  btn.classList.add('spinning');
+  try {
+    const response = await browser.runtime.sendMessage({ type: 'FORCE_CHECK_ALL', data: { batchSize: 5 } });
+    const drops = response?.data?.priceDrops || 0;
+    await loadProducts();
+    toast(drops ? `${drops} price drop${drops === 1 ? '' : 's'} found` : 'All prices checked');
+  } catch (error) {
+    toast('Could not check prices', { type: 'error' });
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('spinning');
+  }
+}
+
+// ---------------------------------------------------------------- init
+
+function bindEvents() {
+  $('refreshBtn').addEventListener('click', refreshAll);
+  $('themeToggleBtn').addEventListener('click', cycleTheme);
+  $('settingsBtn').addEventListener('click', () => browser.runtime.openOptionsPage());
+  $('historyBtn').addEventListener('click', () => browser.tabs.create({ url: browser.runtime.getURL('options/price-history.html') }));
+
+  $('searchInput').addEventListener('input', e => { state.query = e.target.value; renderList(); });
+  $('sortSelect').addEventListener('change', e => { state.sort = e.target.value; renderList(); });
+
+  document.querySelectorAll('#filterChips .chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('#filterChips .chip').forEach(c => {
+        c.classList.toggle('active', c === chip);
+        c.setAttribute('aria-selected', String(c === chip));
+      });
+      state.filter = chip.dataset.filter;
+      renderList();
+    });
+  });
+
+  browser.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.products) {
+      state.products = changes.products.newValue || {};
+      renderList();
+      if (state.page.kind === 'tracked') {
+        const fresh = state.products[state.page.product?.productId];
+        if (fresh) { state.page.product = fresh; renderPageCard(); }
+      }
+    }
+  });
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  await initTheme();
+  bindEvents();
+  try {
+    [state.tab] = await browser.tabs.query({ active: true, currentWindow: true });
+  } catch (error) {
+    debugError('[Popup]', 'Could not read active tab:', error);
+  }
+  await loadProducts();
+  inspectCurrentPage();
+});

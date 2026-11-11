@@ -81,21 +81,48 @@ export function getAdapter(document, url) {
     return new ThomannAdapter(document, url);
   }
 
-  // Check for platform-based sites (WooCommerce, OpenCart, etc.)
-  // These need to be detected by page structure, not domain
-  const wooAdapter = new WooCommerceAdapter(document, url);
-  if (wooAdapter.detectProduct()) {
-    debug('[adapter-factory]', '[Adapter Factory] Detected WooCommerce site');
-    return wooAdapter;
+  // Platform adapters (WooCommerce, OpenCart) are only used when the page
+  // carries a real platform fingerprint. Their own detectProduct() checks are
+  // intentionally lenient ("has an h1 and a .price") and used to hijack
+  // unrelated stores, overriding correct structured data.
+  if (isWooCommerce(document)) {
+    const wooAdapter = new WooCommerceAdapter(document, url);
+    if (wooAdapter.detectProduct()) {
+      debug('[adapter-factory]', '[Adapter Factory] Detected WooCommerce site');
+      wooAdapter.isPlatformAdapter = true;
+      return wooAdapter;
+    }
   }
 
-  const openCartAdapter = new OpenCartAdapter(document, url);
-  if (openCartAdapter.detectProduct()) {
-    debug('[adapter-factory]', '[Adapter Factory] Detected OpenCart site');
-    return openCartAdapter;
+  if (isOpenCart(document)) {
+    const openCartAdapter = new OpenCartAdapter(document, url);
+    if (openCartAdapter.detectProduct()) {
+      debug('[adapter-factory]', '[Adapter Factory] Detected OpenCart site');
+      openCartAdapter.isPlatformAdapter = true;
+      return openCartAdapter;
+    }
   }
 
   // Return null if no adapter found
   // Will fall back to generic detection in product-detector.js
   return null;
+}
+
+function isWooCommerce(doc) {
+  const body = doc.body;
+  return !!(
+    body?.classList.contains('woocommerce') ||
+    body?.classList.contains('woocommerce-page') ||
+    doc.querySelector('.woocommerce-Price-amount, form.cart[action*="add-to-cart"], [class*="woocommerce-product"]') ||
+    doc.querySelector('link[href*="/plugins/woocommerce/"], script[src*="/plugins/woocommerce/"]')
+  );
+}
+
+function isOpenCart(doc) {
+  if (doc.querySelector('link[href*="catalog/view/"], script[src*="catalog/view/"], a[href*="route=product/"], a[href*="route=checkout/"], #product input[name="product_id"]')) {
+    return true;
+  }
+  const html = doc.documentElement.innerHTML;
+  // hawaii.ee and similar themes expose these JS variables
+  return html.includes('is_ajax_data') || html.includes('"page":"product"') || html.includes('index.php?route=');
 }

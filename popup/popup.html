@@ -3,85 +3,77 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Price Genius by GoGoNano</title>
+  <title>Price Genius</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <div class="container">
-    <!-- Header -->
+  <div class="app">
     <header class="header">
-      <div class="title-container">
-        <img src="../assets/icons/apple-touch-icon-60x60.png" alt="GoGoNano Logo" class="logo" width="24" height="24">
-        <div class="title-wrapper">
-          <h1 class="title">Price Genius</h1>
-          <span class="subtitle">by GoGoNano</span>
+      <div class="brand">
+        <img src="../assets/icons/apple-touch-icon-60x60.png" alt="" class="logo" width="26" height="26">
+        <div>
+          <h1>Price Genius</h1>
+          <p class="tagline" id="tagline">Price tracking for any store</p>
         </div>
       </div>
       <div class="header-actions">
-        <button id="trackThisPageBtn" class="icon-btn primary" title="Track product on this page" aria-label="Track product on current page">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-          </svg>
+        <button id="refreshBtn" class="icon-btn" title="Check all prices now" aria-label="Check all prices now">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16.5 10a6.5 6.5 0 1 1-1.9-4.6M16.5 3.5v3.8h-3.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
-        <button id="refreshBtn" class="icon-btn" title="Refresh prices" aria-label="Refresh all product prices">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <path d="M13.65 2.35C12.2 0.9 10.21 0 8 0C3.58 0 0.01 3.58 0.01 8C0.01 12.42 3.58 16 8 16C11.73 16 14.84 13.45 15.73 10H13.65C12.83 12.33 10.61 14 8 14C4.69 14 2 11.31 2 8C2 4.69 4.69 2 8 2C9.66 2 11.14 2.69 12.22 3.78L9 7H16V0L13.65 2.35Z" fill="currentColor"/>
-          </svg>
-        </button>
-        <button id="themeToggleBtn" class="icon-btn" title="Toggle dark mode" aria-label="Toggle dark mode">
-          <svg class="theme-icon-light" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <path d="M8 11C9.65685 11 11 9.65685 11 8C11 6.34315 9.65685 5 8 5C6.34315 5 5 6.34315 5 8C5 9.65685 6.34315 11 8 11Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M8 1V2M8 14V15M15 8H14M2 8H1M12.95 12.95L12.243 12.243M3.75736 3.75736L3.05029 3.05029M12.95 3.05L12.243 3.757M3.75736 12.2426L3.05029 12.9497" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          <svg class="theme-icon-dark" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="display: none;" aria-hidden="true">
-            <path d="M14 9C13.0507 9.90564 11.7949 10.4222 10.4866 10.447C9.17831 10.4717 7.90563 9.99999 6.92318 9.11715C5.94073 8.2343 5.32192 7.00423 5.18888 5.67579C5.05585 4.34736 5.41757 3.01544 6.20001 1.93C4.98335 2.19115 3.87506 2.81842 3.01608 3.72965C2.15711 4.64088 1.58796 5.79303 1.38402 7.03345C1.18007 8.27386 1.35068 9.54698 1.87378 10.6944C2.39688 11.8417 3.25004 12.8119 4.32609 13.4875C5.40215 14.163 6.6552 14.5143 7.93041 14.4989C9.20562 14.4835 10.4498 14.1021 11.5092 13.3996C12.5685 12.6972 13.3975 11.704 13.8968 10.5406C14.3962 9.37726 14.5448 8.09407 14.325 6.84848C14.0824 6.88488 13.8374 6.90308 13.592 6.90308C14.4041 7.59455 14.9926 8.49575 15.2881 9.50111" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
+        <button id="themeToggleBtn" class="icon-btn" title="Theme" aria-label="Switch theme">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3a7 7 0 1 0 0 14V3Z" fill="currentColor"/><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
         </button>
         <button id="settingsBtn" class="icon-btn" title="Settings" aria-label="Open settings">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <path d="M13.5 8C13.5 8.17 13.49 8.34 13.47 8.51L15.1 9.77C15.24 9.88 15.28 10.07 15.2 10.23L13.64 13.03C13.56 13.19 13.38 13.25 13.21 13.19L11.27 12.38C10.89 12.68 10.47 12.93 10.01 13.12L9.73 15.16C9.71 15.34 9.55 15.48 9.36 15.48H6.24C6.05 15.48 5.89 15.34 5.87 15.16L5.59 13.12C5.13 12.93 4.71 12.68 4.33 12.38L2.39 13.19C2.22 13.25 2.04 13.19 1.96 13.03L0.4 10.23C0.32 10.07 0.36 9.88 0.5 9.77L2.13 8.51C2.11 8.34 2.1 8.17 2.1 8C2.1 7.83 2.11 7.66 2.13 7.49L0.5 6.23C0.36 6.12 0.32 5.93 0.4 5.77L1.96 2.97C2.04 2.81 2.22 2.75 2.39 2.81L4.33 3.62C4.71 3.32 5.13 3.07 5.59 2.88L5.87 0.84C5.89 0.66 6.05 0.52 6.24 0.52H9.36C9.55 0.52 9.71 0.66 9.73 0.84L10.01 2.88C10.47 3.07 10.89 3.32 11.27 3.62L13.21 2.81C13.38 2.75 13.56 2.81 13.64 2.97L15.2 5.77C15.28 5.93 15.24 6.12 15.1 6.23L13.47 7.49C13.49 7.66 13.5 7.83 13.5 8ZM5 8C5 9.66 6.34 11 8 11C9.66 11 11 9.66 11 8C11 6.34 9.66 5 8 5C6.34 5 5 6.34 5 8Z" fill="currentColor"/>
-          </svg>
+          <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="2.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10 2.5v2M10 15.5v2M17.5 10h-2M4.5 10h-2M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4M15.3 15.3l-1.4-1.4M6.1 6.1 4.7 4.7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
         </button>
       </div>
     </header>
 
-    <!-- Stats Bar -->
-    <div class="stats-bar">
-      <div class="stat">
-        <span class="stat-value" id="totalProducts">0</span>
-        <span class="stat-label">Tracking</span>
+    <!-- What's on the current tab -->
+    <section id="pageCard" class="page-card" aria-live="polite">
+      <div class="page-loading"><span class="spinner"></span>Looking for a product on this page…</div>
+    </section>
+
+    <!-- Tracked products -->
+    <section class="list-section">
+      <div class="toolbar" id="toolbar" hidden>
+        <div class="search">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="5.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m13.2 13.2 3.3 3.3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          <input id="searchInput" type="search" placeholder="Search tracked products" aria-label="Search tracked products" autocomplete="off">
+        </div>
+        <select id="sortSelect" aria-label="Sort products">
+          <option value="recent">Recent</option>
+          <option value="drop">Biggest drop</option>
+          <option value="price-asc">Price ↑</option>
+          <option value="price-desc">Price ↓</option>
+          <option value="name">Name</option>
+        </select>
       </div>
-      <div class="stat">
-        <span class="stat-value" id="priceDrops">0</span>
-        <span class="stat-label">Drops</span>
+
+      <div class="chips" id="filterChips" role="tablist" hidden>
+        <button class="chip active" data-filter="all" role="tab" aria-selected="true">All <span id="countAll">0</span></button>
+        <button class="chip" data-filter="drops" role="tab" aria-selected="false">Price drops <span id="countDrops">0</span></button>
+        <button class="chip" data-filter="attention" role="tab" aria-selected="false">Needs attention <span id="countAttention">0</span></button>
       </div>
-    </div>
 
-    <!-- Filter Tabs -->
-    <div class="tabs">
-      <button class="tab active" data-filter="all">All</button>
-      <button class="tab" data-filter="drops">Price Drops</button>
-      <button class="tab" data-filter="expiring">Expiring Soon</button>
-    </div>
+      <div id="productsList" class="products-list" role="list"></div>
 
-    <!-- Products List -->
-    <div id="productsList" class="products-list">
-      <!-- Products will be inserted here -->
-    </div>
+      <div id="emptyState" class="empty-state" hidden>
+        <div class="empty-art" aria-hidden="true">
+          <svg viewBox="0 0 64 64"><rect x="10" y="18" width="44" height="34" rx="8" fill="currentColor" opacity=".12"/><path d="M20 40l8-8 6 6 10-12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <h2>No products tracked yet</h2>
+        <p>Open a product in any online store, then press <strong>Track price</strong> above. We'll check it in the background and tell you when it drops.</p>
+      </div>
+    </section>
 
-    <!-- Empty State -->
-    <div id="emptyState" class="empty-state" style="display: none;">
-      <div class="empty-icon">📦</div>
-      <h2>No products tracked yet</h2>
-      <p>Visit any product page on Amazon, eBay, Walmart, Target, or Best Buy to start tracking prices automatically.</p>
-    </div>
-
-    <!-- Loading State -->
-    <div id="loadingState" class="loading-state">
-      <div class="spinner"></div>
-      <p>Loading products...</p>
-    </div>
+    <footer class="footer">
+      <button id="historyBtn" class="link-btn">Price history &amp; charts</button>
+      <span id="lastCheck" class="muted"></span>
+    </footer>
   </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
   <script type="module" src="popup.js"></script>
 </body>

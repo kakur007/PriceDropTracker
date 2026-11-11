@@ -72,7 +72,7 @@ Automatically track product prices across major e-commerce sites and get notifie
 3. Approve permissions
 4. Start browsing!
 
-**Note:** Firefox requires version 109+ for full Manifest V3 support.
+**Note:** Requires Firefox 128+ or Chrome/Edge 116+.
 
 ### Manual Installation (For Development)
 
@@ -94,18 +94,22 @@ Automatically track product prices across major e-commerce sites and get notifie
    git clone https://github.com/kakur007/PriceDropTracker.git
    cd PriceDropTracker
    ```
-2. Open Firefox and navigate to `about:debugging#/runtime/this-firefox`
-3. Click "Load Temporary Add-on..."
-4. Navigate to the repository and select `manifest-firefox.json`
+2. Build the Firefox version (needs [Node.js](https://nodejs.org) 18+, works on Windows/macOS/Linux):
+   ```bash
+   npm run build:firefox
+   ```
+3. Open Firefox and navigate to `about:debugging#/runtime/this-firefox`
+4. Click "Load Temporary Add-on..." and select `dist/firefox/manifest.json`
 5. The extension will load (temporary until Firefox restart)
-6. For persistent installation, build and install the signed XPI
 
 **For detailed Firefox setup:** See [FIREFOX_GUIDE.md](docs/FIREFOX_GUIDE.md)
 
 ## 🚀 How It Works
 
-1. **Browse Normally** - Visit any product page on supported e-commerce sites
-2. **Automatic Tracking** - The extension detects the product and starts tracking its price
+1. **Browse Normally** - Visit a product page in any online store
+2. **Track it** - On popular stores the product is tracked automatically. On any other store, click the
+   toolbar icon and press **Track price**. If the price can't be found automatically, press
+   **Pick price on page** and click the price yourself - it works on practically any site
    - A confirmation badge appears in the bottom-right corner
    - Product is saved with title, price, image, and URL
 3. **Background Monitoring** - Prices are checked automatically every 3-24 hours (your choice)
@@ -113,7 +117,7 @@ Automatically track product prices across major e-commerce sites and get notifie
    - Shows old price, new price, and percentage saved
    - Only triggers for drops above your minimum threshold
 5. **View Dashboard** - Click the extension icon to see all tracked products
-   - Filter by "All", "Price Drops", or "Expiring Soon"
+   - Search, sort, and filter by "All", "Price drops", or "Needs attention"
    - See current vs. original prices
    - View which products have dropped in price
 6. **Take Action** - Click any product to visit the page, or remove products you're no longer interested in
@@ -134,12 +138,17 @@ Just click "Get Started" and browse to any product page!
 
 ### Tracking Products
 
-1. **Visit a product page** on any supported site
-2. **Wait 1-2 seconds** for the page to load completely
-3. **Look for the tracking badge** in the bottom-right corner confirming the product was added
-4. **Repeat** for any products you're interested in (up to 100 by default)
+**On popular stores** (Amazon, eBay, Walmart, Zalando, Shopify stores, …) products are tracked
+automatically when you open them. A small confirmation appears in the bottom-right corner.
+You can turn this off in Settings → "Automatically track products I view".
 
-**Note**: Only product detail pages are tracked. Search results, category pages, and cart pages are ignored.
+**On any other store:**
+1. Open the product page and click the Price Genius toolbar icon
+2. The popup shows the product it found - press **Track price**
+3. Press **Allow** when asked, so prices can also be checked in the background
+4. If no price was found (or the wrong one), press **Pick price on page** and click the price
+
+**Note**: In auto mode only product detail pages are tracked. Search results, category pages, and cart pages are ignored.
 
 ### Viewing Your Tracked Products
 
@@ -147,16 +156,17 @@ Just click "Get Started" and browse to any product page!
 2. **View your dashboard** showing all tracked products
 3. **Use filters** to find what you need:
    - **All** - Shows all tracked products
-   - **Price Drops** - Shows only products that have dropped in price
-   - **Expiring Soon** - Shows products tracked for more than 25 days
-4. **Check the stats bar** to see total products tracked and number of price drops
+   - **Price drops** - Products that are cheaper than when you started tracking
+   - **Needs attention** - Products whose price couldn't be read recently, or that need site access
+4. **Search and sort** by recent, biggest drop, price, or name
 
 ### Managing Products
 
 From the popup dashboard:
-- **Visit Page** - Click the product card or "Visit Page" button to open the product
-- **Remove** - Click the "Remove" button to stop tracking a product
-- **Refresh** - Click the refresh icon to manually check all prices now
+- **Open** - Click the product title (or the open icon) to visit the store page
+- **Check now** - Hover a product and click the refresh icon to check just that product
+- **Remove** - Hover a product and click the trash icon (you can undo right after)
+- **Check all** - Click the refresh icon in the header to check all prices now
 - **Settings** - Click the gear icon to open settings
 
 ### Configuring Settings
@@ -292,10 +302,9 @@ We take your privacy seriously. This extension is designed to be **100% privacy-
 ## Development Setup
 
 ### Prerequisites
-- **Chrome** 88+ or **Firefox** 109+ (for testing)
-- **Node.js** 14+ (optional, for build scripts)
-- **Git** (for version control)
-- **Bash** (for build scripts)
+- **Chrome** 116+ or **Firefox** 128+ (for testing)
+- **Node.js** 18+ (for the build and test scripts - no npm packages needed to build)
+- **Git** (for version control - GitHub Desktop works fine)
 
 ### Installation Steps
 
@@ -313,10 +322,9 @@ We take your privacy seriously. This extension is designed to be **100% privacy-
    - Uses `manifest.json` automatically
 
 3. **For Firefox Development:**
+   - Run `npm run build:firefox`
    - Open `about:debugging#/runtime/this-firefox`
-   - Click "Load Temporary Add-on..."
-   - Select `manifest-firefox.json` from project directory
-   - Extension loads temporarily
+   - Click "Load Temporary Add-on..." and select `dist/firefox/manifest.json`
 
 4. Test the extension:
    - Visit any product page on Amazon, eBay, Walmart, Target, or Best Buy
@@ -343,9 +351,24 @@ npm run build
 - `dist/firefox/` - Firefox version (ready to upload)
 - `dist/*.zip` - Packaged extensions
 
+`manifest.json` is the single source of truth; the build generates the Chrome and Firefox
+manifests from it. The build is a plain Node script (`scripts/build.mjs`) with no dependencies,
+so it runs the same on Windows, macOS and Linux.
+
 **Note:** No transpilation, minification, or obfuscation. All code is vanilla JavaScript ES6+.
 
-### Testing Instructions
+### Automated Tests
+
+```bash
+npm test                     # currency parser + detection fixtures
+node tests/e2e-extension.mjs # loads dist/chrome in Chromium (run npm run build:chrome first)
+```
+
+The browser tests need Playwright (`npm i -D playwright && npx playwright install chromium`).
+Detection fixtures live in `tests/fixtures/` - when a store doesn't work, save its HTML there
+and add a case to `tests/run-fixture-tests.mjs`.
+
+### Manual Testing
 
 1. **Test Product Detection**:
    - Visit a product page on a supported site
@@ -382,7 +405,7 @@ npm run build
 - ✅ Microsoft Edge 88+ (Chromium)
 - ✅ Brave Browser (Chromium)
 - ✅ Opera (Chromium-based)
-- ✅ Firefox 109+ (Manifest V3)
+- ✅ Firefox 128+ (Manifest V3)
 - ✅ Firefox Developer Edition
 - ❌ Safari (different extension API - not yet supported)
 

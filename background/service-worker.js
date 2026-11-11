@@ -9,7 +9,8 @@
  * - Settings management
  */
 
-import browser, { executeScript } from '../utils/browser-polyfill.js';
+import browser from '../utils/browser-polyfill.js';
+import { isUrlSupportedOrPermitted } from '../utils/domain-validator.js';
 import { StorageManager } from './storage-manager.js';
 import { checkAllProducts, checkSingleProduct, PriceCheckResult } from './price-checker.js';
 import { showBatchPriceDropNotifications, showInfoNotification } from '../utils/notification-manager.js';
@@ -32,10 +33,26 @@ const MESSAGE_TYPES = {
   GET_SETTINGS: 'GET_SETTINGS',
   CHECK_NOW: 'CHECK_NOW',
   FORCE_CHECK_ALL: 'FORCE_CHECK_ALL',
-  REFRESH_SINGLE_PRODUCT: 'REFRESH_SINGLE_PRODUCT'
+  REFRESH_SINGLE_PRODUCT: 'REFRESH_SINGLE_PRODUCT',
+  FIND_PRODUCT_BY_URL: 'FIND_PRODUCT_BY_URL',
+  RESTORE_PRODUCT: 'RESTORE_PRODUCT',
+  SYNC_SITE_ACCESS: 'SYNC_SITE_ACCESS'
 };
 
 debug('[ServiceWorker]', 'Price Drop Tracker: Service worker initializing...');
+
+function isCheckingEnabled(settings) {
+  return settings?.checking?.enabled !== false;
+}
+
+function getCheckIntervalMinutes(settings) {
+  const hours = Number(settings?.checking?.interval) || 6;
+  return Math.max(30, Math.round(hours * 60));
+}
+
+function isAutoTrackEnabled(settings) {
+  return settings?.tracking?.autoTrack !== false;
+}
 
 /**
  * Extension installation handler
@@ -65,6 +82,8 @@ browser.runtime.onInstalled.addListener(async (details) => {
       await setupAlarms();
     }
 
+    await syncDynamicContentScripts();
+
     // Update badge to show tracked product count
     await updateBadge();
 
@@ -83,6 +102,7 @@ browser.runtime.onStartup.addListener(async () => {
   try {
     // Verify alarms are set up
     await setupAlarms();
+    await syncDynamicContentScripts();
 
     // Update badge
     await updateBadge();
@@ -107,14 +127,17 @@ async function setupAlarms() {
     // Clear existing alarms
     await browser.alarms.clearAll();
 
-    // Set up price check alarm
-    if (settings.tracking.enabled) {
-      const checkIntervalMinutes = settings.tracking.checkInterval / 60; // Convert seconds to minutes
+    // Set up price check alarm.
+    // Settings store the interval in HOURS under `checking.interval`.
+    // (Older code read non-existent `tracking.enabled/checkInterval`, so the
+    // periodic alarm was never created.)
+    if (isCheckingEnabled(settings)) {
+      const checkIntervalMinutes = getCheckIntervalMinutes(settings);
 
       debug('[ServiceWorker]', `Creating price check alarm: every ${checkIntervalMinutes} minutes`);
 
       browser.alarms.create(ALARMS.PRICE_CHECK, {
-        delayInMinutes: 1, // First check in 1 minute
+        delayInMinutes: 1,
         periodInMinutes: checkIntervalMinutes
       });
     } else {
@@ -182,13 +205,13 @@ async function handlePriceCheckAlarm() {
   try {
     const settings = await StorageManager.getSettings();
 
-    if (!settings.tracking.enabled) {
+    if (!isCheckingEnabled(settings)) {
       debug('[ServiceWorker]', '[ServiceWorker] Price checking is disabled, skipping');
       return;
     }
 
-    // Check products older than the check interval
-    const maxAge = settings.tracking.checkInterval * 1000; // Convert seconds to ms
+    // Check products older than ~90% of the interval (alarms drift a little)
+    const maxAge = getCheckIntervalMinutes(settings) * 60 * 1000 * 0.9;
 
     const results = await checkAllProducts({
       batchSize: 10,
@@ -220,9 +243,7 @@ async function handleCleanupAlarm() {
 
   try {
     const settings = await StorageManager.getSettings();
-    const maxAgeDays = settings.tracking.maxAge;
-
-    await StorageManager.cleanupOldProducts(maxAgeDays);
+    await StorageManager.cleanupOldProducts();
 
     debug('[ServiceWorker]', '[ServiceWorker] Cleanup complete');
 
@@ -317,7 +338,28 @@ async function handleMessage(message, sender) {
 
   switch (type) {
     case MESSAGE_TYPES.PRODUCT_DETECTED:
-      return await handleProductDetected(data, sender);
+      return await handleProductDetected(data, sender, message.source || 'manual');
+
+    case MESSAGE_TYPES.FIND_PRODUCT_BY_URL:
+      return await findTrackedProductByUrl(data.url);
+
+    case MESSAGE_TYPES.RESTORE_PRODUCT: {
+      // Undo for delete: write the product back exactly as it was
+      const { product, image } = data;
+      if (!product?.productId) throw new Error('Invalid product');
+      const stored = await browser.storage.local.get('products');
+      const products = stored.products || {};
+      products[product.productId] = product;
+      const toSet = { products };
+      if (image) toSet[`img_${product.productId}`] = image;
+      await browser.storage.local.set(toSet);
+      await updateBadge();
+      return { restored: true };
+    }
+
+    case MESSAGE_TYPES.SYNC_SITE_ACCESS:
+      await syncDynamicContentScripts();
+      return { synced: true };
 
     case MESSAGE_TYPES.CHECK_PRODUCT:
       return await checkSingleProduct(data.productId);
@@ -391,52 +433,183 @@ async function handleMessage(message, sender) {
 }
 
 /**
- * Handle product detected from content script
- * @param {Object} productData - Detected product data
- * @param {Object} sender - Sender information
- * @returns {Promise<Object>} - Saved product or status
+ * Normalise a product URL for "same product?" comparisons.
+ * Keeps variant-like query params, drops tracking noise.
  */
-async function handleProductDetected(productData, sender) {
-  debug('[ServiceWorker]', '[ServiceWorker] Product detected:', productData.title, 'ID:', productData.productId);
-  debug('[ServiceWorker]', '[ServiceWorker] Product URL:', productData.url);
-
+function normalizeProductUrl(url) {
   try {
-    // Check if product already exists
-    const existingProduct = await StorageManager.getProduct(productData.productId);
+    const u = new URL(url);
+    const keep = ['variant', 'sku', 'id', 'pid', 'product_id', 'productid', 'item', 'color', 'colour', 'size', 'v'];
+    const params = new URLSearchParams();
+    for (const [k, v] of u.searchParams) {
+      if (keep.includes(k.toLowerCase())) params.append(k.toLowerCase(), v);
+    }
+    const query = params.toString();
+    return `${u.hostname.replace(/^www\./, '')}${u.pathname.replace(/\/$/, '')}${query ? '?' + query : ''}`.toLowerCase();
+  } catch (_) {
+    return url;
+  }
+}
 
-    if (existingProduct) {
-      debug('[ServiceWorker]', '[ServiceWorker] ℹ️ Product already tracked:', productData.productId);
-      return {
-        alreadyTracked: true,
-        product: existingProduct
-      };
+async function findTrackedProductByUrl(url) {
+  if (!url) return null;
+  const target = normalizeProductUrl(url);
+  const all = await StorageManager.getAllProducts();
+  return Object.values(all || {}).find(p => p?.url && normalizeProductUrl(p.url) === target) || null;
+}
+
+/**
+ * Handle product detected on a page.
+ *  - already tracked  -> refresh its price from the live page
+ *  - new + manual     -> start tracking
+ *  - new + auto       -> start tracking if auto-track is on
+ * @returns {Promise<{added:boolean, alreadyTracked:boolean, product:Object, priceChanged?:boolean}>}
+ */
+async function handleProductDetected(productData, sender, source = 'manual') {
+  debug('[ServiceWorker]', `Product detected (${source}):`, productData.title, productData.url);
+
+  const existing =
+    (await StorageManager.getProduct(productData.productId)) ||
+    (await findTrackedProductByUrl(productData.url));
+
+  if (existing) {
+    let priceChanged = false;
+    const newPrice = productData.price?.numeric;
+    const sameCurrency = !existing.price?.currency || existing.price.currency === productData.price?.currency;
+
+    // Manual re-tracking (e.g. user picked a different price element) wins
+    if (source === 'manual' && productData.priceSelector) {
+      existing.priceSelector = productData.priceSelector;
+      existing.detectionMethod = productData.detectionMethod;
+      await StorageManager.saveProduct(existing);
     }
 
-    // Save new product
-    // NOTE: Permissions are now checked in popup.js BEFORE calling this function
-    debug('[ServiceWorker]', '[ServiceWorker] Saving new product:', productData.productId);
-    await StorageManager.saveProduct(productData);
+    if (newPrice > 0 && sameCurrency && Math.abs(newPrice - existing.price.numeric) >= 0.01) {
+      const oldPrice = existing.price.numeric;
+      await StorageManager.updateProductPrice(existing.productId, {
+        ...existing.price,
+        numeric: newPrice,
+        formatted: productData.price.formatted,
+        regularPrice: productData.price.regularPrice || existing.price.regularPrice,
+        detectionMethod: `live:${productData.detectionMethod}`
+      });
+      priceChanged = true;
+      await updateBadge();
 
-    debug('[ServiceWorker]', '[ServiceWorker] ✓ New product saved successfully:', productData.productId);
-
-    // Update badge
-    await updateBadge();
-
-    // Show notification if enabled
-    await showInfoNotification(
-      'Product Added',
-      `Now tracking: ${productData.title}`,
-      { type: 'product_added', duration: 5000 }
-    );
+      if (newPrice < oldPrice) {
+        const settings = await StorageManager.getSettings();
+        if (settings.notifications?.enabled !== false) {
+          const refreshed = await StorageManager.getProduct(existing.productId);
+          await showBatchPriceDropNotifications([{
+            product: refreshed,
+            oldPrice,
+            newPrice,
+            dropPercentage: Math.abs(((newPrice - oldPrice) / oldPrice) * 100)
+          }]);
+        }
+      }
+    } else {
+      // Still reachable: clear stale flags
+      existing.tracking = { ...(existing.tracking || {}), failedChecks: 0, status: 'active', lastChecked: Date.now() };
+      await StorageManager.saveProduct(existing);
+    }
 
     return {
-      alreadyTracked: false,
-      product: productData
+      added: false,
+      alreadyTracked: true,
+      priceChanged,
+      product: await StorageManager.getProduct(existing.productId)
     };
+  }
 
+  if (source === 'auto') {
+    const settings = await StorageManager.getSettings();
+    if (!isAutoTrackEnabled(settings)) {
+      return { added: false, alreadyTracked: false, product: null };
+    }
+  }
+
+  const imageSourceUrl = productData.imageSourceUrl;
+  delete productData.imageSourceUrl;
+
+  await StorageManager.saveProduct(productData);
+  await updateBadge();
+
+  if (!productData.hasImage && imageSourceUrl) {
+    // Fire and forget: thumbnails are cosmetic
+    createThumbnailInBackground(productData.productId, imageSourceUrl).catch(() => {});
+  }
+
+  if (source === 'auto') {
+    await showInfoNotification('Now tracking', productData.title, { type: 'product_added', duration: 5000 });
+  }
+
+  return { added: true, alreadyTracked: false, product: productData };
+}
+
+/**
+ * Build a thumbnail in the background, where host permissions avoid the
+ * canvas CORS taint that content scripts hit on most CDNs.
+ */
+async function createThumbnailInBackground(productId, imageUrl) {
+  if (typeof OffscreenCanvas === 'undefined' || typeof createImageBitmap === 'undefined') return;
+  const response = await fetch(imageUrl, { credentials: 'omit' });
+  if (!response.ok) return;
+  const bitmap = await createImageBitmap(await response.blob());
+  const size = 80;
+  const canvas = new OffscreenCanvas(size, size);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, size, size);
+  const scale = Math.min(size / bitmap.width, size / bitmap.height);
+  const w = bitmap.width * scale;
+  const h = bitmap.height * scale;
+  ctx.drawImage(bitmap, (size - w) / 2, (size - h) / 2, w, h);
+  const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.75 });
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+  await browser.storage.local.set({ [`img_${productId}`]: dataUrl });
+  const product = await StorageManager.getProduct(productId);
+  if (product) {
+    product.hasImage = true;
+    await StorageManager.saveProduct(product);
+  }
+}
+
+/**
+ * Keep a dynamic content script registered for every store the user granted
+ * access to, so those stores behave like built-in ones (auto price refresh
+ * on visit, SPA support) instead of needing the popup button every time.
+ */
+const DYNAMIC_SCRIPT_ID = 'price-genius-granted-sites';
+
+async function syncDynamicContentScripts() {
+  if (!browser.scripting?.registerContentScripts || !browser.permissions?.getAll) return;
+  try {
+    const { origins = [] } = await browser.permissions.getAll();
+    const manifestOrigins = new Set(browser.runtime.getManifest().host_permissions || []);
+    const granted = origins.filter(o => !manifestOrigins.has(o) && o !== '<all_urls>' && /^(\*|https?):\/\//.test(o));
+
+    const existing = await browser.scripting.getRegisteredContentScripts({ ids: [DYNAMIC_SCRIPT_ID] }).catch(() => []);
+    if (existing.length) {
+      await browser.scripting.unregisterContentScripts({ ids: [DYNAMIC_SCRIPT_ID] });
+    }
+    if (granted.length === 0) return;
+
+    await browser.scripting.registerContentScripts([{
+      id: DYNAMIC_SCRIPT_ID,
+      matches: granted,
+      js: ['content-scripts/main.js'],
+      runAt: 'document_idle',
+      persistAcrossSessions: true
+    }]);
+    debug('[ServiceWorker]', 'Registered content script for granted sites:', granted);
   } catch (error) {
-    debugError('[ServiceWorker]', '[ServiceWorker] Error handling detected product:', error);
-    throw error;
+    debugWarn('[ServiceWorker]', 'Could not sync dynamic content scripts:', error);
   }
 }
 
@@ -469,220 +642,27 @@ async function updateBadge() {
 }
 
 /**
- * Listen for new permissions being granted
- * Automatically run product detection when user grants permission for a custom site
- *
- * CRITICAL FIX: Chrome closes popup during permission request. The popup saves a
- * pendingPermissionUrl before requesting. We read that here to know which tab to track.
+ * Site access changes: keep dynamic content scripts in sync and retry
+ * products that were waiting for permission.
  */
 browser.permissions.onAdded.addListener(async (permissions) => {
-  debug('[ServiceWorker]', '=================================================');
-  debug('[ServiceWorker]', '[ServiceWorker] 🔔 PERMISSIONS ADDED EVENT FIRED');
-  debug('[ServiceWorker]', '[ServiceWorker] New permissions granted:', permissions.origins);
-  debug('[ServiceWorker]', '=================================================');
-
+  await syncDynamicContentScripts();
   try {
-    // CRITICAL: Check if there's a pending permission URL from popup
-    const result = await browser.storage.local.get('pendingPermissionUrl');
-    const pendingUrl = result.pendingPermissionUrl;
-
-    debug('[ServiceWorker]', '[ServiceWorker] Pending permission URL from storage:', pendingUrl);
-
-    if (!pendingUrl) {
-      debug('[ServiceWorker]', '[ServiceWorker] ⚠️ No pending URL found, checking active tab as fallback');
-      // Fallback to active tab (less reliable but better than nothing)
-      const [activeTab] = await browser.tabs.query({ active: true, currentWindow: true });
-
-      if (!activeTab || !activeTab.url) {
-        debug('[ServiceWorker]', '[ServiceWorker] ❌ No active tab found either, aborting');
-        return;
+    const all = await StorageManager.getAllProducts();
+    const waiting = Object.values(all || {}).filter(p => p?.tracking?.status === 'no_permission');
+    for (const product of waiting) {
+      if (await isUrlSupportedOrPermitted(product.url)) {
+        await checkSingleProduct(product.productId);
       }
-
-      // Verify permission matches active tab
-      const permissionMatches = verifyPermissionMatches(permissions.origins, activeTab.url);
-      if (!permissionMatches) {
-        debug('[ServiceWorker]', '[ServiceWorker] ❌ Permission doesn\'t match active tab, aborting');
-        return;
-      }
-
-      // Proceed with active tab
-      await executeProductDetectionOnTab(activeTab.id, activeTab.url);
-      return;
     }
-
-    // BETTER PATH: We have a pending URL from popup - find the matching tab
-    debug('[ServiceWorker]', '[ServiceWorker] ✓ Found pending URL, searching for matching tab...');
-
-    // Clear the pending URL immediately to prevent duplicate processing
-    await browser.storage.local.remove('pendingPermissionUrl');
-
-    // Verify the permission actually matches the pending URL
-    const permissionMatches = verifyPermissionMatches(permissions.origins, pendingUrl);
-    if (!permissionMatches) {
-      debug('[ServiceWorker]', '[ServiceWorker] ❌ Permission doesn\'t match pending URL, aborting');
-      return;
-    }
-
-    // Find the tab with the pending URL
-    const tabs = await browser.tabs.query({});
-    const matchingTab = tabs.find(tab => tab.url === pendingUrl);
-
-    if (!matchingTab) {
-      debug('[ServiceWorker]', '[ServiceWorker] ❌ No tab found matching pending URL');
-      return;
-    }
-
-    debug('[ServiceWorker]', '[ServiceWorker] ✓ Found matching tab:', matchingTab.id, matchingTab.url);
-
-    // Wait for page to be ready (permissions grant might cause reload)
-    debug('[ServiceWorker]', '[ServiceWorker] Waiting for page to be ready...');
-    await waitForTabReady(matchingTab.id);
-
-    // Execute product detection
-    await executeProductDetectionOnTab(matchingTab.id, matchingTab.url);
-
+    await updateBadge();
   } catch (error) {
-    debugError('[ServiceWorker]', '[ServiceWorker] ❌ Error during auto-detection after permission grant:', error);
-    debugError('[ServiceWorker]', '[ServiceWorker] Error stack:', error.stack);
-    debug('[ServiceWorker]', '=================================================');
+    debugWarn('[ServiceWorker]', 'Error re-checking products after permission grant:', error);
   }
 });
 
-/**
- * Verify if granted permissions match a URL
- * @param {Array<string>} origins - Permission origins (e.g., "*://example.com/*")
- * @param {string} url - URL to check
- * @returns {boolean} - True if permission matches URL
- */
-function verifyPermissionMatches(origins, url) {
-  return origins.some(origin => {
-    // Convert origin pattern to regex (*://example.com/* -> .*://example\.com/.*)
-    const pattern = origin
-      .replace(/\*/g, '.*')
-      .replace(/\./g, '\\.');
-    const regex = new RegExp(pattern);
-    const matches = regex.test(url);
-    debug('[ServiceWorker]', `[ServiceWorker] Testing pattern "${origin}" against "${url}": ${matches}`);
-    return matches;
-  });
-}
-
-/**
- * Wait for tab to be ready (loaded) before injecting scripts
- * @param {number} tabId - Tab ID
- * @param {number} maxWait - Maximum wait time in ms (default: 5000)
- * @returns {Promise<void>}
- */
-async function waitForTabReady(tabId, maxWait = 5000) {
-  const startTime = Date.now();
-
-  while (Date.now() - startTime < maxWait) {
-    try {
-      const tab = await browser.tabs.get(tabId);
-
-      // Check if tab is loaded
-      if (tab.status === 'complete') {
-        debug('[ServiceWorker]', '[ServiceWorker] ✓ Tab is ready (status: complete)');
-        return;
-      }
-
-      debug('[ServiceWorker]', `[ServiceWorker] Tab status: ${tab.status}, waiting...`);
-      await new Promise(resolve => setTimeout(resolve, 200));
-    } catch (error) {
-      debugWarn('[ServiceWorker]', '[ServiceWorker] Error checking tab status:', error);
-      break;
-    }
-  }
-
-  debug('[ServiceWorker]', '[ServiceWorker] ⚠️ Max wait time reached or error, proceeding anyway');
-}
-
-/**
- * Execute product detection on a specific tab
- * @param {number} tabId - Tab ID
- * @param {string} tabUrl - Tab URL (for logging)
- * @returns {Promise<void>}
- */
-async function executeProductDetectionOnTab(tabId, tabUrl) {
-  debug('[ServiceWorker]', '[ServiceWorker] ✓ Starting product detection on tab:', tabId);
-  debug('[ServiceWorker]', '[ServiceWorker] Tab URL:', tabUrl);
-
-  try {
-    // Inject and run product detection
-    const results = await executeScript({
-      target: { tabId: tabId },
-      func: async () => {
-        // Define API wrapper for Chrome/Firefox compatibility
-        // FIREFOX FIX: Use globals directly, not window.chrome/window.browser
-        // In Firefox MV3 content script context, browser APIs are globals, not on window
-        const api = typeof chrome !== 'undefined' ? chrome : (typeof browser !== 'undefined' ? browser : null);
-
-        if (!api) {
-          console.error('[Price Drop Tracker] ❌ Browser API not available');
-          return { success: false, error: 'Browser API not available in injected context' };
-        }
-
-        try {
-          console.log('[Price Drop Tracker] 🚀 Starting product detection...');
-
-          // Set manual mode to prevent auto-IIFE execution
-          window.__PRICE_TRACKER_MANUAL_MODE__ = true;
-
-          // Import detector using inline getURL() for Firefox static analyzer
-          const { detectProduct } = await import(api.runtime.getURL('content-scripts/product-detector.js'));
-
-          console.log('[Price Drop Tracker] Detector loaded, running detection...');
-          const productData = await detectProduct();
-
-          if (productData) {
-            console.log('[Price Drop Tracker] ✅ Product detected:', productData.title);
-
-            // Send to background for storage
-            const response = await new Promise((resolve, reject) => {
-              api.runtime.sendMessage({
-                type: 'PRODUCT_DETECTED',
-                data: productData
-              }, response => {
-                if (api.runtime.lastError) {
-                  reject(api.runtime.lastError);
-                } else {
-                  resolve(response);
-                }
-              });
-            });
-
-            if (response && response.success && !response.data.alreadyTracked) {
-              console.log('[Price Drop Tracker] ✓ Product tracked successfully!');
-              return { success: true, product: productData };
-            } else if (response && response.success && response.data.alreadyTracked) {
-              console.log('[Price Drop Tracker] ℹ️ Product already tracked');
-              return { success: true, alreadyTracked: true };
-            }
-
-            return { success: false, error: response?.error || 'Unknown error' };
-          } else {
-            console.log('[Price Drop Tracker] ⚠️ No product detected');
-            return { success: false, error: 'No product found' };
-          }
-        } catch (error) {
-          console.error('[Price Drop Tracker] ❌ Detection error:', error);
-          return { success: false, error: error.message };
-        }
-      }
-    });
-
-    const result = results?.[0]?.result;
-    if (result && result.success) {
-      debug('[ServiceWorker]', '[ServiceWorker] ✅ Product auto-tracked successfully!');
-    } else {
-      debug('[ServiceWorker]', '[ServiceWorker] ⚠️ Detection completed but no product added:', result);
-    }
-
-  } catch (error) {
-    debugError('[ServiceWorker]', '[ServiceWorker] ❌ Error executing product detection:', error);
-  }
-
-  debug('[ServiceWorker]', '=================================================');
-}
+browser.permissions.onRemoved?.addListener(() => {
+  syncDynamicContentScripts();
+});
 
 debug('[ServiceWorker]', '[ServiceWorker] Service worker ready');

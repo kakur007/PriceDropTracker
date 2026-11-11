@@ -34,6 +34,7 @@ async function loadSettings() {
     currentSettings = await getSettings();
 
     // Populate form fields
+    document.getElementById('autoTrack').checked = currentSettings.tracking.autoTrack !== false;
     document.getElementById('trackingDuration').value = currentSettings.tracking.duration;
     document.getElementById('maxProducts').value = currentSettings.tracking.maxProducts;
     document.getElementById('checkInterval').value = currentSettings.checking.interval;
@@ -78,7 +79,7 @@ async function loadStorageStats() {
  */
 function setupEventListeners() {
   // Track changes to all settings inputs with debouncing
-  const inputs = ['trackingDuration', 'maxProducts', 'checkInterval', 'notificationsEnabled', 'minDropPercentage', 'maxNotificationsPerDay', 'debugMode'];
+  const inputs = ['autoTrack', 'trackingDuration', 'maxProducts', 'checkInterval', 'notificationsEnabled', 'minDropPercentage', 'maxNotificationsPerDay', 'debugMode'];
 
   // Debounce settings saves to prevent excessive writes (300ms delay)
   const debouncedSettingSave = debounce(handleSettingChange, 300);
@@ -202,7 +203,7 @@ function setupEventListeners() {
   // Give feedback link
   document.getElementById('giveFeedbackLink').addEventListener('click', (e) => {
     e.preventDefault();
-    browser.tabs.create({ url: 'https://github.com/yourusername/price-drop-tracker/issues' });
+    browser.tabs.create({ url: 'https://github.com/kakur007/PriceDropTracker/issues' });
   });
 }
 
@@ -217,6 +218,7 @@ async function handleSettingChange(e) {
 
     // Map UI field to settings object path
     const settingMap = {
+      'autoTrack': ['tracking', 'autoTrack'],
       'trackingDuration': ['tracking', 'duration'],
       'maxProducts': ['tracking', 'maxProducts'],
       'checkInterval': ['checking', 'interval'],
