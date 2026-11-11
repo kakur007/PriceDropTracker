@@ -4,26 +4,140 @@ import { getSettings, updateSettings, getStorageStats, exportData, importData, c
 import { debounce } from '../utils/debounce.js';
 import { showSuccess, showError, showWarning } from '../utils/toast.js';
 import { debug, debugError } from '../utils/debug.js';
+import { initTheme, getThemePreference, setThemePreference } from '../utils/theme.js';
+import { getGrantedPermissions, removePermissionForUrl } from '../utils/permission-manager.js';
+import { productsToCsv, csvFormatForLocale } from '../utils/csv-export.js';
 
 let currentSettings = null;
 
 // Initialize settings page
 document.addEventListener('DOMContentLoaded', async () => {
   // Apply dark mode based on user preference
-  await applyTheme();
+  await initTheme();
 
   await loadSettings();
   await loadStorageStats();
+  await loadSiteAccess();
   setupEventListeners();
+  setupExtras();
 });
 
+async function setupExtras() {
+  document.getElementById('versionText').textContent = `v${browser.runtime.getManifest().version}`;
+
+  const themeSelect = document.getElementById('themeSelect');
+  themeSelect.value = await getThemePreference();
+  themeSelect.addEventListener('change', async () => {
+    await setThemePreference(themeSelect.value);
+    showSaveIndicator('Theme updated');
+  });
+
+  try {
+    const { products = {} } = await browser.storage.local.get('products');
+    const last = Math.max(0, ...Object.values(products).map(p => p?.tracking?.lastChecked || 0));
+    if (last) {
+      document.getElementById('lastCheckText').textContent =
+        `Runs a check for all tracked products. Last check: ${new Date(last).toLocaleString()}.`;
+    }
+  } catch (_) { /* cosmetic */ }
+
+  // CSV export
+  document.getElementById('exportCsvBtn').addEventListener('click', async () => {
+    try {
+      const { products = {} } = await browser.storage.local.get('products');
+      if (Object.keys(products).length === 0) {
+        showWarning('No tracked products to export yet');
+        return;
+      }
+      const csv = productsToCsv(products, csvFormatForLocale(navigator.language));
+      const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `price-genius-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showSaveIndicator('CSV downloaded');
+    } catch (error) {
+      debugError('[Settings]', 'CSV export failed:', error);
+      showError('Could not export CSV');
+    }
+  });
+
+  // Keyboard shortcuts
+  await loadShortcuts();
+  document.getElementById('shortcutsBtn').addEventListener('click', async () => {
+    if (browser.commands?.openShortcutSettings) {
+      await browser.commands.openShortcutSettings(); // Firefox 137+
+    } else if (navigator.userAgent.includes('Firefox')) {
+      showWarning('Open about:addons → gear icon → Manage Extension Shortcuts');
+    } else {
+      browser.tabs.create({ url: 'chrome://extensions/shortcuts' });
+    }
+  });
+
+  browser.permissions?.onAdded?.addListener(loadSiteAccess);
+  browser.permissions?.onRemoved?.addListener(loadSiteAccess);
+}
+
+async function loadShortcuts() {
+  const list = document.getElementById('shortcutList');
+  list.textContent = '';
+  const labels = {
+    _execute_action: 'Open Price Genius',
+    'track-page': 'Track this page (or pick its price)'
+  };
+  let commands = [];
+  try { commands = await browser.commands.getAll(); } catch (_) { /* unsupported */ }
+  for (const cmd of commands) {
+    if (!labels[cmd.name]) continue;
+    const li = document.createElement('li');
+    const key = document.createElement('kbd');
+    key.textContent = cmd.shortcut || 'Not set';
+    const text = document.createElement('span');
+    text.textContent = labels[cmd.name];
+    li.append(key, text);
+    list.append(li);
+  }
+}
+
 /**
- * Apply theme (dark/light mode)
+ * List stores the user granted access to (optional host permissions).
  */
-async function applyTheme() {
-  const result = await browser.storage.local.get(['theme']);
-  const theme = result.theme || 'light';
-  document.body.setAttribute('data-theme', theme);
+async function loadSiteAccess() {
+  const list = document.getElementById('siteAccessList');
+  const builtIn = new Set(browser.runtime.getManifest().host_permissions || []);
+  const origins = (await getGrantedPermissions()).filter(o => !builtIn.has(o) && o !== '<all_urls>');
+
+  // Patterns come in pairs (*://shop.com/* and *://*.shop.com/*) - show each store once
+  const hosts = [...new Set(origins
+    .map(o => (o.match(/^[^:]+:\/\/(?:\*\.)?([^/]+)\//) || [])[1])
+    .filter(Boolean))].sort();
+
+  list.textContent = '';
+  if (hosts.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'empty';
+    li.textContent = 'No extra stores yet. Use "Allow" in the popup on any store to add it here.';
+    list.append(li);
+    return;
+  }
+
+  for (const host of hosts) {
+    const li = document.createElement('li');
+    const name = document.createElement('span');
+    name.textContent = host.replace(/^www\./, '');
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-secondary btn-small';
+    btn.textContent = 'Remove access';
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      await removePermissionForUrl(`https://${host}/`);
+      showSaveIndicator(`Removed access to ${name.textContent}`);
+      await loadSiteAccess();
+    });
+    li.append(name, btn);
+    list.append(li);
+  }
 }
 
 /**
@@ -115,7 +229,7 @@ function setupEventListeners() {
       showError('Price check failed. Please try again.');
       debugError('[Settings]', 'Price check failed:', error);
     } finally {
-      btn.textContent = 'Check All Prices Now';
+      btn.textContent = 'Check now';
       btn.disabled = false;
       btn.setAttribute('aria-busy', 'false');
     }
@@ -266,11 +380,9 @@ async function handleSettingChange(e) {
 function showSaveIndicator(message = 'Settings saved') {
   const indicator = document.getElementById('saveIndicator');
   indicator.textContent = `✓ ${message}`;
-  indicator.style.display = 'block';
-  indicator.setAttribute('role', 'status');
-  indicator.setAttribute('aria-live', 'polite');
-
-  setTimeout(() => {
-    indicator.style.display = 'none';
+  indicator.hidden = false;
+  clearTimeout(showSaveIndicator.timer);
+  showSaveIndicator.timer = setTimeout(() => {
+    indicator.hidden = true;
   }, 2000);
 }

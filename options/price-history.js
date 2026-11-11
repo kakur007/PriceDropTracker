@@ -1,4 +1,5 @@
 import browser from '../utils/browser-polyfill.js';
+import { initTheme } from '../utils/theme.js';
 import { debug, debugError } from '../utils/debug.js';
 import Chart from '../lib/chart-loader.js';
 
@@ -43,9 +44,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  * Apply theme (dark/light mode)
  */
 async function applyTheme() {
-  const result = await browser.storage.local.get(['theme']);
-  const theme = result.theme || 'light';
-  document.body.setAttribute('data-theme', theme);
+  await initTheme();
 }
 
 /**

@@ -3,70 +3,79 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Welcome to Price Genius by GoGoNano!</title>
+  <title>Welcome to Price Genius</title>
   <link rel="stylesheet" href="welcome.css">
 </head>
 <body>
-  <div class="container">
-    <div class="hero">
-      <img src="../assets/icons/icon-128.png" alt="Price Genius" class="hero-icon">
-      <h1>Welcome to Price Genius!</h1>
-      <p class="company-name">by GoGoNano</p>
-      <p class="tagline">Never miss a deal again</p>
-    </div>
+  <main class="page">
+    <section class="hero">
+      <img src="../assets/icons/icon-128.png" alt="" width="72" height="72" class="hero-logo">
+      <p class="eyebrow">Price Genius by GoGoNano</p>
+      <h1>Never pay more than you have to.</h1>
+      <p class="lead">Track prices on any online store and get a quiet heads-up when they drop. No account, no sign-up. Everything stays on your device.</p>
+    </section>
 
-    <div class="content">
-      <section class="feature">
-        <h2>Automatic Price Tracking</h2>
-        <p>On popular stores, products are tracked automatically as you browse. On any other store, click the toolbar icon and press <strong>Track price</strong> &mdash; or point to the price yourself if it isn't found automatically.</p>
-      </section>
+    <section class="steps" aria-label="How it works">
+      <article class="step">
+        <span class="step-num">1</span>
+        <h2>Pin the icon</h2>
+        <p>Click the <span class="kbd" aria-label="extensions">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 3.5a1.5 1.5 0 0 1 3 0V5h3a1 1 0 0 1 1 1v3h-1.5a1.5 1.5 0 0 0 0 3H15v3a1 1 0 0 1-1 1h-3v-1.5a1.5 1.5 0 0 0-3 0V16H5a1 1 0 0 1-1-1v-3h1.5a1.5 1.5 0 0 0 0-3H4V6a1 1 0 0 1 1-1h3V3.5Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+        </span> extensions button in your toolbar and pin <strong>Price Genius</strong> so it's always one click away. Or press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> on any product page.</p>
+      </article>
 
-      <section class="feature">
-        <h2>Smart Notifications</h2>
-        <p>Get notified when prices drop on products you've viewed. Set your own thresholds (5%, 10%, 15%, or 20%) to control alerts.</p>
-      </section>
-
-      <section class="feature">
-        <h2>Multi-Currency Support</h2>
-        <p>Works across 30+ currencies and major stores including Amazon, eBay, Walmart, Target, Best Buy, Etsy, AliExpress, and Zalando.</p>
-      </section>
-
-      <section class="feature">
-        <h2>100% Private</h2>
-        <p>All data stays on YOUR device. No external servers, no tracking, no data collection. We take your privacy seriously.</p>
-      </section>
-
-      <div class="permissions-section">
-        <h2>Why We Need Permissions</h2>
-        <div class="permission-item">
-          <strong>Access product pages:</strong> To detect products and check prices automatically
+      <article class="step">
+        <span class="step-num">2</span>
+        <h2>Open any product</h2>
+        <p>On popular stores products are tracked automatically. Anywhere else, click the icon and press <strong>Track price</strong>.</p>
+        <div class="mock" aria-hidden="true">
+          <div class="mock-eyebrow"><i></i>Product found</div>
+          <div class="mock-title">Wireless headphones X200</div>
+          <div class="mock-price">€79.90</div>
+          <div class="mock-btn">+ Track price</div>
         </div>
-        <div class="permission-item">
-          <strong>Storage:</strong> To save your tracked products locally on your device
-        </div>
-        <div class="permission-item">
-          <strong>Notifications:</strong> To alert you when prices drop
-        </div>
-        <div class="permission-item">
-          <strong>Alarms:</strong> To schedule price checks every few hours
-        </div>
-        <p class="permissions-note">
-          <strong>Important:</strong> We ONLY access product pages from e-commerce sites.
-          We do NOT track your browsing history, read your emails, or access personal sites.
-        </p>
-      </div>
+      </article>
 
-      <div class="cta-section">
-        <h2>Ready to Start Saving?</h2>
-        <p>Open a product page in any online store. Popular stores are tracked automatically &mdash; everywhere else, just click the Price Genius icon in your toolbar.</p>
-        <button id="getStartedBtn" class="cta-button">Get Started</button>
-      </div>
-    </div>
+      <article class="step">
+        <span class="step-num">3</span>
+        <h2>Get notified</h2>
+        <p>We check prices in the background and tell you when one drops or is back in stock. Set a target price per product with the bell icon.</p>
+        <div class="mock mock-note" aria-hidden="true">
+          <div class="mock-title">Price drop: Wireless headphones</div>
+          <div class="mock-sub"><s>€79.90</s> <b>€59.90</b> <span class="pill">−25%</span></div>
+        </div>
+      </article>
+    </section>
 
-    <footer>
-      <p>Questions? <a href="https://www.gogonano.com/contact-us/?lang=en" target="_blank">Get Support</a></p>
+    <section class="cards">
+      <article class="card">
+        <h3>Private by design</h3>
+        <ul>
+          <li>Your products and price history never leave this browser</li>
+          <li>No accounts, no analytics, no ads, no selling data</li>
+          <li>Background checks run without your store logins, so they can't touch your cart or account</li>
+        </ul>
+      </article>
+      <article class="card">
+        <h3>Why the permissions</h3>
+        <ul>
+          <li><b>Store pages:</b> read product name and price, only on stores. Other stores are added only when you click <em>Allow</em></li>
+          <li><b>Storage:</b> keep your tracked products on this device</li>
+          <li><b>Notifications &amp; alarms:</b> check prices on schedule and alert you</li>
+        </ul>
+      </article>
+    </section>
+
+    <section class="cta">
+      <button id="getStartedBtn" class="btn btn-primary">Start shopping</button>
+      <button id="openSettingsBtn" class="btn btn-secondary">Adjust settings</button>
+    </section>
+
+    <footer class="footer">
+      Questions? <a href="https://www.gogonano.com/contact-us/?lang=en" target="_blank" rel="noopener">Get support</a>
+      · <a href="../options/privacy-policy.html">Privacy policy</a>
     </footer>
-  </div>
+  </main>
 
   <script type="module" src="welcome.js"></script>
 </body>

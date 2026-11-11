@@ -40,8 +40,10 @@ const context = await chromium.launchPersistentContext(userDataDir, {
   args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`]
 });
 
+const requests = [];
 await context.route('**/*', route => {
   const url = route.request().url();
+  requests.push({ url, cookie: route.request().headers()['cookie'] || '', type: route.request().resourceType() });
   if (url.startsWith('https://demo-store.myshopify.com/')) {
     return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: fixture('shopify.html') });
   }
@@ -166,6 +168,88 @@ for (const scheme of ['light', 'dark']) {
   const cards = await popup.locator('.card').count();
   check(cards === 2, `popup lists tracked products (${scheme})`, `${cards} cards`);
   await popup.close();
+}
+
+
+// --- safety: old product saved with an add-to-cart URL must never be re-requested,
+//     and background checks must not send the user's cookies
+await context.addCookies([{ name: 'session', value: 'logged-in', domain: 'demo-store.myshopify.com', path: '/' }]);
+const unsafe = await worker.evaluate(async () => {
+  const { products } = await chrome.storage.local.get('products');
+  const p = Object.values(products).find(x => x.domain === 'demo-store.myshopify.com');
+  p.url = p.url + '?add-to-cart=7001&quantity=1';
+  p.tracking.status = 'no_permission';
+  await chrome.storage.local.set({ products });
+  return p.productId;
+});
+requests.length = 0;
+const popupCheck = await context.newPage();
+await popupCheck.goto(`chrome-extension://${extId}/popup/popup.html`);
+await popupCheck.evaluate(id => chrome.runtime.sendMessage({ type: 'REFRESH_SINGLE_PRODUCT', data: { productId: id } }), unsafe);
+const fetched = requests.filter(r => r.url.startsWith('https://demo-store.myshopify.com/'));
+check(fetched.length > 0 && fetched.every(r => !/add-to-cart|quantity/.test(r.url)), 'background check strips add-to-cart from saved URL', fetched.map(r => r.url).join(', '));
+check(fetched.every(r => !r.cookie.includes('session=')), 'background check sends no cookies', fetched.map(r => r.cookie || '(none)').join(', '));
+const after = await worker.evaluate(async id => (await chrome.storage.local.get('products')).products[id], unsafe);
+check(!after.url.includes('add-to-cart') && after.tracking.status === 'active', 'stored URL cleaned and "Allow checks" status cleared', `${after.url} ${after.tracking.status}`);
+await popupCheck.reload();
+await popupCheck.waitForTimeout(800);
+const cardText = await popupCheck.locator('body').innerText();
+check(!/\bnull\b/.test(cardText) && !cardText.includes('Allow checks'), 'popup shows no "null" and no stale "Allow checks"');
+await popupCheck.close();
+
+// --- per-product alert via the popup editor
+{
+  const pop = await context.newPage();
+  await pop.setViewportSize({ width: 400, height: 600 });
+  await pop.goto(`chrome-extension://${extId}/popup/popup.html`);
+  await pop.waitForTimeout(900);
+  const card = pop.locator('.card').first();
+  await card.hover();
+  await card.locator('button[title="Price alert"]').click();
+  await pop.locator('.alert-editor select').selectOption('below');
+  await pop.locator('.alert-field input').fill('3.50');
+  await pop.screenshot({ path: path.join(SHOTS, 'popup-alert-editor.png') });
+  await pop.locator('.alert-editor button:has-text("Save alert")').click();
+  await pop.waitForTimeout(500);
+  const alerts = await worker.evaluate(async () => Object.values((await chrome.storage.local.get('products')).products).map(p => p.alert).filter(Boolean));
+  check(alerts.some(a => a.mode === 'below' && a.targetPrice === 3.5), 'alert saved from popup editor', JSON.stringify(alerts));
+  const badge = await pop.locator('.alert-badge').first().innerText().catch(() => '');
+  check(/Below/.test(badge), 'alert badge shown on card', badge);
+  await pop.screenshot({ path: path.join(SHOTS, 'popup-alert-saved.png') });
+  await pop.close();
+}
+
+// --- keyboard shortcuts registered, CSV button present
+{
+  const commands = await worker.evaluate(() => chrome.commands.getAll());
+  const names = commands.map(c => `${c.name}=${c.shortcut || '-'}`).join(', ');
+  check(commands.some(c => c.name === 'track-page') && commands.some(c => c.name === '_execute_action'), 'keyboard shortcuts registered', names);
+  const st = await context.newPage();
+  await st.goto(`chrome-extension://${extId}/options/settings.html`);
+  await st.waitForTimeout(600);
+  const rows = await st.locator('#shortcutList li').count();
+  check(rows === 2 && await st.locator('#exportCsvBtn').count() === 1, 'settings lists shortcuts and CSV export', `${rows} shortcuts`);
+  const [download] = await Promise.all([st.waitForEvent('download', { timeout: 5000 }).catch(() => null), st.click('#exportCsvBtn')]);
+  const csvPath = download ? await download.path() : null;
+  const csv = csvPath ? fs.readFileSync(csvPath, 'utf8') : '';
+  check(csv.includes('Organic Lip Balm') && csv.split('\n').length >= 3, 'CSV export downloads tracked products', download?.suggestedFilename() || 'no download');
+  await st.close();
+}
+
+// --- page screenshots
+for (const [name, rel] of [['settings', 'options/settings.html'], ['history', 'options/price-history.html'], ['privacy', 'options/privacy-policy.html'], ['welcome', 'onboarding/welcome.html']]) {
+  for (const scheme of ['light', 'dark']) {
+    const pg = await context.newPage();
+    const errs = [];
+    pg.on('pageerror', e => errs.push(e.message));
+    await pg.emulateMedia({ colorScheme: scheme });
+    await pg.setViewportSize({ width: 1100, height: 900 });
+    await pg.goto(`chrome-extension://${extId}/${rel}`);
+    await pg.waitForTimeout(700);
+    await pg.screenshot({ path: path.join(SHOTS, `${name}-${scheme}.png`), fullPage: scheme === 'light' });
+    if (scheme === 'light') check(errs.length === 0, `${name} page loads without errors`, errs.join('; '));
+    await pg.close();
+  }
 }
 
 await context.close();

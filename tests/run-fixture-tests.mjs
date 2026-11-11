@@ -82,6 +82,19 @@ const CASES = [
     expect: { numeric: 79.9, currency: 'EUR', method: 'siteAdapter' }
   },
   {
+    name: 'WooCommerce variant (60-pack) kept on background refresh',
+    fixture: 'woo-variations.html',
+    url: 'https://www.pesu-demo.ee/toode/pesulehed/',
+    // Simulate the shopper choosing the 60-pack (what the store's JS does)
+    setup: () => {
+      document.querySelector('select[name="attribute_pa_kogus"]').value = '60-pesukorda';
+      document.querySelector('input[name="variation_id"]').value = '160';
+      const box = document.querySelector('.woocommerce-variation');
+      box.innerHTML = '<div class="woocommerce-variation-price"><span class="price"><del><span class="woocommerce-Price-amount amount"><bdi>89,00&nbsp;<span class="woocommerce-Price-currencySymbol">&euro;</span></bdi></span></del> <ins><span class="woocommerce-Price-amount amount"><bdi>78,45&nbsp;<span class="woocommerce-Price-currencySymbol">&euro;</span></bdi></span></ins></span></div>';
+    },
+    expect: { numeric: 78.45, currency: 'EUR', title: 'Pesulehed – 60 pesukorda', variantId: '160' }
+  },
+  {
     name: 'Price rendered late by JavaScript',
     fixture: 'late-price.html',
     url: 'https://www.gadgets-demo.com/smart-gadget-pro',
@@ -118,6 +131,7 @@ for (const testCase of CASES) {
 
   await page.goto(testCase.url);
   if (testCase.waitMs) await page.waitForTimeout(testCase.waitMs);
+  if (testCase.setup) await page.evaluate(testCase.setup);
 
   const result = await page.evaluate(async ({ refreshFromSelector }) => {
     const detector = await import('/__ext/content-scripts/product-detector.js');
@@ -136,7 +150,8 @@ for (const testCase of CASES) {
         expectedCurrency: product.price.currency
       }, {
         priceSelector: refreshFromSelector ? product.priceSelector : product.priceSelector,
-        detectionMethod: product.detectionMethod
+        detectionMethod: product.detectionMethod,
+        variant: product.variant || null
       });
     }
     return {
@@ -146,7 +161,8 @@ for (const testCase of CASES) {
         currency: product.price.currency,
         regularPrice: product.price.regularPrice || null,
         method: product.detectionMethod,
-        selector: product.priceSelector || null
+        selector: product.priceSelector || null,
+        variantId: product.variant?.id || null
       },
       refresh
     };
@@ -164,6 +180,7 @@ for (const testCase of CASES) {
     if (Math.abs(p.numeric - e.numeric) > 0.001) problems.push(`price ${p.numeric} != ${e.numeric} (via ${p.method})`);
     if (p.currency !== e.currency) problems.push(`currency ${p.currency} != ${e.currency}`);
     if (e.title && p.title !== e.title) problems.push(`title "${p.title}" != "${e.title}"`);
+    if (e.variantId && p.variantId !== e.variantId) problems.push(`variant ${p.variantId} != ${e.variantId}`);
     if (e.method && p.method !== e.method) problems.push(`method ${p.method} != ${e.method}`);
     if (e.regularPrice && Math.abs((p.regularPrice || 0) - e.regularPrice) > 0.001) problems.push(`regularPrice ${p.regularPrice} != ${e.regularPrice}`);
     if (!testCase.waitMs) {

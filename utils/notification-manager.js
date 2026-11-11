@@ -14,6 +14,50 @@ import browser from './browser-polyfill.js';
 import { StorageManager } from '../background/storage-manager.js';
 import { isFirefox } from './browser-polyfill.js';
 import { debug, debugWarn, debugError } from '../utils/debug.js';
+import { getAlert } from './alert-rules.js';
+
+/**
+ * Daily cap from settings ("At most N alerts a day"). 999 = no limit.
+ */
+async function canNotifyToday(settings) {
+  const max = Number(settings?.notifications?.maxPerDay) || 3;
+  if (max >= 999) return true;
+  const today = new Date().toDateString();
+  const { notificationLog } = await browser.storage.local.get('notificationLog');
+  return !notificationLog || notificationLog.date !== today || notificationLog.count < max;
+}
+
+async function recordNotification() {
+  const today = new Date().toDateString();
+  const { notificationLog } = await browser.storage.local.get('notificationLog');
+  const count = notificationLog?.date === today ? notificationLog.count + 1 : 1;
+  await browser.storage.local.set({ notificationLog: { date: today, count } });
+}
+
+/**
+ * "Back in stock" alert.
+ */
+export async function showBackInStockNotification(product) {
+  try {
+    const settings = await StorageManager.getSettings();
+    if (settings.notifications?.enabled === false) return null;
+    if (!(await canNotifyToday(settings))) return null;
+
+    const title = product.title.length > 70 ? product.title.slice(0, 70) + '…' : product.title;
+    const id = await browser.notifications.create(product.productId, {
+      type: 'basic',
+      iconUrl: browser.runtime.getURL('assets/icons/icon-128.png'),
+      title: 'Back in stock',
+      message: `${title}\nNow ${formatPrice(product.price?.numeric, product.price?.currency, product.price?.locale)}`,
+      priority: 2
+    });
+    await recordNotification();
+    return id;
+  } catch (error) {
+    debugError('[notification-manager]', 'Error creating back-in-stock notification:', error);
+    return null;
+  }
+}
 
 /**
  * Default cooldown period (30 minutes)
@@ -47,9 +91,9 @@ export async function showPriceDropNotification(product, oldPrice, newPrice, dro
     }
 
     // Check if drop meets minimum threshold
-    const minThreshold = settings.notifications.minDropPercentage || settings.notifications.minDropPercent || 5;
-    if (dropPercentage < minThreshold) {
-      debug('[notification-manager]', `[Notifications] Drop ${dropPercentage}% below threshold ${minThreshold}%`);
+    // Per-product thresholds are applied by alert-rules.js before we get here
+    if (!(await canNotifyToday(settings))) {
+      debug('[notification-manager]', '[Notifications] Daily notification limit reached');
       return null;
     }
 
@@ -60,7 +104,10 @@ export async function showPriceDropNotification(product, oldPrice, newPrice, dro
     }
 
     // Format the notification
-    const title = '🔔 Price Drop Alert!';
+    const alert = getAlert(product);
+    const title = alert.mode === 'below' && newPrice <= Number(alert.targetPrice)
+      ? 'Target price reached'
+      : 'Price drop';
     const dropAmount = (oldPrice - newPrice).toFixed(2);
 
     // Truncate title if too long
@@ -96,6 +143,7 @@ Save: ${formatPrice(parseFloat(dropAmount), product.price?.currency, product.pri
 
     // Set cooldown
     await setCooldown(product.productId);
+    await recordNotification();
 
     // Auto-clear after 10 seconds
     setTimeout(() => {
@@ -147,8 +195,11 @@ export async function showBatchPriceDropNotifications(priceDrops) {
     if (!settings.notifications.enabled) {
       return 0;
     }
+    if (!(await canNotifyToday(settings))) {
+      return 0;
+    }
 
-    const title = `🎉 ${priceDrops.length} Price Drops!`;
+    const title = `${priceDrops.length} price drops`;
 
     // List top 3 drops
     const topDrops = priceDrops
@@ -187,6 +238,7 @@ export async function showBatchPriceDropNotifications(priceDrops) {
 
     // Set cooldowns for all products
     await Promise.all(priceDrops.map(drop => setCooldown(drop.product.productId)));
+    await recordNotification();
 
     return 1; // One summary notification
 

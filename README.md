@@ -10,6 +10,13 @@ Automatically track product prices across major e-commerce sites and get notifie
 - **Smart Filters** - View all products, only price drops, or items expiring soon with convenient filter tabs.
 - **Product Dashboard** - Beautiful popup interface showing all tracked products with images, current prices, and price history.
 
+### 🔔 Your Rules, Per Product
+- Bell icon on every product: any drop, at least N %, below a target price, or off
+- Back-in-stock alerts
+- Variants (size, pack, colour) are tracked separately with their own price
+- Keyboard shortcuts: **Alt+Shift+T** track this page · **Alt+Shift+P** open Price Genius
+- Export to CSV for Excel or Google Sheets
+
 ### 💰 Intelligent Price Monitoring
 - **Background Checks** - Automatic price monitoring every 3-24 hours (configurable).
 - **Currency-Aware Comparisons** - Properly compares prices even when currency formatting changes.
@@ -582,28 +589,25 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
   - ✅ Shopify stores
   - ✅ Zalando, ASOS, MediaMarkt
 
-### 🚧 Phase 3: Advanced Features (In Progress)
-- [ ] **Product Comparison** - Side-by-side comparison of similar products
-- [ ] **Price Prediction** - ML-based price drop predictions
-- [ ] **Custom Alerts per Product** - Set different thresholds for different products
-- [ ] **Weekly Summary Reports** - Email digest of price changes
-- [ ] **More E-commerce Sites**:
-  - [ ] Regional stores (country-specific)
-- [ ] **Browser Sync** - Sync data across devices via Chrome sync
-- [ ] **Wishlist Organization** - Folders and tags for products
+### ✅ Phase 3: Works Everywhere (v1.3.0)
+- [x] **Any store** - track from the popup, or pick the price on the page yourself
+- [x] **Custom alerts per product** - any drop, % threshold, target price, or off
+- [x] **Back-in-stock alerts**
+- [x] **Variant-aware tracking** - sizes, pack sizes and colours keep their own price
+- [x] **CSV export** for spreadsheets
+- [x] **Keyboard shortcuts**
+- [x] **Firefox support**
+- [x] **Search, sort and filtering** in the popup
 
-### 🔮 Phase 4: Future Features (Planned)
-- [ ] **AI Price Drop Predictions** - AI-powered predictions for best time to buy
-- [ ] **Product Alternatives** - Suggest similar products with better prices
-- [ ] **Amazon Wishlist Import** - Import existing Amazon wishlists
-- [ ] **CSV/Excel Export** - Export data in spreadsheet format
-- [ ] **Advanced Filtering** - Filter by store, price range, drop percentage
-- [ ] **Keyboard Shortcuts** - Quick access to common actions
-- [ ] **Mobile Companion App** - iOS/Android apps for on-the-go tracking
-- [ ] **Browser Extension for Firefox & Safari**
-- [ ] **Share Deals** - Share price drops with friends
-- [ ] **Deal Communities** - See what others are tracking
-- [ ] **Price History API** - Public API for price data
+### 🚧 Phase 4: Next
+- [ ] **Browser Sync** - sync the product list via the browser's own sync (no account, opt-in)
+- [ ] **Folders and tags** for products
+- [ ] **"Good price?" insight** - based on your own price history, computed locally
+- [ ] **Weekly summary** as a browser notification (no email, no server)
+
+### Not planned
+Features that would require sending your data to a server (email reports, public price API,
+deal communities) conflict with our privacy promise and are not planned.
 
 ## 💬 Frequently Asked Questions (FAQ)
 

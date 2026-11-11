@@ -210,6 +210,35 @@ button.status:hover { filter: brightness(.95); }
 
 .list-empty { text-align: center; padding: 18px; color: var(--muted); font-size: 13px; }
 
+/* Price alerts */
+.alert-badge {
+  display: inline-flex; align-items: center; gap: 3px; border: 0;
+  font-size: 11px; font-weight: 600; padding: 1px 7px 1px 5px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent-strong);
+}
+.alert-badge svg { width: 11px; height: 11px; }
+.alert-badge.off { background: var(--surface-2); color: var(--muted); }
+.card.editing { border-color: var(--accent); }
+.card.editing .card-actions { opacity: 0; pointer-events: none; }
+.alert-editor {
+  grid-column: 1 / -1; display: flex; flex-direction: column; gap: 10px;
+  margin-top: 4px; padding: 12px; border-radius: 10px; background: var(--surface-2);
+}
+.page-card .alert-editor { margin-top: 12px; }
+.alert-title { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 650; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); }
+.alert-title svg { width: 14px; height: 14px; }
+.alert-editor select, .alert-field input {
+  border: 1px solid var(--border); background: var(--surface); border-radius: 8px;
+  padding: 7px 9px; font-size: 13px;
+}
+.alert-editor select:focus-visible, .alert-field input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.alert-field { display: flex; align-items: center; gap: 8px; font-size: 13px; flex-wrap: wrap; }
+.alert-field input { width: 96px; font-variant-numeric: tabular-nums; }
+.alert-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); }
+.alert-check input { accent-color: var(--accent); width: 15px; height: 15px; }
+.alert-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.card-meta .status { white-space: nowrap; }
+
 /* Empty */
 .empty-state { text-align: center; padding: 18px 28px 26px; }
 .empty-art { width: 64px; height: 64px; margin: 0 auto 10px; color: var(--accent); }
