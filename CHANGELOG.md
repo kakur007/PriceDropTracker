@@ -5,6 +5,66 @@ All notable changes to Price Genius will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-11-11
+
+Focus: work on (almost) every store, and a simpler, modern popup.
+
+### Added
+- **Track any store from the popup**: the popup scans the current tab (using the
+  `activeTab` permission) and shows the product it found with a **Track price** button -
+  no permission prompt needed just to track
+- **Pick price on page**: when automatic detection fails or picks the wrong number, click
+  the price yourself. The chosen element is remembered and re-read on every background check
+- Stores you grant access to now behave like built-in stores (detection runs on every
+  visit, including single-page-app navigation)
+- Visiting a product you already track refreshes its price from the live page and notifies
+  you on a drop - this also keeps JavaScript-heavy stores accurate
+- Background thumbnail fallback for stores whose images block cross-origin canvas use
+- Setting: "Automatically track products I view" (on by default)
+- Undo after removing a product
+- Browser fixture tests (`tests/run-fixture-tests.mjs`) and an end-to-end extension test
+
+### Changed
+- Redesigned popup: current-page card, search, sort, filter chips (All / Price drops /
+  Needs attention), price sparklines, follows the system light/dark theme
+- One shared extractor (`utils/page-extractor.js`) is now used by the content script,
+  the Firefox background page and the Chrome offscreen document - previously three
+  copies had drifted apart, so the price found when tracking could differ from the price
+  read on later checks
+- Detection retries while JavaScript-rendered prices load, and re-runs when a store
+  changes pages without reloading
+- Cross-platform Node build script (`npm run build`); browser manifests are generated
+  from `manifest.json`
+
+### Fixed
+- **Automatic background price checks never ran**: the service worker read settings keys
+  that don't exist (`tracking.enabled` / `tracking.checkInterval`), so the periodic alarm
+  was never created. It now uses the "Check frequency" setting
+- WooCommerce/OpenCart adapters claimed unrelated stores (any page with an `<h1>` and a
+  `.price`, or any URL containing `/product/`) and overrode correct structured data
+- A site adapter saying "not a product page" stopped detection entirely instead of
+  falling back to the generic layers
+- Generic detection required specific URL patterns (`/product/`, `/p/`, …), so stores
+  with plain slug URLs were never detected
+- JSON-LD that real stores ship with HTML comments, raw newlines or trailing commas was
+  ignored; `priceSpecification`, nested `AggregateOffer` and `ProductGroup` variants
+  (selected by URL) are now supported; related/recommended products are skipped
+- Microdata picked prices from nested related products
+- Shopify prices under $10 were read as whole units (599 → $599 instead of $5.99)
+- Missing currency in structured data defaulted to EUR instead of being inferred
+- Struck-through "was" prices, shipping fees and recommendation carousels are no longer
+  picked as the product price
+- Failed-check counters and "stale" status were never saved for existing products
+- Background checks ignore implausible jumps read by generic selectors and currency changes
+- Chrome build was missing the `offscreen` permission, so background checks fell back to
+  regex parsing
+- Firefox build loaded the ES-module background script without `"type": "module"`
+- Build scripts had a hard-coded `/home/user/...` path
+
+### Removed
+- `manifest-chrome.json`, `manifest-firefox.json`, `build.sh` and the bash build scripts
+  (replaced by `scripts/build.mjs`)
+
 ## [1.2.1] - 2026-05-05
 
 ### Changed

@@ -1,88 +1,94 @@
 /**
  * Main Content Script Entry Point
- * This script is injected into product pages and coordinates product detection
  *
- * Firefox Note: Content scripts listed in manifest.json cannot use top-level
- * ES6 imports. We must use dynamic imports only.
+ * Runs on supported stores (manifest) and on any store the user granted
+ * access to (registered dynamically by the service worker).
  *
- * NOTE: This file uses console.log directly instead of debug() utility
- * because it cannot import modules (would cause "Cannot use import outside module" error)
+ * - Retries detection while JS-rendered pages finish loading
+ * - Re-runs on single-page-app navigation (URL changes without reload)
+ * - Lets the background either start tracking (auto-track) or refresh the
+ *   price of an already tracked product from the live page
+ *
+ * Content scripts declared in the manifest cannot use static imports in
+ * Firefox, so modules are loaded with dynamic import().
  */
 
-// Get browser API (available globally in content scripts)
-// Use globalThis to avoid shadowing Firefox's browser global.
-const extensionApi = typeof globalThis.browser !== 'undefined'
-  ? globalThis.browser
-  : (typeof globalThis.chrome !== 'undefined' ? globalThis.chrome : null);
+(function () {
+  if (window.__PRICE_GENIUS_MAIN__) return; // injected twice (manifest + dynamic)
+  window.__PRICE_GENIUS_MAIN__ = true;
 
-console.log('[Price Drop Tracker] Content script loaded on:', window.location.hostname);
+  const api = typeof globalThis.browser !== 'undefined'
+    ? globalThis.browser
+    : (typeof globalThis.chrome !== 'undefined' ? globalThis.chrome : null);
 
-// Import all modules dynamically (Firefox requires this approach)
-(async function() {
-  try {
-    if (!extensionApi) {
-      console.error('[Price Drop Tracker] Browser extension API is not available');
+  if (!api?.runtime?.getURL) return;
+
+  const TAG = '[Price Genius]';
+  const RETRY_DELAYS = [600, 1200, 2000, 3500, 6000];
+
+  let detectorPromise = null;
+  let runId = 0;
+  let lastUrl = location.href;
+  let handledUrl = null;
+
+  function loadDetector() {
+    if (!detectorPromise) {
+      detectorPromise = import(api.runtime.getURL('content-scripts/product-detector.js'));
+    }
+    return detectorPromise;
+  }
+
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  async function run() {
+    const myRun = ++runId;
+    const url = location.href;
+
+    let detector;
+    try {
+      detector = await loadDetector();
+    } catch (error) {
+      console.warn(TAG, 'Could not load detector:', error);
       return;
     }
 
-    console.log('[Price Drop Tracker] Starting product detection initialization...');
+    for (const delay of RETRY_DELAYS) {
+      await sleep(delay);
+      if (myRun !== runId || location.href !== url) return; // navigated away
 
-    // main.js owns automatic detection. Prevent product-detector.js from also
-    // running its auto-detection IIFE when imported below.
-    window.__PRICE_TRACKER_MANUAL_MODE__ = true;
-
-    // Dynamically import the product detector module
-    // Using inline browser.runtime.getURL() to satisfy Firefox static analyzer
-    console.log('[Price Drop Tracker] Loading detector from:', extensionApi.runtime.getURL('content-scripts/product-detector.js'));
-
-    const { detectProduct } = await import(extensionApi.runtime.getURL('content-scripts/product-detector.js'));
-
-    console.log('[Price Drop Tracker] ✓ Detector module loaded successfully');
-    console.log('[Price Drop Tracker] Extension initialized on', window.location.hostname);
-
-    // Wait a bit for the page to fully load dynamic content
-    setTimeout(async () => {
+      let product = null;
       try {
-        console.log('[Price Drop Tracker] Running product detection...');
-        const product = await detectProduct();
+        product = await detector.detectProduct({ mode: 'auto' });
+      } catch (error) {
+        console.warn(TAG, 'Detection error:', error);
+      }
+      if (!product) continue;
 
-        if (product) {
-          console.log('[Price Drop Tracker] ✅ Product detected:', product.title);
-          console.log('[Price Drop Tracker] Price:', `${product.price.symbol}${product.price.numeric}`);
-          console.log('[Price Drop Tracker] Detection method:', product.detectionMethod);
-          console.log('[Price Drop Tracker] Confidence:', (product.confidence * 100).toFixed(0) + '%');
-
-          // Send product to background script for storage
-          try {
-            console.log('[Price Drop Tracker] Sending product to background for storage...');
-            const response = await extensionApi.runtime.sendMessage({
-              type: 'PRODUCT_DETECTED',
-              data: product
-            });
-
-            if (response && response.success) {
-              if (response.data.alreadyTracked) {
-                console.log('[Price Drop Tracker] ℹ️ Product is already being tracked');
-              } else {
-                console.log('[Price Drop Tracker] ✅ Product added to tracking list');
-              }
-            } else {
-              console.error('[Price Drop Tracker] ❌ Failed to save product:', response?.error);
-            }
-          } catch (sendError) {
-            console.error('[Price Drop Tracker] ❌ Error sending message to background:', sendError);
-          }
-        } else {
-          console.log('[Price Drop Tracker] ℹ️ No product detected on this page');
+      handledUrl = url;
+      try {
+        const response = await api.runtime.sendMessage({
+          type: 'PRODUCT_DETECTED',
+          data: product,
+          source: 'auto'
+        });
+        const result = response?.data;
+        if (response?.success && result?.added) {
+          detector.showTrackingBadge(product, `Tracking at ${product.price.formatted || product.price.numeric}`);
         }
       } catch (error) {
-        console.error('[Price Drop Tracker] ❌ Error detecting product:', error);
-        console.error('[Price Drop Tracker] Error stack:', error.stack);
+        console.warn(TAG, 'Could not reach background:', error);
       }
-    }, 1500);
-
-  } catch (error) {
-    console.error('[Price Drop Tracker] ❌ Failed to load product detector:', error);
-    console.error('[Price Drop Tracker] Error stack:', error.stack);
+      return;
+    }
   }
+
+  // SPA navigation: many modern stores never reload the page
+  setInterval(() => {
+    if (location.href !== lastUrl) {
+      lastUrl = location.href;
+      if (handledUrl !== lastUrl) run();
+    }
+  }, 1000);
+
+  run();
 })();

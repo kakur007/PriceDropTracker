@@ -11,11 +11,13 @@ import { productStorageMutex } from '../utils/storage-mutex.js';
  */
 const DEFAULT_SETTINGS = {
   tracking: {
+    autoTrack: true,     // Track product pages automatically when visited
     duration: 30,        // Days to track products
     maxProducts: 100,    // Maximum number of products to track
     autoRemoveExpired: true
   },
   checking: {
+    enabled: true,
     interval: 6,         // Hours between price checks
     batchSize: 5,        // Number of products to check at once
     timeout: 10000,      // Request timeout in milliseconds
@@ -94,8 +96,16 @@ export async function saveProduct(productData) {
 
         // Update fields
         existing.price = productData.price;
-        existing.tracking.lastViewed = Date.now();
-        existing.tracking.lastChecked = Date.now();
+        // Persist tracking state changes (failed checks, stale status…).
+        // Previously these were silently dropped for existing products.
+        existing.tracking = { ...(existing.tracking || {}), ...(productData.tracking || {}) };
+        if (!productData.tracking) {
+          existing.tracking.lastViewed = Date.now();
+          existing.tracking.lastChecked = Date.now();
+        }
+        for (const key of ['priceSelector', 'detectionMethod', 'hasImage', 'title']) {
+          if (productData[key] !== undefined && productData[key] !== null) existing[key] = productData[key];
+        }
 
         products[productId] = existing;
       } else {

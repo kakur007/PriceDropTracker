@@ -1,1357 +1,514 @@
-import browser from '../utils/browser-polyfill.js';
-
 /**
  * Product Detector - Core Detection Logic
- * Multi-layer product page detection with fallback strategies
- * Runs on every supported e-commerce page to detect product information
+ *
+ * Layers, most trustworthy first:
+ *   0. Site adapters (Amazon, eBay, Zalando, …)
+ *   1. Structured data shared with the background checker
+ *      (JSON-LD, Shopify product JSON, microdata, Open Graph/product meta)
+ *   2. Visual heuristics (price-like elements scored by position, size, class)
+ *
+ * The result carries `priceSelector` whenever a concrete DOM element was used,
+ * so the background checker can read the very same element on later refreshes.
+ *
+ * NOTE: imported dynamically by main.js / injected functions. It must not run
+ * anything on import.
  */
 
 import { parsePrice } from '../utils/currency-parser.js';
 import { generateProductId } from '../utils/product-hasher.js';
 import { getAdapter } from './site-adapters/adapter-factory.js';
 import { createOptimizedThumbnail } from '../utils/thumbnail-generator.js';
+import {
+  extractStructuredProduct,
+  buildSelector,
+  absoluteUrl,
+  cleanText,
+  getMetaImage,
+  getMetaTitle
+} from '../utils/page-extractor.js';
 import { debug, debugWarn, debugError } from '../utils/debug.js';
 
-/**
- * Main product detection function
- * Uses multiple detection layers in order of reliability
- * @returns {Promise<Object|null>} Product data or null if not a product page
- */
-export async function detectProduct() {
-  debug('[product-detector]', '[Price Drop Tracker] Scanning page for product data...');
+const LOG = '[product-detector]';
 
-  // Quick reject: ignore non-product pages
-  if (isNonProductPage()) {
-    debug('[product-detector]', '[Price Drop Tracker] Non-product page detected, skipping');
+/**
+ * Detect the product on the current page.
+ *
+ * @param {Object} [options]
+ * @param {'auto'|'manual'} [options.mode='auto'] - 'manual' means the user
+ *   explicitly asked to track this page, so we accept weaker evidence and skip
+ *   URL-based "this is not a product page" filters.
+ * @returns {Promise<Object|null>}
+ */
+export async function detectProduct(options = {}) {
+  const mode = options.mode === 'manual' ? 'manual' : 'auto';
+  const minConfidence = mode === 'manual' ? 0.5 : 0.7;
+
+  debug(LOG, `Scanning page for product data (mode: ${mode})`);
+
+  if (mode === 'auto' && isNonProductPage()) {
+    debug(LOG, 'Non-product page detected, skipping');
     return null;
   }
 
-  // Try site-specific adapter first (Layer 0: Site-specific adapters)
+  const ctx = getContext();
+  let adapterSaysNotProduct = false;
+
+  let structured = null;
+  try {
+    structured = extractStructuredProduct(document, ctx);
+  } catch (error) {
+    debugError(LOG, 'Structured data extraction failed:', error);
+  }
+
+  // Layer 0: site adapter
   try {
     const adapter = getAdapter(document, window.location.href);
-    if (adapter) {
-      debug('[product-detector]', '[Price Drop Tracker] Using site-specific adapter');
-
-      // Check if this is actually a product page (if adapter has detectProduct method)
-      if (adapter.detectProduct && !adapter.detectProduct()) {
-        debug('[product-detector]', '[Price Drop Tracker] Adapter detected this is not a product page');
-        return null;
-      }
-
-      const title = adapter.extractTitle();
-      const price = adapter.extractPrice();
-      const imageUrl = adapter.extractImage();
-      const productId = adapter.extractProductId();
-
-      if (title && price) {
-        const productData = {
-          title,
-          price,
-          imageUrl,
-          url: window.location.href,
-          domain: window.location.hostname,
-          sku: productId,
-          availability: null,
-          confidence: 0.90,
-          detectionMethod: 'siteAdapter'
-        };
-        debug('[product-detector]', '[Price Drop Tracker] Product detected via adapter (confidence: 0.90)');
-        return await enhanceProductData(productData);
+    // Generic platform adapters only win when the page has no trustworthy
+    // structured data; retailer-specific adapters always go first.
+    if (adapter?.isPlatformAdapter && structured && structured.confidence >= 0.9) {
+      debug(LOG, `Using ${structured.detectionMethod} over platform adapter`);
+    } else if (adapter) {
+      const isProduct = adapter.detectProduct ? adapter.detectProduct() : true;
+      if (!isProduct) {
+        // Don't give up: adapters lag behind site redesigns. Continue with
+        // the generic layers, just with stricter rules in auto mode.
+        adapterSaysNotProduct = true;
+        debug(LOG, 'Adapter did not recognise a product page, trying generic detection');
       } else {
-        debug('[product-detector]', '[Price Drop Tracker] Adapter could not extract required data (title or price missing)');
+        const title = adapter.extractTitle();
+        const price = adapter.extractPrice();
+        if (title && price && price.numeric > 0) {
+          debug(LOG, 'Product detected via site adapter');
+          return await enhanceProductData({
+            title,
+            price,
+            imageUrl: adapter.extractImage(),
+            sku: adapter.extractProductId(),
+            availability: null,
+            confidence: 0.9,
+            detectionMethod: 'siteAdapter'
+          });
+        }
+        debug(LOG, 'Adapter could not extract title/price, falling back');
       }
     }
   } catch (error) {
-    debugError('[product-detector]', '[Price Drop Tracker] Error using adapter:', error);
-    // Fall through to generic detection
+    debugError(LOG, 'Adapter error, falling back to generic detection:', error);
   }
 
-  // Try detection methods in order of confidence
-  let productData = null;
+  // Layer 1: structured data
+  let best = structured;
 
-  // Layer 1: Schema.org JSON-LD (most reliable)
-  productData = extractFromSchemaOrg();
-  if (productData && productData.confidence >= 0.90) {
-    debug('[product-detector]', '[Price Drop Tracker] Product detected via Schema.org (confidence:', productData.confidence + ')');
-    return await enhanceProductData(productData);
+  if (best && best.confidence >= 0.85) {
+    debug(LOG, `Product detected via ${best.detectionMethod}`);
+    return await enhanceProductData(best);
   }
 
-  // Layer 2: Open Graph meta tags
-  const ogData = extractFromOpenGraph();
-  if (ogData && (!productData || ogData.confidence > productData.confidence)) {
-    productData = ogData;
-    debug('[product-detector]', '[Price Drop Tracker] Product detected via Open Graph (confidence:', ogData.confidence + ')');
-  }
-
-  // Layer 3: Microdata/RDFa
-  const microdataData = extractFromMicrodata();
-  if (microdataData && (!productData || microdataData.confidence > productData.confidence)) {
-    productData = microdataData;
-    debug('[product-detector]', '[Price Drop Tracker] Product detected via Microdata (confidence:', microdataData.confidence + ')');
-  }
-
-  // Layer 4: Embedded platform product JSON (Shopify themes, etc.)
-  const embeddedData = extractFromEmbeddedProductJson();
-  if (embeddedData && (!productData || embeddedData.confidence > productData.confidence)) {
-    productData = embeddedData;
-    debug('[product-detector]', '[Price Drop Tracker] Product detected via embedded product JSON (confidence:', embeddedData.confidence + ')');
-  }
-
-  // Layer 5: CSS Selectors (fallback)
-  if (!productData || productData.confidence < 0.70) {
-    const cssData = extractFromSelectors();
-    if (cssData && (!productData || cssData.confidence > productData.confidence)) {
-      productData = cssData;
-      debug('[product-detector]', '[Price Drop Tracker] Product detected via CSS selectors (confidence:', cssData.confidence + ')');
+  // Layer 2: heuristics
+  if (!(mode === 'auto' && adapterSaysNotProduct)) {
+    const heuristic = extractFromPage(mode);
+    if (heuristic && (!best || heuristic.confidence > best.confidence)) {
+      best = heuristic;
     }
   }
 
-  // Reject if confidence too low
-  if (!productData || productData.confidence < 0.60) {
-    debug('[product-detector]', '[Price Drop Tracker] No reliable product data found (confidence too low)');
+  if (!best || best.confidence < minConfidence) {
+    debug(LOG, 'No reliable product data found', best ? `(confidence ${best.confidence})` : '');
     return null;
   }
 
-  // Enhance and validate the data
-  const enhanced = await enhanceProductData(productData);
-  debug('[product-detector]', '[Price Drop Tracker] Product detected:', enhanced);
-
-  return enhanced;
+  return await enhanceProductData(best);
 }
 
 /**
- * Check if current page is definitely NOT a product page
- * Enhanced to reduce false negatives on generic e-commerce sites
- * @returns {boolean} True if page should be skipped
+ * Page context passed to price parsing (domain/locale drive currency guesses).
+ */
+export function getContext() {
+  return {
+    url: window.location.href,
+    domain: window.location.hostname,
+    locale: document.documentElement.lang || navigator.language || 'en-US'
+  };
+}
+
+/**
+ * URL-based quick reject for auto mode.
  */
 function isNonProductPage() {
   const url = window.location.href.toLowerCase();
   const pathname = window.location.pathname.toLowerCase();
 
-  // Strong product URL signals should win over broad browsing words like
-  // "/shop"; many stores use paths such as /shop/product-name.
   const productPathPatterns = [
     /\/products?\/[^\/?]+/,
-    /\/product\/[^\/?]+/,
-    /\/item\/[^\/?]+/,
-    /\/items\/[^\/?]+/,
+    /\/items?\/[^\/?]+/,
     /\/itm\/[^\/?]+/,
     /\/dp\/[a-z0-9]{6,}/,
     /\/gp\/product\/[a-z0-9]{6,}/,
     /\/p\/[^\/?]+/,
     /\/pd\/[^\/?]+/,
+    /\/ip\/[^\/?]+/,
     /\/detail\/[^\/?]+/,
-    /\/collections\/[^\/]+\/products\/[^\/?]+/
+    /\/listing\/\d+/
   ];
+  if (productPathPatterns.some(p => p.test(pathname))) return false;
 
-  if (productPathPatterns.some(pattern => pattern.test(pathname))) {
-    return false;
-  }
-
-  // Expanded patterns for various e-commerce platforms. Keep these scoped to
-  // the path start so product pages nested under /shop or /collections are not
-  // rejected before structured data and selector detection can run.
   const nonProductPathPatterns = [
-    // Shopping cart and checkout
-    /^\/(cart|basket|bag|checkout|payment|panier)(\/|$)/,
-
-    // Account pages
+    /^\/(cart|basket|bag|checkout|payment|panier|warenkorb|ostukorv)(\/|$)/,
     /^\/(account|login|register|signin|signup|my-account|profile|dashboard|orders|wishlist)(\/|$)/,
-
-    // Search and browsing landing pages
     /^\/(search|results|category|categories|browse|collections|shop|all-products|catalog)(\/)?$/,
-
-    // Support and info pages
     /^\/(help|support|contact|about|faq|returns|shipping|terms|privacy|policy)(\/|$)/,
-
-    // Blog and content
     /^\/(blog|news|articles|guides)(\/|$)/,
-
-    // Homepage indicators
     /^\/(index\.html|index\.php|home)(\/)?$/
   ];
+  if (nonProductPathPatterns.some(p => p.test(pathname))) return true;
 
-  if (nonProductPathPatterns.some(pattern => pattern.test(pathname))) {
-    return true;
-  }
+  if (pathname === '/' || pathname.length <= 2) return true;
+  if (/\/collections\/[^\/]+\/?$/.test(pathname)) return true;
+  if (/\/(listing|listings)\/?$/.test(pathname)) return true;
 
-  // Special case: Allow Etsy listings (/listing/NUMBERS is a product page)
-  // Block only /listing or /listings without product IDs
-  if ((pathname.includes('/listing/') || pathname.includes('/listings/')) &&
-      !/\/listings?\/\d+/.test(pathname)) {
-    return true;
-  }
-
-  // Skip if pathname is just "/" or very short (likely homepage or category)
-  if (pathname === '/' || pathname.length <= 2) {
-    return true;
-  }
-
-  // Skip collection/category pages (common in Shopify)
-  if (/\/collections\/[^\/]+\/?$/.test(pathname)) {
-    return true;
-  }
-
-  // Skip search results pages when the path also looks like search/browse.
   if ((pathname.includes('/search') || pathname.includes('/results')) &&
-      (url.includes('?q=') || url.includes('?s=') || url.includes('&q=') || url.includes('&s='))) {
+      /[?&](q|s|query|k)=/.test(url)) {
     return true;
   }
 
   return false;
 }
 
-/**
- * Convert relative URL to absolute URL
- * @param {string} url - URL to convert (may be relative or absolute)
- * @returns {string|null} - Absolute URL or null if invalid
- */
-function makeAbsoluteUrl(url) {
-  if (!url) return null;
+// ----------------------------------------------------------------- heuristics
+
+const ADD_TO_CART_PATTERNS = [
+  'add to cart', 'add to basket', 'add to bag', 'buy now', 'add to trolley',
+  'añadir al carrito', 'ajouter au panier', 'in den warenkorb', 'in den einkaufswagen',
+  'aggiungi al carrello', 'adicionar ao carrinho', 'カートに入れる', 'toevoegen aan winkelwagen',
+  'lisa ostukorvi', 'ostukorvi', 'dodaj do koszyka', 'lägg i varukorgen', 'læg i kurv',
+  'legg i handlekurv', 'lisää ostoskoriin', 'do košíku', 'в корзину', 'sepete ekle',
+  'addtocart', 'add-to-cart', 'add_to_cart'
+];
 
-  try {
-    // If already absolute, return as-is
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      return url;
-    }
-
-    // If protocol-relative (//example.com/image.jpg)
-    if (url.startsWith('//')) {
-      return window.location.protocol + url;
-    }
-
-    // If absolute path (/path/to/image.jpg)
-    if (url.startsWith('/')) {
-      return `${window.location.protocol}//${window.location.host}${url}`;
-    }
-
-    // Relative path (path/to/image.jpg) - construct from current URL
-    const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
-    return new URL(url, baseUrl).href;
-  } catch (error) {
-    debugWarn('[product-detector]', '[Price Drop Tracker] Failed to convert URL to absolute:', url, error);
-    return url; // Return original if conversion fails
-  }
-}
-
-/**
- * Recursively search for Product entities in nested JSON-LD structures
- * @param {Object|Array} obj - JSON-LD object or array to search
- * @param {Array} products - Accumulator array for found products
- * @returns {void}
- */
-function findProductsRecursively(obj, products = []) {
-  if (!obj || typeof obj !== 'object') {
-    return products;
-  }
-
-  const rawType = obj['@type'];
-  const types = (Array.isArray(rawType) ? rawType : [rawType])
-    .filter(type => typeof type === 'string')
-    .map(type => type.replace(/^https?:\/\/schema\.org\//i, ''));
-
-  // Check if this object is a Product
-  if (types.includes('Product')) {
-    products.push(obj);
-    return products;
-  }
-
-  // Check if this is a ProductGroup containing products
-  if (types.includes('ProductGroup')) {
-    products.push(obj);
-  }
-
-  if (types.includes('ProductGroup') && obj.hasVariant) {
-    const variants = Array.isArray(obj.hasVariant) ? obj.hasVariant : [obj.hasVariant];
-    for (const variant of variants) {
-      findProductsRecursively(variant, products);
-    }
-  }
-
-  // Recursively search arrays
-  if (Array.isArray(obj)) {
-    for (const item of obj) {
-      findProductsRecursively(item, products);
-    }
-  } else {
-    // Recursively search object properties
-    for (const key in obj) {
-      if (obj.hasOwnProperty(key) && typeof obj[key] === 'object') {
-        findProductsRecursively(obj[key], products);
-      }
-    }
-  }
-
-  return products;
-}
-
-/**
- * Extract product data from Schema.org JSON-LD
- * Highest confidence (0.95) - SEO-critical data
- * Enhanced with recursive @graph parsing for nested structures
- * @returns {Object|null} Product data or null
- */
-function extractFromSchemaOrg() {
-  const scripts = document.querySelectorAll('script[type="application/ld+json"]');
-
-  debug('[product-detector]', `[Price Drop Tracker] Found ${scripts.length} JSON-LD scripts`);
-
-  for (const script of scripts) {
-    try {
-      const data = JSON.parse(script.textContent);
-
-      // Use recursive search to find all Product entities
-      const products = findProductsRecursively(data);
-
-      debug('[product-detector]', `[Price Drop Tracker] Found ${products.length} Product(s) in this script`);
-
-      for (const item of products) {
-        debug('[product-detector]', '[Price Drop Tracker] Processing Product:', item);
-
-        // Extract offers - handle multiple structures
-        let offersList = [];
-
-        if (item.offers) {
-          if (Array.isArray(item.offers)) {
-            offersList = item.offers;
-          } else {
-            offersList = [item.offers];
-          }
-        }
-
-        if (offersList.length === 0) {
-          debug('[product-detector]', '[Price Drop Tracker] No offers in Schema.org data');
-          continue;
-        }
-
-        // Try each offer until we find a valid one
-        let priceData = null;
-        let currency = null;
-        let availability = null; // Store availability from the successful offer
-
-        for (const offers of offersList) {
-          // Handle AggregateOffer (variable products)
-          const offerTypes = (Array.isArray(offers['@type']) ? offers['@type'] : [offers['@type']])
-            .filter(type => typeof type === 'string')
-            .map(type => type.replace(/^https?:\/\/schema\.org\//i, ''));
-
-          if (offerTypes.includes('AggregateOffer')) {
-            debug('[product-detector]', '[Price Drop Tracker] Found AggregateOffer (variable product)');
-
-            // Use lowPrice for variable products
-            const priceValue = offers.lowPrice || offers.price || offers.highPrice;
-            currency = offers.priceCurrency || 'EUR';
-
-            if (priceValue) {
-              debug('[product-detector]', '[Price Drop Tracker] Variable product price:', priceValue, 'Currency:', currency);
-
-              // Include currency symbol in the price string for better detection
-              const currencySymbol = currency === 'EUR' ? '€' : currency === 'USD' ? '$' : currency === 'GBP' ? '£' : '';
-              const priceString = currencySymbol
-                ? `${currencySymbol}${priceValue}`
-                : `${priceValue} ${currency}`;
-
-              priceData = parsePrice(priceString, {
-                domain: window.location.hostname,
-                locale: document.documentElement.lang,
-                expectedCurrency: currency
-              });
-
-              if (priceData) {
-                // Force the currency to match the detected one
-                priceData.currency = currency;
-                availability = offers.availability || null; // Store availability
-                break;
-              }
-            }
-          }
-          // Handle regular Offer
-          else {
-            const priceValue = offers.price || offers.lowPrice || offers.highPrice;
-            currency = offers.priceCurrency || 'EUR';
-
-            if (priceValue) {
-              debug('[product-detector]', '[Price Drop Tracker] Schema.org price:', priceValue, 'Currency:', currency);
-
-              // Include currency symbol in the price string
-              const currencySymbol = currency === 'EUR' ? '€' : currency === 'USD' ? '$' : currency === 'GBP' ? '£' : '';
-              const priceString = currencySymbol
-                ? `${currencySymbol}${priceValue}`
-                : `${priceValue} ${currency}`;
-
-              priceData = parsePrice(priceString, {
-                domain: window.location.hostname,
-                locale: document.documentElement.lang,
-                expectedCurrency: currency
-              });
-
-              if (priceData) {
-                // Force the currency to match the detected one
-                priceData.currency = currency;
-                availability = offers.availability || null; // Store availability
-                break;
-              }
-            }
-          }
-        }
-
-        if (!priceData) {
-          debug('[product-detector]', '[Price Drop Tracker] Failed to parse any offers');
-          continue;
-        }
-
-        debug('[product-detector]', '[Price Drop Tracker] ✓ Successfully parsed price:', priceData.numeric, priceData.currency);
-
-        // Extract image (handle different formats)
-        let imageUrl = null;
-        if (item.image) {
-          let rawImageUrl = null;
-          if (typeof item.image === 'string') {
-            rawImageUrl = item.image;
-          } else if (item.image.url) {
-            rawImageUrl = item.image.url;
-          } else if (Array.isArray(item.image) && item.image.length > 0) {
-            rawImageUrl = typeof item.image[0] === 'string' ? item.image[0] : item.image[0].url;
-          }
-          // Convert to absolute URL
-          imageUrl = makeAbsoluteUrl(rawImageUrl);
-        }
-
-        return {
-          title: item.name || 'Unknown Product',
-          price: priceData,
-          imageUrl: imageUrl,
-          url: window.location.href,
-          domain: window.location.hostname,
-          sku: item.sku || item.gtin || null,
-          availability: availability, // Use stored availability instead of undefined 'offers'
-          confidence: 0.95,
-          detectionMethod: 'schemaOrg'
-        };
-      }
-    } catch (error) {
-      debugError('[product-detector]', '[Price Drop Tracker] Error parsing Schema.org:', error);
-    }
-  }
-
-  return null;
-}
-
-/**
- * Extract product data from Open Graph meta tags
- * High confidence (0.85)
- * @returns {Object|null} Product data or null
- */
-function extractFromOpenGraph() {
-  const ogType = document.querySelector('meta[property="og:type"]')?.content;
-  const priceAmountElement =
-    document.querySelector('meta[property="og:price:amount"]') ||
-    document.querySelector('meta[property="product:price:amount"]') ||
-    document.querySelector('meta[property="product:price"]') ||
-    document.querySelector('meta[name="product:price:amount"]') ||
-    document.querySelector('meta[itemprop="price"]');
-
-  if ((!ogType || !ogType.includes('product')) && !priceAmountElement) {
-    return null;
-  }
-
-  const title =
-    document.querySelector('meta[property="og:title"]')?.content ||
-    document.querySelector('meta[name="twitter:title"]')?.content ||
-    document.querySelector('meta[itemprop="name"]')?.content ||
-    document.querySelector('h1')?.textContent?.trim();
-  const priceAmount = priceAmountElement?.content;
-  const priceCurrency =
-    document.querySelector('meta[property="og:price:currency"]')?.content ||
-    document.querySelector('meta[property="product:price:currency"]')?.content ||
-    document.querySelector('meta[name="product:price:currency"]')?.content ||
-    document.querySelector('meta[itemprop="priceCurrency"]')?.content;
-  const rawImageUrl =
-    document.querySelector('meta[property="og:image:secure_url"]')?.content ||
-    document.querySelector('meta[property="og:image"]')?.content ||
-    document.querySelector('meta[name="twitter:image"]')?.content ||
-    document.querySelector('meta[itemprop="image"]')?.content;
-
-  if (!title || !priceAmount) {
-    return null;
-  }
-
-  // Build price string
-  const priceString = priceCurrency ?
-    `${priceAmount} ${priceCurrency}` :
-    priceAmount;
-
-  const priceData = parsePrice(priceString, {
-    domain: window.location.hostname,
-    locale: document.documentElement.lang,
-    expectedCurrency: priceCurrency
-  });
-
-  if (!priceData) {
-    return null;
-  }
-
-  return {
-    title,
-    price: priceData,
-    imageUrl: makeAbsoluteUrl(rawImageUrl),
-    url: window.location.href,
-    domain: window.location.hostname,
-    sku: null,
-    availability: null,
-    confidence: 0.85,
-    detectionMethod: 'openGraph'
-  };
-}
-
-/**
- * Extract product data from Microdata/RDFa
- * Medium confidence (0.75)
- * @returns {Object|null} Product data or null
- */
-function extractFromMicrodata() {
-  const productElement = document.querySelector('[itemtype*="schema.org/Product"]');
-  if (!productElement) {
-    return null;
-  }
-
-  const titleElement = productElement.querySelector('[itemprop="name"]');
-  const title = titleElement?.content || titleElement?.textContent?.trim();
-  const priceElement = productElement.querySelector('[itemprop="price"]');
-  const currencyElement = productElement.querySelector('[itemprop="priceCurrency"]');
-  const currency = currencyElement?.content || currencyElement?.textContent?.trim();
-  const imageElement = productElement.querySelector('[itemprop="image"]');
-  const rawImageUrl =
-    imageElement?.src ||
-    imageElement?.content ||
-    imageElement?.getAttribute('href') ||
-    imageElement?.getAttribute('data-src');
-
-  if (!title || !priceElement) {
-    return null;
-  }
-
-  // Build price string
-  const priceString = currency ?
-    `${priceElement.content || priceElement.textContent} ${currency}` :
-    (priceElement.content || priceElement.textContent);
-
-  const priceData = parsePrice(priceString, {
-    domain: window.location.hostname,
-    locale: document.documentElement.lang,
-    expectedCurrency: currency
-  });
-
-  if (!priceData) {
-    return null;
-  }
-
-  return {
-    title,
-    price: priceData,
-    imageUrl: makeAbsoluteUrl(rawImageUrl),
-    url: window.location.href,
-    domain: window.location.hostname,
-    sku: null,
-    availability: null,
-    confidence: 0.75,
-    detectionMethod: 'microdata'
-  };
-}
-
-/**
- * Extract product data from embedded platform product JSON.
- * Supports common Shopify theme JSON blocks without scraping arbitrary state.
- * @returns {Object|null} Product data or null
- */
-function extractFromEmbeddedProductJson() {
-  const hasShopifySignal =
-    !!document.querySelector('form[action*="/cart/add"], input[name="form_type"][value="product"]') ||
-    !!document.querySelector('script[id*="ProductJson" i], script[id*="product-json" i]') ||
-    document.documentElement.innerHTML.includes('ShopifyAnalytics');
-
-  if (!hasShopifySignal) {
-    return null;
-  }
-
-  const currency =
-    document.querySelector('meta[property="product:price:currency"]')?.content ||
-    document.querySelector('meta[itemprop="priceCurrency"]')?.content ||
-    document.querySelector('[data-currency]')?.getAttribute('data-currency') ||
-    null;
-
-  const productJsonScripts = document.querySelectorAll(
-    'script[type="application/json"][id*="ProductJson" i], script[type="application/json"][id*="product" i], script[type="application/json"][data-product-json]'
-  );
-
-  for (const script of productJsonScripts) {
-    try {
-      const data = JSON.parse(script.textContent);
-      const product = normalizeEmbeddedProduct(data, currency);
-      if (product) {
-        return product;
-      }
-    } catch (error) {
-      debugWarn('[product-detector]', '[Price Drop Tracker] Failed to parse embedded product JSON:', error);
-    }
-  }
-
-  // ShopifyAnalytics.meta is JavaScript, not pure JSON. Keep this narrow:
-  // parse the product object only when the script clearly contains Shopify meta.
-  const inlineScripts = document.querySelectorAll('script:not([src])');
-  for (const script of inlineScripts) {
-    const text = script.textContent || '';
-    if (!text.includes('ShopifyAnalytics') || !text.includes('variants')) {
-      continue;
-    }
-
-    const productMatch = text.match(/"product"\s*:\s*(\{[\s\S]*?"variants"\s*:\s*\[[\s\S]*?\][\s\S]*?\})\s*[,}]/);
-    if (!productMatch) {
-      continue;
-    }
-
-    try {
-      const data = JSON.parse(productMatch[1]);
-      const product = normalizeEmbeddedProduct(data, currency);
-      if (product) {
-        return product;
-      }
-    } catch (error) {
-      debugWarn('[product-detector]', '[Price Drop Tracker] Failed to parse ShopifyAnalytics product JSON:', error);
-    }
-  }
-
-  return null;
-}
-
-/**
- * Normalize embedded product JSON into product data.
- * @param {Object} data - Parsed product data
- * @param {string|null} currency - Expected currency
- * @returns {Object|null}
- */
-function normalizeEmbeddedProduct(data, currency) {
-  if (!data || typeof data !== 'object') {
-    return null;
-  }
-
-  const product = data.product || data;
-  const variants = Array.isArray(product.variants) ? product.variants : [];
-  const selectedVariant = variants.find(variant => variant.available !== false) || variants[0] || null;
-  const rawPrice = selectedVariant?.price ?? product.price ?? product.price_min;
-
-  if (!rawPrice) {
-    return null;
-  }
-
-  const normalizedPrice = normalizePlatformPrice(rawPrice);
-  const currencyCode = currency || product.currency || product.priceCurrency || null;
-  const priceString = currencyCode ? `${normalizedPrice} ${currencyCode}` : String(normalizedPrice);
-  const priceData = parsePrice(priceString, {
-    domain: window.location.hostname,
-    locale: document.documentElement.lang,
-    expectedCurrency: currencyCode
-  });
-
-  if (!priceData || priceData.confidence < 0.60) {
-    return null;
-  }
-
-  const title =
-    product.title ||
-    product.name ||
-    selectedVariant?.name ||
-    document.querySelector('meta[property="og:title"]')?.content ||
-    document.querySelector('h1')?.textContent?.trim();
-
-  if (!title) {
-    return null;
-  }
-
-  const rawImageUrl =
-    selectedVariant?.featured_image?.src ||
-    selectedVariant?.featured_image ||
-    product.featured_image ||
-    product.image ||
-    (Array.isArray(product.images) ? product.images[0] : null);
-
-  return {
-    title,
-    price: priceData,
-    imageUrl: makeAbsoluteUrl(typeof rawImageUrl === 'string' ? rawImageUrl : rawImageUrl?.src),
-    url: window.location.href,
-    domain: window.location.hostname,
-    sku: selectedVariant?.sku || selectedVariant?.id || product.id || null,
-    availability: selectedVariant?.available === false ? 'OutOfStock' : null,
-    confidence: 0.82,
-    detectionMethod: 'embeddedProductJson'
-  };
-}
-
-/**
- * Normalize platform prices. Shopify stores integer minor units in product JSON.
- * @param {string|number} rawPrice - Raw price
- * @returns {string|number}
- */
-function normalizePlatformPrice(rawPrice) {
-  if (typeof rawPrice !== 'number') {
-    return rawPrice;
-  }
-
-  if (Number.isInteger(rawPrice) && rawPrice >= 1000) {
-    return (rawPrice / 100).toFixed(2);
-  }
-
-  return rawPrice;
-}
-
-/**
- * Find "Add to Cart" button on the page
- * Strong indicator this is a product page
- * @returns {Element|null} Add to cart button element or null
- */
 function findAddToCartButton() {
-  // Common button text patterns across languages and platforms
-  const patterns = [
-    'add to cart', 'add to basket', 'add to bag', 'buy now',
-    'añadir al carrito', 'ajouter au panier', 'in den warenkorb',
-    'aggiungi al carrello', 'adicionar ao carrinho', 'カートに入れる',
-    'add item', 'purchase', 'buy', 'comprar', 'acheter', 'kaufen',
-    'submit.add-to-cart', 'addtocart', 'add_to_cart'
-  ];
-
-  // Search in buttons
-  const buttons = document.querySelectorAll('button, input[type="submit"], a[role="button"]');
+  const buttons = document.querySelectorAll('button, input[type="submit"], input[type="button"], a[role="button"], [data-action*="cart" i], form[action*="cart" i] [type="submit"]');
   for (const button of buttons) {
     const text = (button.textContent || button.value || button.getAttribute('aria-label') || '').toLowerCase();
-    const id = (button.id || '').toLowerCase();
-    const className = (button.className || '').toLowerCase();
-
-    if (patterns.some(pattern => text.includes(pattern) || id.includes(pattern) || className.includes(pattern))) {
+    const attrs = `${button.id || ''} ${typeof button.className === 'string' ? button.className : ''} ${button.getAttribute('name') || ''} ${button.getAttribute('data-action') || ''}`.toLowerCase();
+    if (ADD_TO_CART_PATTERNS.some(p => text.includes(p) || attrs.includes(p))) {
       return button;
     }
   }
-
   return null;
 }
 
-/**
- * Find all potential price candidates on the page
- * @returns {Array} Array of {element, text, score} objects
- */
-function findAllPriceCandidates() {
-  const candidates = [];
-  const allElements = document.querySelectorAll('span, div, p, b, strong, td, li');
+const CURRENCY_HINT = /[$£€¥₹₽¢₩₪₺₫฿₱₴]|\b(USD|EUR|GBP|CAD|AUD|SEK|NOK|DKK|PLN|CHF|CZK|HUF|RON|JPY|INR|BRL|MXN|ZAR|kr|zł|Kč|Ft|lei|R\$)\b/i;
 
-  for (const element of allElements) {
-    // Skip if element is hidden
-    const style = window.getComputedStyle(element);
-    if (style.display === 'none' || style.visibility === 'hidden') {
-      continue;
-    }
+function isVisible(el) {
+  if (!el.getClientRects().length) return false;
+  const style = window.getComputedStyle(el);
+  return style.visibility !== 'hidden' && style.display !== 'none' && parseFloat(style.opacity) > 0.05;
+}
 
-    const text = element.textContent?.trim();
-    if (!text || text.length > 50) continue; // Prices are usually short
-
-    // Quick check if it might be a price (contains currency symbol or number)
-    if (!/[\$£€¥₹₽¢]|\d/.test(text)) continue;
-
-    // Try to parse it as a price
-    const parsed = parsePrice(text, {
-      domain: window.location.hostname,
-      locale: document.documentElement.lang
-    });
-
-    if (parsed && parsed.confidence >= 0.60) {
-      candidates.push({
-        element,
-        text,
-        parsed,
-        score: 0 // Will be calculated later
-      });
-    }
+function isStruckThrough(el) {
+  for (let node = el, i = 0; node && i < 3; node = node.parentElement, i++) {
+    if (node.tagName === 'DEL' || node.tagName === 'S' || node.tagName === 'STRIKE') return true;
+    const deco = window.getComputedStyle(node).textDecorationLine || '';
+    if (deco.includes('line-through')) return true;
   }
-
-  return candidates;
+  return false;
 }
 
 /**
- * Score a price candidate based on context and position
- * @param {Object} candidate - Candidate object {element, text, parsed}
- * @param {Element} titleElement - Main H1 title element
- * @param {Element} addToCartButton - Add to cart button element
- * @returns {number} Score (higher is better)
+ * Collect visible, short, currency-bearing text nodes that parse as prices.
  */
+function findAllPriceCandidates(ctx) {
+  const candidates = [];
+  const elements = document.querySelectorAll('span, div, p, b, strong, td, li, ins, bdi, dd, data, h2, h3, h4, meta[itemprop="price"]');
+  let inspected = 0;
+
+  for (const element of elements) {
+    if (++inspected > 4000) break;
+    if (element.closest('header, footer, nav, [role="navigation"], [aria-hidden="true"]')) continue;
+
+    const text = (element.textContent || '').replace(/\s+/g, ' ').trim();
+    if (!text || text.length > 40) continue;
+
+    const classAttr = `${typeof element.className === 'string' ? element.className : ''} ${element.id || ''}`.toLowerCase();
+    const looksLikePriceClass = classAttr.includes('price') || classAttr.includes('amount');
+    if (!CURRENCY_HINT.test(text) && !looksLikePriceClass) continue;
+    if (!/\d/.test(text)) continue;
+
+    // Prefer the innermost element carrying the price
+    const childWithSameText = Array.from(element.children).some(c => (c.textContent || '').replace(/\s+/g, ' ').trim() === text);
+    if (childWithSameText) continue;
+
+    if (!isVisible(element)) continue;
+
+    const parsed = parsePrice(text, { domain: ctx.domain, locale: ctx.locale });
+    if (parsed && parsed.numeric > 0 && parsed.confidence >= 0.6) {
+      candidates.push({ element, text, parsed, score: 0 });
+    }
+  }
+  return candidates;
+}
+
 function scorePriceCandidate(candidate, titleElement, addToCartButton) {
-  let score = 0;
+  let score = candidate.parsed.confidence * 100;
   const element = candidate.element;
-  const elementClass = (element.className || '').toLowerCase();
-  const elementId = (element.id || '').toLowerCase();
+  const cls = `${typeof element.className === 'string' ? element.className : ''} ${element.id || ''}`.toLowerCase();
   const text = candidate.text.toLowerCase();
+  const value = candidate.parsed.numeric;
 
-  // Base score from parser confidence
-  score += candidate.parsed.confidence * 100;
+  if (value < 2) score -= 50;
+  else if (value < 10) score -= 15;
 
-  // CRITICAL: Penalize very low prices that are likely shipping costs
-  // Common shipping costs: 3.99, 4.95, 4.99, 5.99, 6.99, etc.
-  const priceValue = candidate.parsed.numeric;
-  if (priceValue > 0 && priceValue < 10) {
-    // Prices under 10 are often shipping/handling fees, not products
-    score -= 30;
-    debug('[product-detector]', `[Price Candidate] Low price penalty for ${priceValue}: -30 points`);
-  }
-  if (priceValue > 0 && priceValue < 2) {
-    // Extremely low prices (under 2) are almost never product prices
-    score -= 50;
-    debug('[product-detector]', `[Price Candidate] Very low price penalty for ${priceValue}: -50 points`);
-  }
+  if (cls.includes('price')) score += 20;
+  if (/sale|special|current|final|now|offer|actual/.test(cls)) score += 15;
+  if (/old|was|regular|compare|strike|before|original|list|rrp|msrp/.test(cls)) score -= 35;
+  if (element.closest('[itemprop="offers"], [class*="product-info" i], [class*="product-detail" i], [class*="buy-box" i], [class*="summary" i], main')) score += 10;
 
-  // +20 points: Element has price-related class or ID
-  if (elementClass.includes('price') || elementId.includes('price')) {
-    score += 20;
-  }
-  if (elementClass.includes('sale') || elementClass.includes('offer')) {
-    score += 15;
-  }
-  if (elementClass.includes('product') && (elementClass.includes('price') || elementId.includes('price'))) {
-    score += 10;
-  }
+  if (isStruckThrough(element)) score -= 60;
 
-  // +15 points: Close to title in DOM
   if (titleElement) {
-    const distance = getDOMDistance(element, titleElement);
-    if (distance <= 3) score += 15;
-    else if (distance <= 5) score += 10;
-    else if (distance <= 8) score += 5;
+    const d = getDOMDistance(element, titleElement);
+    if (d <= 3) score += 15; else if (d <= 5) score += 10; else if (d <= 8) score += 5;
   }
-
-  // +15 points: Close to Add to Cart button
   if (addToCartButton) {
-    const distance = getDOMDistance(element, addToCartButton);
-    if (distance <= 3) score += 15;
-    else if (distance <= 5) score += 10;
+    const d = getDOMDistance(element, addToCartButton);
+    if (d <= 3) score += 15; else if (d <= 5) score += 10; else if (d <= 8) score += 5;
   }
 
-  // +10 points: Larger font size (main prices are usually bigger)
-  const fontSize = parseInt(window.getComputedStyle(element).fontSize);
-  if (fontSize >= 24) score += 10;
-  else if (fontSize >= 18) score += 5;
+  const fontSize = parseFloat(window.getComputedStyle(element).fontSize) || 0;
+  if (fontSize >= 24) score += 15; else if (fontSize >= 18) score += 8;
 
-  // -40 points: Contains unwanted keywords (increased penalty)
-  const badKeywords = ['shipping', 'ship', 'delivery', 'tax', 'monthly', 'installment', '/mo', 'per month',
-                        'save', 'off', 'was', 'msrp', 'list price', 'handling', 'freight', 'postage'];
-  if (badKeywords.some(keyword => text.includes(keyword))) {
-    score -= 40;
-    debug('[product-detector]', `[Price Candidate] Bad keyword penalty: -40 points`);
-  }
+  // Above the fold is where the main price lives
+  const rect = element.getBoundingClientRect();
+  const top = rect.top + window.scrollY;
+  if (top < 1200) score += 10;
+  else if (top > 3000) score -= 20;
 
-  // -60 points: In a "related items", "upsells", or shipping section (increased penalty)
-  let parent = element.parentElement;
-  for (let i = 0; i < 5 && parent; i++) {
-    const parentClass = (parent.className || '').toLowerCase();
-    const parentId = (parent.id || '').toLowerCase();
+  const badKeywords = ['shipping', 'delivery', 'tax', 'monthly', 'installment', '/mo', 'per month', 'save ', 'off', 'was', 'msrp', 'list price', 'handling', 'postage', 'from ', 'klarna', 'afterpay'];
+  if (badKeywords.some(k => text.includes(k))) score -= 40;
 
-    if (parentClass.includes('related') || parentClass.includes('similar') ||
-        parentClass.includes('also-bought') || parentClass.includes('recommendations') ||
-        parentClass.includes('upsell') || parentClass.includes('cross-sell') ||
-        parentClass.includes('shipping') || parentClass.includes('delivery') ||
-        parentId.includes('related') || parentId.includes('similar') ||
-        parentId.includes('shipping') || parentId.includes('delivery')) {
+  for (let parent = element.parentElement, i = 0; parent && i < 6; parent = parent.parentElement, i++) {
+    const p = `${typeof parent.className === 'string' ? parent.className : ''} ${parent.id || ''}`.toLowerCase();
+    if (/related|similar|also-bought|recommend|upsell|cross-sell|carousel|slider|recently|shipping|delivery|cart-drawer|minicart|mini-cart/.test(p)) {
       score -= 60;
-      debug('[product-detector]', `[Price Candidate] Related/shipping section penalty: -60 points`);
       break;
     }
-    parent = parent.parentElement;
   }
 
-  // +5 points: Has data-price attribute
-  if (element.hasAttribute('data-price') || element.hasAttribute('data-product-price')) {
-    score += 5;
-  }
+  if (element.hasAttribute('data-price') || element.hasAttribute('data-product-price')) score += 5;
 
   return score;
 }
 
-/**
- * Calculate DOM distance between two elements
- * @param {Element} elem1
- * @param {Element} elem2
- * @returns {number} Number of steps in DOM tree
- */
-function getDOMDistance(elem1, elem2) {
-  if (!elem1 || !elem2) return Infinity;
-
-  const parents1 = getParentChain(elem1);
-  const parents2 = getParentChain(elem2);
-
-  // Find common ancestor
-  for (let i = 0; i < parents1.length; i++) {
-    for (let j = 0; j < parents2.length; j++) {
-      if (parents1[i] === parents2[j]) {
-        return i + j;
-      }
-    }
+function getDOMDistance(a, b) {
+  if (!a || !b) return Infinity;
+  const chainA = getParentChain(a);
+  const chainB = getParentChain(b);
+  for (let i = 0; i < chainA.length; i++) {
+    const j = chainB.indexOf(chainA[i]);
+    if (j !== -1) return i + j;
   }
-
   return Infinity;
 }
 
-/**
- * Get chain of parent elements
- * @param {Element} element
- * @returns {Array} Array of parent elements
- */
-function getParentChain(element) {
-  const parents = [];
-  let current = element;
-  while (current && parents.length < 15) {
-    parents.push(current);
-    current = current.parentElement;
-  }
-  return parents;
+function getParentChain(el) {
+  const chain = [];
+  for (let node = el; node && chain.length < 15; node = node.parentElement) chain.push(node);
+  return chain;
 }
 
 /**
- * Extract product data from CSS selectors
- * Enhanced with heuristic price detection for generic e-commerce sites
- * @returns {Object|null} Product data or null
+ * Visual heuristic detection. Works on any store layout.
  */
-function extractFromSelectors() {
-  // Expanded URL patterns for generic e-commerce (Shopify, WooCommerce, Magento, etc.)
-  const url = window.location.href.toLowerCase();
-  const urlPatterns = [
-    '/product/', '/products/', '/item/', '/items/', '/dp/', '/p/', '/itm/',
-    '/goods/', '/pd/', '/buy/', '/shop/', '/store/', '-p-', '/detail/',
-    '/produkter/', '/produit/', '/produto/', '/produkt/'  // Multi-language support
-  ];
-  const hasProductUrl = urlPatterns.some(pattern => url.includes(pattern));
+function extractFromPage(mode) {
+  const ctx = getContext();
+  const pathname = window.location.pathname.toLowerCase();
+  const urlPatterns = ['/product', '/item', '/dp/', '/p/', '/itm/', '/goods/', '/pd/', '/buy/', '/detail',
+    '-p-', '/produkt', '/produit', '/produto', '/producto', '/toode', '/tuote', '/artikel', '.html'];
+  const hasProductUrl = urlPatterns.some(p => pathname.includes(p));
+  const hasProductId = /\/\d{5,}/.test(pathname) || /[?&](product|item|sku|id|pid)=\w+/i.test(window.location.search);
 
-  // Also check for numeric product IDs in URL
-  const hasProductId = /\/\d{6,}/.test(url) || /[?&](product|item|sku|id)=\d+/.test(url);
+  const addToCartButton = findAddToCartButton();
 
-  if (!hasProductUrl && !hasProductId) {
-    debug('[product-detector]', '[Price Drop Tracker] URL does not match product patterns');
+  // In auto mode we need at least one structural product signal; otherwise
+  // we would start tracking random pages that merely contain a price.
+  if (mode === 'auto' && !addToCartButton && !hasProductUrl && !hasProductId) {
+    debug(LOG, 'No product page signals for heuristic detection');
     return null;
   }
 
-  // Try to find title (main H1 on the page)
   const titleElement =
-    document.querySelector('h1[class*="product"]') ||
-    document.querySelector('h1[id*="product"]') ||
-    document.querySelector('h1.title') ||
+    document.querySelector('h1[itemprop="name"]') ||
+    document.querySelector('h1[class*="product" i]') ||
+    document.querySelector('h1[id*="product" i]') ||
+    document.querySelector('main h1') ||
     document.querySelector('h1');
 
-  const title = titleElement?.textContent?.trim();
-
+  const title = cleanText(titleElement?.textContent) || getMetaTitle(document);
   if (!title || title.length < 3) {
-    debug('[product-detector]', '[Price Drop Tracker] No valid title found');
+    debug(LOG, 'No product title found');
     return null;
   }
 
-  debug('[product-detector]', '[Price Drop Tracker] Found title:', title.slice(0, 60));
+  // Score all candidates; there is no fixed selector list for unknown stores
+  const candidates = findAllPriceCandidates(ctx);
+  for (const c of candidates) c.score = scorePriceCandidate(c, titleElement, addToCartButton);
+  candidates.sort((a, b) => b.score - a.score);
 
-  // Try to detect product ID from data attributes on body or container divs
-  let productId = null;
-  const productIdElement =
-    document.querySelector('body[data-product-id]') ||
-    document.querySelector('body[data-sku]') ||
-    document.querySelector('[data-product-id]') ||
-    document.querySelector('[data-sku]') ||
-    document.querySelector('[data-id]');
+  debug(LOG, 'Top price candidates:', candidates.slice(0, 3).map(c => `${c.text} (${Math.round(c.score)})`));
 
-  if (productIdElement) {
-    productId = productIdElement.getAttribute('data-product-id') ||
-                productIdElement.getAttribute('data-sku') ||
-                productIdElement.getAttribute('data-id');
-    debug('[product-detector]', '[Price Drop Tracker] Found product ID from data attributes:', productId);
-  }
-
-  // Find "Add to Cart" button - strong signal of product page
-  const addToCartButton = findAddToCartButton();
-  if (addToCartButton) {
-    debug('[product-detector]', '[Price Drop Tracker] ✓ Add to Cart button found');
-  }
-
-  // Use heuristic price detection for maximum compatibility
-  let priceData = null;
-  let detectedPriceElement = null;
-
-  // Site-specific selectors first (most reliable)
-  if (window.location.hostname.includes('amazon')) {
-    const amazonSelectors = [
-      '.a-price .a-offscreen',
-      '#corePrice_feature_div .a-offscreen',
-      '#corePriceDisplay_desktop_feature_div .a-offscreen',
-      '.reinventPricePriceToPayMargin .a-offscreen',
-      '#priceblock_ourprice',
-      '#priceblock_dealprice'
-    ];
-
-    for (const selector of amazonSelectors) {
-      const element = document.querySelector(selector);
-      if (element) {
-        const priceText = element.textContent?.trim();
-        const parsed = parsePrice(priceText, {
-          domain: window.location.hostname,
-          locale: document.documentElement.lang
-        });
-
-        if (parsed && parsed.confidence >= 0.70) {
-          priceData = parsed;
-          detectedPriceElement = element;
-          debug('[product-detector]', '[Price Drop Tracker] ✓ Amazon price found:', priceData.numeric);
-          break;
-        }
-      }
-    }
-  }
-  else if (window.location.hostname.includes('walmart')) {
-    const walmartSelectors = [
-      '[itemprop="price"]',
-      '[data-testid="price-wrap"] span[itemprop="price"]',
-      '[class*="price-characteristic"]',
-      '.price-characteristic',
-      '[data-automation-id="product-price"]'
-    ];
-
-    for (const selector of walmartSelectors) {
-      const element = document.querySelector(selector);
-      if (element) {
-        const priceText = element.getAttribute('content') || element.textContent?.trim();
-        const parsed = parsePrice(priceText, {
-          domain: window.location.hostname,
-          locale: document.documentElement.lang
-        });
-
-        if (parsed && parsed.confidence >= 0.70) {
-          priceData = parsed;
-          detectedPriceElement = element;
-          debug('[product-detector]', '[Price Drop Tracker] ✓ Walmart price found:', priceData.numeric);
-          break;
-        }
-      }
-    }
-  }
-
-  // Fallback: Use heuristic price candidate scoring for generic sites
-  if (!priceData) {
-    debug('[product-detector]', '[Price Drop Tracker] Using heuristic price detection...');
-
-    // First try common generic selectors (fast path)
-    // Enhanced with case-insensitive attribute selectors
-    const quickSelectors = [
-      '[itemprop="price"]',
-      '[data-price]',
-      '.price',
-      '.product-price',
-      '.product_price',
-      '[class*="price-now" i]',        // Case insensitive
-      '[class*="current-price" i]',    // Case insensitive
-      '[id*="product-price" i]',       // Case insensitive
-      '[id*="price" i]',               // Case insensitive - catches id="Price", id="PRICE", etc.
-      '[class*="price" i]:not([class*="shipping" i]):not([class*="delivery" i])'  // Broad price class search with exclusions
-    ];
-
-    for (const selector of quickSelectors) {
-      const elements = document.querySelectorAll(selector);
-      for (const element of elements) {
-        const priceText =
-          element.getAttribute('data-price') ||
-          element.getAttribute('content') ||
-          element.textContent?.trim();
-
-        const parsed = parsePrice(priceText, {
-          domain: window.location.hostname,
-          locale: document.documentElement.lang
-        });
-
-        if (parsed && parsed.confidence >= 0.70) {
-          priceData = parsed;
-          detectedPriceElement = element;
-          debug('[product-detector]', '[Price Drop Tracker] ✓ Quick selector price found:', priceData.numeric);
-          break;
-        }
-      }
-      if (priceData) break;
-    }
-
-    // If still no price, use the full candidate scoring system
-    if (!priceData) {
-      debug('[product-detector]', '[Price Drop Tracker] Running full price candidate scoring...');
-
-      const candidates = findAllPriceCandidates();
-      debug('[product-detector]', `[Price Drop Tracker] Found ${candidates.length} price candidates`);
-
-      if (candidates.length > 0) {
-        // Score each candidate
-        for (const candidate of candidates) {
-          candidate.score = scorePriceCandidate(candidate, titleElement, addToCartButton);
-        }
-
-        // Sort by score (highest first)
-        candidates.sort((a, b) => b.score - a.score);
-
-        // Log top candidates for debugging
-        debug('[product-detector]', '[Price Drop Tracker] Top 3 candidates:');
-        for (let i = 0; i < Math.min(3, candidates.length); i++) {
-          debug('[product-detector]', `  ${i + 1}. ${candidates[i].text} (score: ${candidates[i].score})`);
-        }
-
-        // Select the best candidate if score is high enough
-        const bestCandidate = candidates[0];
-        if (bestCandidate.score >= 60) {
-          priceData = bestCandidate.parsed;
-          detectedPriceElement = bestCandidate.element;
-          debug('[product-detector]', '[Price Drop Tracker] ✓ Best candidate selected:', priceData.numeric, 'score:', bestCandidate.score);
-        } else {
-          debug('[product-detector]', '[Price Drop Tracker] Best candidate score too low:', bestCandidate.score);
-        }
-      }
-    }
-  }
-
-  if (!priceData) {
-    debug('[product-detector]', '[Price Drop Tracker] No reliable price found');
+  const winner = candidates[0];
+  if (!winner || winner.score < 60) {
+    debug(LOG, 'No convincing price candidate');
     return null;
   }
 
-  // Try to find image
-  const rawImageUrl =
-    document.querySelector('[data-product-image]')?.src ||
-    document.querySelector('[itemprop="image"]')?.src ||
-    document.querySelector('.product-image img')?.src ||
-    document.querySelector('[class*="product"] img[src]')?.src ||
-    document.querySelector('main img[src]')?.src ||
-    document.querySelector('img[alt*="' + title.slice(0, 20) + '"]')?.src ||
+  const imageUrl =
+    getMetaImage(document) ||
+    document.querySelector('[itemprop="image"]')?.getAttribute('src') ||
+    document.querySelector('[class*="product" i] img[src], main img[src]')?.getAttribute('src') ||
     null;
 
-  // Convert to absolute URL
-  const imageUrl = makeAbsoluteUrl(rawImageUrl);
-
-  // Calculate confidence score based on signals
-  let confidence = 0.30; // Base confidence for selector-based detection
-
-  // Boost confidence based on evidence
-  if (hasProductUrl) confidence += 0.10;
-  if (titleElement) confidence += 0.10;
-  if (addToCartButton) confidence += 0.20;
-  if (detectedPriceElement) confidence += 0.20;
+  let confidence = 0.35;
+  if (hasProductUrl || hasProductId) confidence += 0.1;
+  if (titleElement) confidence += 0.1;
+  if (addToCartButton) confidence += 0.2;
+  if (winner.score >= 100) confidence += 0.15;
+  else if (winner.score >= 80) confidence += 0.1;
   if (imageUrl) confidence += 0.05;
-
-  debug('[product-detector]', '[Price Drop Tracker] ✓ Product detected with confidence:', confidence);
 
   return {
     title,
-    price: priceData,
-    imageUrl,
-    url: window.location.href,
-    domain: window.location.hostname,
-    sku: productId,  // Use detected product ID from data attributes
+    price: winner.parsed,
+    imageUrl: absoluteUrl(imageUrl, window.location.href),
+    sku: document.querySelector('[itemprop="sku"]')?.textContent?.trim() || null,
     availability: null,
-    confidence: Math.min(confidence, 0.95), // Cap at 0.95
-    detectionMethod: 'cssSelectors'
+    priceSelector: buildSelector(winner.element),
+    confidence: Math.min(confidence, 0.84),
+    detectionMethod: 'heuristic'
   };
 }
 
 /**
- * Enhance and validate product data
- * @param {Object} data - Raw product data
- * @returns {Promise<Object>} Enhanced product data
+ * Build a product from an element the user picked on the page.
+ * @param {Element} element
+ * @returns {Promise<Object|null>}
+ */
+export async function buildProductFromElement(element) {
+  const ctx = getContext();
+  const text = (element.getAttribute('content') || element.textContent || '').replace(/\s+/g, ' ').trim();
+  const parsed = parsePrice(text.slice(0, 80), { domain: ctx.domain, locale: ctx.locale });
+  if (!parsed || !(parsed.numeric > 0)) return null;
+
+  const structured = (() => {
+    try { return extractStructuredProduct(document, ctx); } catch (_) { return null; }
+  })();
+
+  // Keep the currency from structured data when the picked text has no symbol
+  if (structured?.price?.currency && !CURRENCY_HINT.test(text)) {
+    parsed.currency = structured.price.currency;
+    parsed.symbol = structured.price.symbol;
+  }
+
+  const title =
+    structured?.title ||
+    cleanText(document.querySelector('h1')?.textContent) ||
+    getMetaTitle(document);
+
+  return await enhanceProductData({
+    title: title || document.title,
+    price: parsed,
+    imageUrl: structured?.imageUrl || getMetaImage(document),
+    sku: structured?.sku || null,
+    availability: null,
+    priceSelector: buildSelector(element),
+    confidence: 1,
+    detectionMethod: 'manual'
+  });
+}
+
+/**
+ * Add ids, thumbnail, and normalise fields.
  */
 async function enhanceProductData(data) {
-  // Generate unique product ID
-  data.productId = generateProductId(data.url, data.title, data.domain);
+  data.url = data.url || window.location.href;
+  data.domain = data.domain || window.location.hostname;
+  data.title = cleanText(data.title) || 'Unknown Product';
+  if (data.title.length > 200) data.title = data.title.slice(0, 197) + '...';
 
-  // Add timestamps
+  data.productId = generateProductId(data.url, data.title, data.domain);
   data.detectedAt = Date.now();
 
-  // PRIVACY FIX: Create optimized thumbnail and store separately
-  // This prevents privacy leaks AND storage bloat by:
-  // 1. Not loading images from retailer servers (privacy)
-  // 2. Compressing images to ~5KB thumbnails (storage efficiency)
-  // 3. Storing images separately from product data (performance)
+  if (data.imageUrl) data.imageUrl = absoluteUrl(data.imageUrl, data.url);
+
   if (data.imageUrl && !data.imageUrl.startsWith('data:')) {
-    debug('[product-detector]', '[Price Drop Tracker] Creating optimized thumbnail...');
     try {
       const thumbnail = await createOptimizedThumbnail(data.imageUrl, 80, 80);
-      if (thumbnail) {
-        data.imageThumbnail = thumbnail; // Temp field to be stored separately
+      if (thumbnail && thumbnail.startsWith('data:')) {
+        data.imageThumbnail = thumbnail;
         data.hasImage = true;
-        debug('[product-detector]', `[Price Drop Tracker] Thumbnail created (${(thumbnail.length / 1024).toFixed(1)}KB)`);
       } else {
-        debugWarn('[product-detector]', '[Price Drop Tracker] Thumbnail creation failed, will use placeholder');
         data.hasImage = false;
+        // Background can retry with host permissions (no CORS taint there).
+        // It discards the URL afterwards.
+        data.imageSourceUrl = data.imageUrl;
       }
     } catch (error) {
-      debugError('[product-detector]', '[Price Drop Tracker] Error creating thumbnail:', error);
+      debugWarn(LOG, 'Thumbnail creation failed:', error);
       data.hasImage = false;
+      data.imageSourceUrl = data.imageUrl;
     }
-    // Remove the original URL to prevent privacy leaks
     delete data.imageUrl;
   } else {
     data.hasImage = false;
+    delete data.imageUrl;
   }
-
-  // Validate and clean title
-  if (data.title && data.title.length > 200) {
-    data.title = data.title.slice(0, 197) + '...';
-  }
-
-  // Ensure we have all required fields
-  if (!data.title) data.title = 'Unknown Product';
-  if (!data.url) data.url = window.location.href;
-  if (!data.domain) data.domain = window.location.hostname;
 
   return data;
 }
 
-// Auto-detect product when page loads
-// Only run if this script is loaded as a content script (not imported as module)
-// This prevents double-detection when manually triggered from popup
-if (!window.__PRICE_TRACKER_MANUAL_MODE__) {
-  (async function initialize() {
-    // Wait for page to be fully loaded
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', detectAndSave);
-    } else {
-      detectAndSave();
-    }
-  })();
-}
+/**
+ * Small on-page confirmation toast. Shared by auto & manual tracking.
+ */
+export function showTrackingBadge(product, message) {
+  const existing = document.getElementById('price-genius-badge');
+  if (existing) existing.remove();
 
-async function detectAndSave() {
-  try {
-    debug('[product-detector]', '[Price Drop Tracker] Page loaded, checking for product...');
+  const host = document.createElement('div');
+  host.id = 'price-genius-badge';
+  host.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:2147483647;';
+  const shadow = host.attachShadow({ mode: 'closed' });
 
-    // Retry logic instead of fixed wait - attempts detection up to 5 times
-    // This handles both slow and fast loading pages without fixed delays
-    let productData = null;
-    const maxAttempts = 5;
-    const intervalMs = 800;
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      debug('[product-detector]', `[Price Drop Tracker] Detection attempt ${attempt}/${maxAttempts}...`);
-
-      productData = await detectProduct();
-
-      if (productData) {
-        debug('[product-detector]', `[Price Drop Tracker] Product detected on attempt ${attempt}`);
-        break;
-      }
-
-      // Wait before next attempt (except on last attempt)
-      if (attempt < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, intervalMs));
-      }
-    }
-
-    if (productData) {
-      // Check if already tracking
-      const response = await browser.runtime.sendMessage({
-        type: 'PRODUCT_DETECTED',
-        data: productData
-      });
-
-      if (response.success) {
-        debug('[product-detector]', '[Price Drop Tracker] Product saved:', response.productId);
-        showTrackingBadge(productData);
-      }
-    } else {
-      debug('[product-detector]', '[Price Drop Tracker] No product detected after 5 attempts');
-    }
-  } catch (error) {
-    debugError('[product-detector]', '[Price Drop Tracker] Detection error:', error);
-  }
-}
-
-function showTrackingBadge(product) {
-  // Check if badge already exists to prevent duplicates
-  if (document.getElementById('price-tracker-badge')) {
-    debug('[product-detector]', '[Price Drop Tracker] Badge already exists, skipping');
-    return;
-  }
-
-  // Create subtle notification badge
-  const badge = document.createElement('div');
-  badge.id = 'price-tracker-badge';
-  badge.style.cssText = `
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    background: #1eadbd;
-    color: white;
-    padding: 14px 22px;
-    border-radius: 10px;
-    box-shadow: 0 6px 20px rgba(30, 173, 189, 0.3);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    font-size: 15px;
-    font-weight: 600;
-    z-index: 999999;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  `;
-
-  // Create SVG icon
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('width', '20');
-  svg.setAttribute('height', '20');
-  svg.setAttribute('viewBox', '0 0 20 20');
-  svg.setAttribute('fill', 'none');
-
-  const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-  circle.setAttribute('cx', '10');
-  circle.setAttribute('cy', '10');
-  circle.setAttribute('r', '10');
-  circle.setAttribute('fill', 'white');
-  circle.setAttribute('fill-opacity', '0.2');
-
-  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  path.setAttribute('d', 'M6 10L9 13L14 7');
-  path.setAttribute('stroke', 'white');
-  path.setAttribute('stroke-width', '2');
-  path.setAttribute('stroke-linecap', 'round');
-  path.setAttribute('stroke-linejoin', 'round');
-
-  svg.appendChild(circle);
-  svg.appendChild(path);
-
-  // Create text span
-  const textSpan = document.createElement('span');
-  textSpan.textContent = `Now tracking: ${product.price.symbol}${product.price.numeric.toFixed(2)}`;
-
-  // Append to badge
-  badge.appendChild(svg);
-  badge.appendChild(textSpan);
-
-  // Add animation styles
   const style = document.createElement('style');
   style.textContent = `
-    @keyframes slideIn {
-      from {
-        transform: translateY(100px);
-        opacity: 0;
-      }
-      to {
-        transform: translateY(0);
-        opacity: 1;
-      }
-    }
-    #price-tracker-badge {
-      animation: slideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-    }
-  `;
-  document.head.appendChild(style);
-  document.body.appendChild(badge);
+    .toast{display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:12px;
+      background:#0f172a;color:#f8fafc;font:500 14px/1.3 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+      box-shadow:0 10px 30px rgba(15,23,42,.35);max-width:340px;
+      animation:in .35s cubic-bezier(.34,1.56,.64,1)}
+    .dot{flex:none;width:22px;height:22px;border-radius:50%;background:#14b8a6;display:grid;place-items:center}
+    .t{overflow:hidden}.t b{display:block;font-weight:600}
+    .t span{display:block;color:#94a3b8;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    @keyframes in{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}`;
 
-  // Auto-remove after 5 seconds
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  const dot = document.createElement('div');
+  dot.className = 'dot';
+  dot.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.2L5 8.5L9.5 3.5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const t = document.createElement('div');
+  t.className = 't';
+  const b = document.createElement('b');
+  b.textContent = message || `Price Genius is tracking ${product?.price?.formatted || ''}`.trim();
+  const s = document.createElement('span');
+  s.textContent = product?.title || '';
+  t.append(b, s);
+  toast.append(dot, t);
+  shadow.append(style, toast);
+  (document.body || document.documentElement).appendChild(host);
+
   setTimeout(() => {
-    badge.style.transition = 'all 0.3s ease';
-    badge.style.opacity = '0';
-    badge.style.transform = 'translateY(20px)';
-    setTimeout(() => {
-      badge.remove();
-      style.remove();
-    }, 300);
-  }, 5000);
+    toast.style.transition = 'opacity .3s, transform .3s';
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(12px)';
+    setTimeout(() => host.remove(), 320);
+  }, 4500);
 }

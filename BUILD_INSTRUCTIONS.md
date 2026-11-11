@@ -1,102 +1,43 @@
-# Build Instructions for Price Genius Extension
+# Build Instructions for Price Genius
 
-This extension requires **separate builds** for Chrome and Firefox due to Manifest V3 incompatibilities.
+`manifest.json` is the single source of truth. The build script generates the
+Chrome and Firefox variants from it (they differ only in the `background` key and
+the Chrome-only `offscreen` permission).
 
-## Why Separate Builds?
+## Requirements
 
-- **Chrome MV3** requires: `"service_worker": "file.js"` in manifest
-- **Firefox MV3** (current versions) requires: `"scripts": ["file.js"]` in manifest
-- Chrome rejects manifests with both properties
-- Firefox doesn't support `service_worker` yet in many versions
+- [Node.js](https://nodejs.org) 18 or newer. Nothing else - no npm install needed.
+  Works on Windows, macOS and Linux.
 
-This is the industry-standard solution used by all major cross-browser extensions.
-
-## Quick Build
-
-Run the build script to create both versions:
+## Build
 
 ```bash
-./build.sh
+npm run build           # both browsers
+npm run build:chrome    # Chrome / Edge / Brave only
+npm run build:firefox   # Firefox only
 ```
 
-This creates:
-- `build/chrome/` - Chrome/Edge/Brave version
-- `build/firefox/` - Firefox version
+(Same as `node scripts/build.mjs [chrome|firefox]`.)
 
-## Loading in Browsers
+Output in `dist/`:
 
-### Chrome / Edge / Brave
+| Path | Use |
+| --- | --- |
+| `dist/chrome/` | Load unpacked in `chrome://extensions` |
+| `dist/firefox/` | Load temporary add-on in `about:debugging` |
+| `dist/price-genius-chrome-vX.Y.Z.zip` | Upload to Chrome Web Store / Edge Add-ons |
+| `dist/price-genius-firefox-vX.Y.Z.zip` | Upload to addons.mozilla.org |
+| `dist/price-genius-firefox-source-vX.Y.Z.zip` | Source archive, if Mozilla reviewers ask |
 
-1. Go to `chrome://extensions/` (or `edge://extensions/`)
-2. Enable "Developer mode" (toggle in top right)
-3. Click "Load unpacked"
-4. Select the **`build/chrome`** folder
-5. ✅ Extension loaded!
+## Releasing a new version
 
-### Firefox
+1. Bump `version` in `manifest.json` and `package.json`
+2. Add an entry to `CHANGELOG.md`
+3. `npm test`
+4. `npm run build`
+5. Upload the two zips to the stores
 
-1. Go to `about:debugging#/runtime/this-firefox`
-2. Click "Load Temporary Add-on"
-3. Navigate to the **`build/firefox`** folder
-4. Select **`manifest.json`**
-5. ✅ Extension loaded!
+## Quick development loop (Chrome)
 
-## Key Differences Between Builds
-
-Both builds use identical source code. The **only difference** is the `manifest.json`:
-
-### Chrome manifest
-```json
-{
-  "background": {
-    "service_worker": "background/background-wrapper.js",
-    "type": "module"
-  }
-}
-```
-
-### Firefox manifest
-```json
-{
-  "background": {
-    "scripts": ["background/background-wrapper.js"],
-    "type": "module"
-  },
-  "browser_specific_settings": {
-    "gecko": {
-      "id": "price-genius@gogonano.com",
-      "strict_min_version": "109.0"
-    }
-  }
-}
-```
-
-## Development Workflow
-
-1. Make changes to source files (not in `build/` folders)
-2. Run `./build.sh` to rebuild
-3. Reload extension in browser:
-   - **Chrome**: Click reload button on extension card
-   - **Firefox**: Click "Reload" button in about:debugging
-
-## Publishing
-
-For store submission, create distribution packages:
-
-### Chrome Web Store
-```bash
-cd build/chrome
-zip -r ../../price-genius-chrome.zip . -x "*.git*"
-```
-
-### Firefox Add-ons (AMO)
-```bash
-cd build/firefox
-zip -r ../../price-genius-firefox.zip . -x "*.git*"
-```
-
-## Notes
-
-- The `build/` folder is gitignored (not tracked in version control)
-- Always build before testing changes
-- Source code is in the root directory, builds are in `build/`
+You can also load the repository root directly in Chrome (`chrome://extensions` →
+Load unpacked → select the repo folder). Reload the extension after changes.

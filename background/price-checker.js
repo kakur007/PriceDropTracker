@@ -17,6 +17,7 @@ import { StorageManager } from './storage-manager.js';
 import { isUrlSupportedOrPermitted } from '../utils/domain-validator.js';
 import { parsePrice } from '../utils/currency-parser.js';
 import { debug, debugWarn, debugError } from '../utils/debug.js';
+import { extractPriceForRefresh } from '../utils/page-extractor.js';
 
 /**
  * Derive expected currency from domain
@@ -78,6 +79,17 @@ function getExpectedCurrencyFromDomain(domain) {
   if (cleanDomain.includes('walmart.com')) return 'USD';
 
   return null; // Let currency parser auto-detect
+}
+
+/**
+ * Format an amount for display
+ */
+function formatMoney(amount, currency, locale) {
+  try {
+    return new Intl.NumberFormat(locale || 'en-US', { style: 'currency', currency: currency || 'USD' }).format(amount);
+  } catch (_) {
+    return `${currency || ''} ${Number(amount).toFixed(2)}`.trim();
+  }
 }
 
 /**
@@ -177,228 +189,14 @@ function normalizePlatformPrice(rawPrice) {
 }
 
 /**
- * Extract a price from embedded platform product JSON scripts.
- * @param {Document} doc - Parsed DOM document
- * @param {Object} contextData - Context information
- * @returns {number|null}
+ * Extract price from a parsed HTML document.
+ * Shares its implementation with the content script and offscreen document.
+ * @param {Document} doc
+ * @param {Object} contextData - { domain, locale, expectedCurrency, url }
+ * @param {Object} hints - { priceSelector, detectionMethod }
  */
-function extractPriceFromEmbeddedProductJson(doc, contextData = {}) {
-  const scripts = doc.querySelectorAll(
-    'script[type="application/json"][id*="ProductJson" i], script[type="application/json"][id*="product" i], script[type="application/json"][data-product-json]'
-  );
-
-  for (const script of scripts) {
-    try {
-      const data = JSON.parse(script.textContent);
-      const product = data.product || data;
-      const variants = Array.isArray(product.variants) ? product.variants : [];
-      const selectedVariant = variants.find(variant => variant.available !== false) || variants[0] || null;
-      const rawPrice = selectedVariant?.price ?? product.price ?? product.price_min;
-
-      if (!rawPrice) {
-        continue;
-      }
-
-      const normalizedPrice = normalizePlatformPrice(rawPrice);
-      const parsed = parseNumericPrice(String(normalizedPrice), contextData);
-      if (parsed !== null) {
-        return parsed;
-      }
-    } catch (error) {
-      debugWarn('[PriceChecker]', 'Failed to parse embedded product JSON:', error.message);
-    }
-  }
-
-  return null;
-}
-
-/**
- * Extract price from parsed HTML document (same logic as offscreen.js)
- * @param {Document} doc - Parsed DOM document
- * @param {Object} contextData - Context information (domain, locale, currency)
- * @returns {Object} - { success: boolean, price: number, detectionMethod: string }
- */
-function extractPriceFromDocument(doc, contextData = {}) {
-  let newPrice = null;
-  let detectionMethod = 'none';
-
-  // Helper function to extract price from offers array
-  const extractPriceFromOffers = (offers, contextData) => {
-    const expectedCurrency = contextData.expectedCurrency || getExpectedCurrencyFromDomain(contextData.domain || '');
-    let matchingCurrencyPrice = null;
-    let fallbackPrice = null;
-
-    for (const offer of offers) {
-      const offerText = JSON.stringify(offer).toLowerCase();
-      if (offerText.includes('approximately') || offerText.includes('approx.') || offerText.includes('approx ')) {
-        debug('[PriceChecker]', 'Skipping approximate offer in JSON-LD');
-        continue;
-      }
-
-      const priceString = offer.price || offer.lowPrice || offer.highPrice;
-      if (priceString) {
-        const parsed = parsePrice(String(priceString), contextData);
-        if (parsed && parsed.numeric !== null) {
-          // CRITICAL: Use explicit priceCurrency from JSON-LD offer
-          // The parser might guess wrong currency based on domain (.com = USD)
-          // but JSON-LD explicitly specifies the correct currency
-          if (offer.priceCurrency) {
-            parsed.currency = offer.priceCurrency;
-            debug('[PriceChecker]', `Using explicit currency from JSON-LD: ${offer.priceCurrency}`);
-          }
-
-          const offerCurrency = parsed.currency;
-
-          if (expectedCurrency && offerCurrency !== expectedCurrency) {
-            debug('[PriceChecker]', `Skipping offer with mismatched currency: ${offerCurrency} (expected ${expectedCurrency})`);
-            if (fallbackPrice === null) {
-              fallbackPrice = parsed.numeric;
-            }
-            continue;
-          }
-
-          if (matchingCurrencyPrice === null) {
-            matchingCurrencyPrice = parsed.numeric;
-            debug('[PriceChecker]', `Found matching currency offer: ${parsed.numeric} ${parsed.currency}`);
-          }
-        }
-      }
-    }
-
-    return matchingCurrencyPrice !== null ? matchingCurrencyPrice : fallbackPrice;
-  };
-
-  // 1. Try to find price via Schema.org JSON-LD (most reliable)
-  const schemaScripts = doc.querySelectorAll('script[type="application/ld+json"]');
-  for (const script of schemaScripts) {
-    try {
-      const schema = JSON.parse(script.textContent);
-      const items = findProductSchemaNodes(schema);
-
-      for (const item of items) {
-        // Handle Product with offers
-        if ((isSchemaType(item, 'Product') || isSchemaType(item, 'ProductGroup')) && item.offers) {
-          const offers = Array.isArray(item.offers) ? item.offers : [item.offers];
-          newPrice = extractPriceFromOffers(offers, contextData);
-          if (newPrice !== null) {
-            detectionMethod = 'schema.org';
-            break;
-          }
-        }
-      }
-    } catch (e) {
-      // Ignore JSON parse errors
-    }
-    if (newPrice !== null) break;
-  }
-
-  // 2. Try embedded platform product JSON (Shopify themes, etc.)
-  if (newPrice === null) {
-    newPrice = extractPriceFromEmbeddedProductJson(doc, contextData);
-    if (newPrice !== null) {
-      detectionMethod = 'embeddedProductJson';
-    }
-  }
-
-  // 3. If structured extraction fails, try common meta tags and selectors
-  if (newPrice === null) {
-    const selectors = [
-      { sel: 'meta[property="og:price:amount"]', attr: 'content' },
-      { sel: 'meta[property="product:price:amount"]', attr: 'content' },
-      { sel: 'meta[itemprop="price"]', attr: 'content' },
-
-      // SportsDirect - use ID selector
-      { sel: '#lblSellingPrice', attr: 'textContent' },
-
-      // Booztlet - use current price class
-      { sel: '.current-price', attr: 'textContent' },
-      { sel: '.price.campaign', attr: 'textContent' },
-
-      // Amazon
-      { sel: '.a-price .a-offscreen', attr: 'textContent' },
-      { sel: '.a-price-whole', attr: 'textContent' }, // Will be combined with fraction
-      { sel: '#priceblock_ourprice', attr: 'textContent' },
-
-      // eBay - IMPORTANT: Use textContent, not content attribute (which has price in cents)
-      // Be specific to avoid "Approximately" prices
-      { sel: '.x-price-primary [itemprop="price"]', attr: 'textContent' },
-      { sel: '.x-price-primary .ux-textspans--BOLD', attr: 'textContent' },
-      { sel: '#prcIsum', attr: 'textContent' },
-      { sel: '#mm-saleDscPrc', attr: 'textContent' },
-      { sel: '.x-price-primary span[class*="price"]', attr: 'textContent' },
-
-      // Target
-      { sel: '[data-test="product-price"]', attr: 'textContent' },
-      { sel: '[data-test="product-price-current"]', attr: 'textContent' },
-      { sel: '.h-text-orangeDark', attr: 'textContent' },
-
-      // Zalando
-      { sel: '[data-testid="price"]', attr: 'textContent' },
-      { sel: '[class*="price"][class*="current"]', attr: 'textContent' },
-      { sel: '[class*="currentPrice"]', attr: 'textContent' },
-
-      // Best Buy
-      { sel: '[data-testid="customer-price"]', attr: 'textContent' },
-
-      // Generic fallbacks
-      { sel: '[itemprop="price"]', attr: 'content' },
-      { sel: '.price', attr: 'textContent' }
-    ];
-
-    for (const { sel, attr } of selectors) {
-      const element = doc.querySelector(sel);
-      if (element) {
-        // Get price text based on specified attribute
-        let priceText;
-        if (attr === 'content') {
-          // For microdata content attributes, try textContent first
-          // because some sites (eBay) put prices in cents in content attribute
-          priceText = element.textContent || element.getAttribute('content');
-        } else {
-          priceText = element.textContent;
-        }
-
-        if (priceText) {
-          // EBAY FIX: Skip "Approximately" prices (shipping estimates, not actual prices)
-          const lowerText = priceText.toLowerCase();
-          if (lowerText.includes('approximately') || lowerText.includes('approx.') || lowerText.includes('approx ')) {
-            debug('[PriceChecker]', `Skipping approximate price: ${priceText.substring(0, 50)}`);
-            continue; // Skip this selector and try next one
-          }
-
-          newPrice = parseNumericPrice(priceText, contextData);
-          if (newPrice !== null) {
-            detectionMethod = `selector: ${sel}`;
-            break;
-          }
-        }
-      }
-    }
-
-    // Special handling for Amazon when a-offscreen is not available
-    // Combine a-price-whole and a-price-fraction for complete price
-    if (newPrice === null) {
-      const priceWhole = doc.querySelector('.a-price-whole');
-      const priceFraction = doc.querySelector('.a-price-fraction');
-      if (priceWhole) {
-        let combinedPrice = priceWhole.textContent.trim();
-        if (priceFraction) {
-          // Combine whole and fraction (e.g., "19" + "99" = "19.99")
-          combinedPrice = combinedPrice + '.' + priceFraction.textContent.trim();
-        }
-        newPrice = parseNumericPrice(combinedPrice, contextData);
-        if (newPrice !== null) {
-          detectionMethod = 'selector: .a-price-whole + .a-price-fraction';
-        }
-      }
-    }
-  }
-
-  return {
-    success: newPrice !== null,
-    price: newPrice,
-    detectionMethod
-  };
+function extractPriceFromDocument(doc, contextData = {}, hints = {}) {
+  return extractPriceForRefresh(doc, contextData, hints);
 }
 
 /**
@@ -473,7 +271,7 @@ async function closeOffscreenDocument() {
  * @param {Object} contextData - Context information (domain, locale, currency)
  * @returns {Promise<Object>} - Parsed price data
  */
-async function parseHTMLForPrice(html, contextData = {}) {
+async function parseHTMLForPrice(html, contextData = {}, hints = {}) {
   try {
     // Try offscreen document first (Manifest V3 Chrome)
     if (browser.offscreen) {
@@ -487,7 +285,8 @@ async function parseHTMLForPrice(html, contextData = {}) {
         const response = await browser.runtime.sendMessage({
           type: 'PARSE_HTML',
           html,
-          contextData
+          contextData,
+          hints
         });
 
         // Check if we got a valid response (not undefined and has expected structure)
@@ -516,7 +315,7 @@ async function parseHTMLForPrice(html, contextData = {}) {
       const doc = parser.parseFromString(html, 'text/html');
 
       // Extract price from the parsed document with context
-      return extractPriceFromDocument(doc, contextData);
+      return extractPriceFromDocument(doc, contextData, hints);
     }
 
     // If no parser available, try to extract from raw HTML using regex as last resort
@@ -983,9 +782,14 @@ async function checkSingleProduct(productId) {
     // Use domain-derived currency to fix initial detection errors
     const derivedCurrency = getExpectedCurrencyFromDomain(product.domain);
     const contextData = {
+      url: product.url,
       domain: product.domain,
       locale: product.price?.locale,
       expectedCurrency: derivedCurrency || product.price?.currency
+    };
+    const hints = {
+      priceSelector: product.priceSelector || null,
+      detectionMethod: product.detectionMethod || null
     };
 
     // Log if currency was corrected
@@ -995,7 +799,27 @@ async function checkSingleProduct(productId) {
 
     // Parse the HTML using offscreen document with context
     debug('[PriceChecker]', `Parsing HTML for price with context:`, contextData);
-    const parseResult = await parseHTMLForPrice(html, contextData);
+    const parseResult = await parseHTMLForPrice(html, contextData, hints);
+
+    // Generic fallback selectors (".price", "[data-price]") can hit a related
+    // product or a shipping fee. Don't record a wild jump coming from them.
+    if (parseResult.success && parseResult.weak && product.price?.numeric > 0) {
+      const ratio = parseResult.price / product.price.numeric;
+      if (ratio < 0.4 || ratio > 2.5) {
+        debugWarn('[PriceChecker]', `Ignoring implausible price ${parseResult.price} from weak selector (was ${product.price.numeric})`);
+        parseResult.success = false;
+        parseResult.error = 'Price on page could not be confirmed';
+      }
+    }
+
+    // A different currency means we read the wrong element or a geo-redirect
+    if (parseResult.success && parseResult.currency && product.price?.currency &&
+        parseResult.currency !== product.price.currency &&
+        parseResult.detectionMethod !== 'schemaOrg') {
+      debugWarn('[PriceChecker]', `Currency mismatch ${parseResult.currency} vs ${product.price.currency}, ignoring`);
+      parseResult.success = false;
+      parseResult.error = 'Currency on page changed';
+    }
 
     // Check if parsing was successful
     if (!parseResult.success || parseResult.price === null) {
@@ -1059,7 +883,9 @@ async function checkSingleProduct(productId) {
     // Update product price using storage manager
     await StorageManager.updateProductPrice(productId, {
       ...product.price,
-      numeric: newPrice
+      numeric: newPrice,
+      formatted: formatMoney(newPrice, product.price.currency, product.price.locale),
+      detectionMethod
     });
 
     // Determine result status
